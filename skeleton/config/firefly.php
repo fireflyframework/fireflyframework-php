@@ -2577,7 +2577,14 @@ return [
          | firefly.resilience.circuit-breaker.orchestration-compensation-<saga>) or best-effort.
          | `compensation-error-handler` is default, fail-fast, log-and-continue, retry, robust, or the class
          | name of your own CompensationErrorHandler bean. The TCC `default-timeout` applies to a phase that
-         | sets no timeoutMs. Defaults: enabled true, strict-sequential, 5m, default, 30s.
+         | sets no timeoutMs. The TCC `composition.compensation-policy` decides how a failed TCC composition
+         | cancels its confirmed members: strict-sequential and best-effort (reverse completion order, every
+         | member attempted), grouped-parallel (layer by layer in reverse), retry-with-backoff (a failed
+         | member is compensated again through firefly.resilience.retry.orchestration-tcc-composition-
+         | <composition>, else 3 attempts from 100ms) or circuit-breaker (stops once firefly.resilience.
+         | circuit-breaker.orchestration-tcc-composition-<composition> opens, else 5 failures; the members
+         | left are reported as compensation failures). Defaults: enabled true, strict-sequential, 5m,
+         | default, 30s, composition enabled true and strict-sequential.
         */
         'saga' => [
             'enabled' => env('FIREFLY_ORCHESTRATION_SAGA_ENABLED', true),

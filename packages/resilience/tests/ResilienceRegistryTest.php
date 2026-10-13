@@ -82,6 +82,15 @@ it('reports whether a circuit breaker instance is configured without building it
         ->and(fn () => $reg->circuitBreaker('broken'))->toThrow(ConfigurationException::class, 'Invalid duration [two minutes]');
 });
 
+it('reports whether a retry instance is configured without building it', function () {
+    $reg = makeResilienceRegistry(['retry' => ['payments' => []]]);
+
+    expect($reg->hasRetry('payments'))->toBeTrue()
+        ->and($reg->hasRetry('missing'))->toBeFalse()
+        ->and(makeResilienceRegistry()->hasRetry('payments'))->toBeFalse()
+        ->and(makeResilienceRegistry(['circuit-breaker' => ['payments' => []]])->hasRetry('payments'))->toBeFalse();
+});
+
 it('wires the circuit breaker minimum-number-of-calls key through to the built instance', function () {
     // A registry key that never reaches the constructor is indistinguishable from a typo, so assert the
     // BEHAVIOUR the key buys rather than the object's shape: with a minimum of 3, two failures on a

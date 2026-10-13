@@ -35,9 +35,18 @@ use Throwable;
  * idempotent. A required failure is checkpointed together with the switch to CANCEL, and a resumed state that
  * still holds one goes straight to CANCEL, so a resume never retries an exhausted participant or reports a
  * transaction with a CONFIRM_FAILED participant as CONFIRMED.
+ *
+ * A cancel on request (cancelAll(), behind TccEngine::compensate()) is recorded in the context as the
+ * CANCEL_REQUESTED variable before its first CANCELING checkpoint. Without it a crash in the middle of undoing a
+ * CONFIRMED transaction would resume into the failure-driven CANCEL, which leaves confirmed participants
+ * confirmed, and report a clean rollback over resources that are still committed. TccEngine::resume() reads it
+ * through cancelRequested() and finishes such a transaction as the cancel on request it was.
  */
 final class TccExecutionOrchestrator
 {
+    /** The context variable that marks a cancel on request; reserved, an application never sets it. */
+    public const string CANCEL_REQUESTED = 'firefly.tcc.cancel-requested';
+
     public function __construct(
         private readonly StepInvoker $invoker,
         private readonly EngineSupport $support,
@@ -79,7 +88,17 @@ final class TccExecutionOrchestrator
 
     public function cancelAll(TccDefinition $tcc, ExecutionContext $context): TccRunOutcome
     {
+        // Set before cancelPhase() saves its first CANCELING checkpoint, so every checkpoint of this sweep says
+        // it is a cancel on request and a resume after a crash cancels the confirmed participants too.
+        $context->setVariable(self::CANCEL_REQUESTED, true);
+
         return $this->cancelPhase($tcc, $context, null, null, null, includeConfirmed: true);
+    }
+
+    /** Whether this transaction is (or was) being cancelled on request, by cancelAll(). */
+    public function cancelRequested(ExecutionContext $context): bool
+    {
+        return $context->variable(self::CANCEL_REQUESTED) === true;
     }
 
     /** @return array{0: string, 1: Throwable}|null the failed required participant and its error */
@@ -236,18 +255,26 @@ final class TccExecutionOrchestrator
      * The required failure a resumed transaction is cancelling for: a CONFIRM_FAILED participant, or a FAILED or
      * TIMED_OUT one that is not optional (an optional participant's try failure never cancels the transaction).
      *
+     * The CONFIRM_FAILED participant is itself cancelled by the sweep, which overwrites its status with CANCELED
+     * or CANCEL_FAILED; a crash after that cancel must still resume into a FAILED transaction with its confirm
+     * error. Its step error survives the overwrite, and only a confirm failure leaves one on a participant the
+     * sweep can cancel (a try failure stays FAILED and is never cancelled), so that pair also reads as the
+     * confirm failure.
+     *
      * @return array{0: ?string, 1: ?TccPhase, 2: ?Throwable}
      */
     private function recordedFailure(TccDefinition $tcc, ExecutionContext $context): array
     {
         foreach ($tcc->ordered() as $participant) {
             $status = $context->stepStatus($participant->id);
-            $required = $status === StepStatus::ConfirmFailed
+            $confirmFailed = $status === StepStatus::ConfirmFailed
+                || (in_array($status, [StepStatus::Canceled, StepStatus::CancelFailed], true) && $context->stepError($participant->id) !== null);
+            $required = $confirmFailed
                 || (! $participant->optional && in_array($status, [StepStatus::Failed, StepStatus::TimedOut], true));
             if ($required) {
                 return [
                     $participant->id,
-                    $status === StepStatus::ConfirmFailed ? TccPhase::Confirm : TccPhase::Try,
+                    $confirmFailed ? TccPhase::Confirm : TccPhase::Try,
                     $context->stepError($participant->id) ?? new OrchestrationException("TCC [{$tcc->name}] participant [{$participant->id}] failed."),
                 ];
             }

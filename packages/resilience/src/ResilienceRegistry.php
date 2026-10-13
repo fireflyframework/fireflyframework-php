@@ -88,6 +88,14 @@ final class ResilienceRegistry
         return is_array($group) && array_key_exists($name, $group);
     }
 
+    /** Whether firefly.resilience.retry names an instance called $name — hasCircuitBreaker()'s twin for retries. */
+    public function hasRetry(string $name): bool
+    {
+        $group = $this->config['retry'] ?? null;
+
+        return is_array($group) && array_key_exists($name, $group);
+    }
+
     public function rateLimiter(string $name): RateLimiter
     {
         return $this->rateLimiters[$name] ??= new RateLimiter(

@@ -138,3 +138,141 @@ it('reports a confirmed member whose cancel failed instead of listing it as comp
         ->and($engines->events->hooks())->toContain('onStepCompensationFailed')
         ->and($result->toArray()['compensationFailures'])->toBe(['stubborn' => $result->compensationFailures['stubborn']->getMessage()]);
 });
+
+/**
+ * One single-participant TCC per name, logging "cancel <name>". `$cancelFailures` says how many times a member's
+ * cancel fails before it succeeds (PHP_INT_MAX: always); the TCC named `fail` refuses its try.
+ *
+ * @param  list<string>  $names
+ * @param  list<string>  $log
+ * @param  array<string, int>  $cancelFailures
+ */
+function orchestrationTccMembers(TestEngines $engines, array $names, array &$log, array $cancelFailures = []): void
+{
+    // One array shared by reference: a per-iteration `$failures` captured by reference would be one variable
+    // that every later iteration overwrites.
+    $remaining = $cancelFailures;
+    foreach ([...$names, 'fail'] as $name) {
+        $engines->tccRegistry->register(TccBuilder::tcc($name)->retry(false)
+            ->participant('main')
+            ->tryWith(static function () use ($name): string {
+                if ($name === 'fail') {
+                    throw new RuntimeException('fail refused');
+                }
+
+                return $name;
+            })
+            ->confirmWith(static fn (): null => null)
+            ->cancelWith(static function () use ($name, &$log, &$remaining): void {
+                $log[] = "cancel {$name}";
+                if (($remaining[$name] ?? 0) > 0) {
+                    $remaining[$name]--;
+
+                    throw new RuntimeException("{$name} cancel failed");
+                }
+            })
+            ->add()->build());
+    }
+}
+
+it('cancels the confirmed members layer by layer in reverse under grouped-parallel', function (): void {
+    $engines = TestEngines::create(['tcc' => ['composition' => ['compensation-policy' => 'grouped-parallel']]]);
+    $log = [];
+    orchestrationTccMembers($engines, ['a', 'b', 'c'], $log);
+    // Completion order is a, b, c; reverse completion would cancel c, b, a. The layers are [a, b] then [c].
+    $composition = TccCompositionBuilder::composition('trip')
+        ->tcc('a')->add()
+        ->tcc('b')->add()
+        ->tcc('c')->dependsOn('a')->add()
+        ->tcc('fail')->dependsOn('c')->add()
+        ->build();
+
+    $result = $engines->tccCompositor->compose($composition);
+
+    expect($result->success)->toBeFalse()
+        ->and($result->compensated)->toBe(['c', 'a', 'b'])
+        ->and($log)->toBe(['cancel c', 'cancel a', 'cancel b']);
+});
+
+it('compensates a member again after a failed cancel under retry-with-backoff', function (): void {
+    $engines = TestEngines::create(
+        ['tcc' => ['composition' => ['compensation-policy' => 'retry-with-backoff']]],
+        resilience: ['retry' => ['orchestration-tcc-composition-trip' => ['max-attempts' => 3]]],
+    );
+    $log = [];
+    orchestrationTccMembers($engines, ['a', 'flaky'], $log, ['flaky' => 2]);
+    $composition = TccCompositionBuilder::composition('trip')
+        ->tcc('a')->add()
+        ->tcc('flaky')->dependsOn('a')->add()
+        ->tcc('fail')->dependsOn('flaky')->add()
+        ->build();
+
+    $result = $engines->tccCompositor->compose($composition);
+
+    expect($result->success)->toBeFalse()
+        ->and($result->compensated)->toBe(['flaky', 'a'])
+        ->and($result->compensationFailures)->toBe([])
+        ->and($log)->toBe(['cancel flaky', 'cancel flaky', 'cancel flaky', 'cancel a'])
+        ->and($engines->persistence->findById($result->results['flaky']->correlationId)?->status)->toBe(ExecutionStatus::Canceled);
+});
+
+it('does not compensate a member twice under strict-sequential', function (): void {
+    $engines = TestEngines::create(resilience: ['retry' => ['orchestration-tcc-composition-trip' => ['max-attempts' => 3]]]);
+    $log = [];
+    orchestrationTccMembers($engines, ['a', 'flaky'], $log, ['flaky' => 1]);
+    $composition = TccCompositionBuilder::composition('trip')
+        ->tcc('a')->add()
+        ->tcc('flaky')->dependsOn('a')->add()
+        ->tcc('fail')->dependsOn('flaky')->add()
+        ->build();
+
+    $result = $engines->tccCompositor->compose($composition);
+
+    expect($result->compensated)->toBe(['a'])
+        ->and(array_keys($result->compensationFailures))->toBe(['flaky'])
+        ->and($log)->toBe(['cancel flaky', 'cancel a']);
+});
+
+it('stops the rollback once the composition breaker opens and records the members it left', function (): void {
+    $engines = TestEngines::create(
+        ['tcc' => ['composition' => ['compensation-policy' => 'circuit-breaker']]],
+        resilience: ['circuit-breaker' => ['orchestration-tcc-composition-trip' => ['failure-threshold' => 1]]],
+    );
+    $log = [];
+    orchestrationTccMembers($engines, ['a', 'b', 'c'], $log, ['c' => PHP_INT_MAX]);
+    $composition = TccCompositionBuilder::composition('trip')
+        ->tcc('a')->add()
+        ->tcc('b')->dependsOn('a')->add()
+        ->tcc('c')->dependsOn('b')->add()
+        ->tcc('fail')->dependsOn('c')->add()
+        ->build();
+
+    $result = $engines->tccCompositor->compose($composition);
+
+    expect($result->success)->toBeFalse()
+        ->and($result->compensated)->toBe([])
+        ->and(array_keys($result->compensationFailures))->toBe(['c', 'b', 'a'])
+        ->and($result->compensationFailures['b']->getMessage())->toBe('TCC composition [trip] did not cancel member [b]: its compensation circuit opened at member [c].')
+        ->and($log)->toBe(['cancel c'])
+        ->and($engines->persistence->findById($result->results['b']->correlationId)?->status)->toBe(ExecutionStatus::Confirmed)
+        ->and($engines->persistence->findById($result->results['a']->correlationId)?->status)->toBe(ExecutionStatus::Confirmed)
+        ->and($engines->events->count('onStepCompensationFailed'))->toBe(3);
+});
+
+it('attempts every member past a failed cancel under best-effort', function (): void {
+    $engines = TestEngines::create(['tcc' => ['composition' => ['compensation-policy' => 'best-effort']]]);
+    $log = [];
+    orchestrationTccMembers($engines, ['a', 'b', 'c'], $log, ['c' => PHP_INT_MAX]);
+    $composition = TccCompositionBuilder::composition('trip')
+        ->tcc('a')->add()
+        ->tcc('b')->dependsOn('a')->add()
+        ->tcc('c')->dependsOn('b')->add()
+        ->tcc('fail')->dependsOn('c')->add()
+        ->build();
+
+    $result = $engines->tccCompositor->compose($composition);
+
+    expect($result->compensated)->toBe(['b', 'a'])
+        ->and(array_keys($result->compensationFailures))->toBe(['c'])
+        ->and($log)->toBe(['cancel c', 'cancel b', 'cancel a']);
+});

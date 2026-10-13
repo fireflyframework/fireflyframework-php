@@ -87,8 +87,9 @@ final class TestEngines
 
     /**
      * @param  array<string, mixed>  $config
+     * @param  array<string, mixed>  $resilience
      */
-    private function __construct(array $config, ?ExecutionPersistenceProvider $persistence, ?DeadLetterStore $deadLetters)
+    private function __construct(array $config, ?ExecutionPersistenceProvider $persistence, ?DeadLetterStore $deadLetters, array $resilience)
     {
         $this->container = new Container;
         $this->settings = OrchestrationSettings::fromConfig(new Config(new Repository(['firefly' => ['orchestration' => $config]])));
@@ -103,6 +104,7 @@ final class TestEngines
         $this->invoker = new StepInvoker($this->runner, $tracing);
         $this->conditions = new ConditionEvaluator;
         $resilienceStore = new InMemoryResilienceStore;
+        $resilienceRegistry = ResilienceRegistry::fromConfig(new Config(new Repository(['firefly' => ['resilience' => $resilience]])), $resilienceStore);
 
         $breaker = $this->settings->backpressure->strategy === 'circuit-breaker'
             ? new CircuitBreaker(
@@ -134,7 +136,7 @@ final class TestEngines
             $this->support,
             $this->settings->saga->compensationPolicy,
             (new CompensationErrorHandlerFactory($this->container, $this->logger))->get($this->settings->saga->compensationErrorHandler),
-            ResilienceRegistry::fromConfig(new Config(new Repository(['firefly' => []])), $resilienceStore),
+            $resilienceRegistry,
             $resilienceStore,
         );
         $this->sagas = new SagaEngine($this->sagaRegistry, new SagaExecutionOrchestrator($this->invoker, $this->support), $this->compensator, $this->support, $this->settings->saga);
@@ -142,14 +144,15 @@ final class TestEngines
 
         $this->tccRegistry = new TccRegistry;
         $this->tccs = new TccEngine($this->tccRegistry, new TccExecutionOrchestrator($this->invoker, $this->support, $this->settings->tcc), $this->support, $this->settings->tcc);
-        $this->tccCompositor = new TccCompositor($this->tccs, $this->events, $this->conditions, new CompositionDataFlowManager, $this->settings->tcc);
+        $this->tccCompositor = new TccCompositor($this->tccs, $this->events, $this->conditions, new CompositionDataFlowManager, $this->settings->tcc, $resilienceRegistry, $resilienceStore);
     }
 
     /**
      * @param  array<string, mixed>  $config
+     * @param  array<string, mixed>  $resilience  the `firefly.resilience` section (named retry and breaker instances)
      */
-    public static function create(array $config = [], ?ExecutionPersistenceProvider $persistence = null, ?DeadLetterStore $deadLetters = null): self
+    public static function create(array $config = [], ?ExecutionPersistenceProvider $persistence = null, ?DeadLetterStore $deadLetters = null, array $resilience = []): self
     {
-        return new self($config, $persistence, $deadLetters);
+        return new self($config, $persistence, $deadLetters, $resilience);
     }
 }

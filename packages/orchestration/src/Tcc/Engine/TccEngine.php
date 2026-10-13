@@ -11,6 +11,7 @@ use Firefly\Orchestration\Core\Exception\PatternDisabledException;
 use Firefly\Orchestration\Core\ExecutionContext;
 use Firefly\Orchestration\Core\ExecutionPattern;
 use Firefly\Orchestration\Core\ExecutionStatus;
+use Firefly\Orchestration\Core\StepStatus;
 use Firefly\Orchestration\Event\OrchestrationEvent;
 use Firefly\Orchestration\Persistence\ExecutionState;
 use Firefly\Orchestration\Report\ExecutionReportBuilder;
@@ -26,7 +27,9 @@ use Firefly\Orchestration\Tcc\Registry\TccRegistry;
  * As with SagaEngine, the outcome is always a TccResult — a failed phase is cancelled and reported, never
  * thrown. What throws is the refusal to run at all: an unknown TCC, a disabled pattern, back-pressure, a
  * correlation id that already exists, an execution that is not there or is already finished. A cancel on
- * request (compensate()) is not a failure of the transaction: it neither dead-letters nor calls #[OnTccError].
+ * request (compensate()) is not a failure of the transaction: it neither dead-letters nor calls #[OnTccError],
+ * and a resume() after a crash in the middle of one finishes it as a cancel on request. A cancel on request
+ * that ended FAILED with CANCEL_FAILED participants can be compensated again to retry just those cancels.
  */
 final class TccEngine
 {
@@ -101,6 +104,12 @@ final class TccEngine
                 $inputs = $inputs->forParticipant($participantId, $value);
             }
 
+            // A cancel on request interrupted by a crash goes on as one: confirmed participants are cancelled too,
+            // and the cancel neither dead-letters nor calls #[OnTccError], exactly as compensate() would have.
+            if ($this->orchestrator->cancelRequested($context)) {
+                return $this->support->tracing->traceExecution($definition->name, ExecutionPattern::Tcc, $correlationId, fn (): TccResult => $this->finish($definition, $context, $this->orchestrator->cancelAll($definition, $context), onRequest: true));
+            }
+
             return $this->support->tracing->traceExecution($definition->name, ExecutionPattern::Tcc, $correlationId, fn (): TccResult => $this->finish($definition, $context, $this->orchestrator->orchestrate($definition, $inputs, $context)));
         });
     }
@@ -109,12 +118,12 @@ final class TccEngine
     {
         return $this->support->lock->synchronized($correlationId, function () use ($correlationId): TccResult {
             $state = $this->load($correlationId);
-            if ($state->isTerminal() && $state->status !== ExecutionStatus::Confirmed) {
+            $context = ExecutionContext::fromState($state);
+            if ($state->isTerminal() && $state->status !== ExecutionStatus::Confirmed && ! $this->retriesCancel($state, $context)) {
                 throw new InvalidExecutionStateException("TCC execution [{$correlationId}] is already {$state->status->value} and has nothing left to cancel.");
             }
 
             $definition = $this->registry->get($state->executionName);
-            $context = ExecutionContext::fromState($state);
 
             return $this->finish($definition, $context, $this->orchestrator->cancelAll($definition, $context), onRequest: true);
         });
@@ -155,6 +164,19 @@ final class TccEngine
         }
 
         return $result;
+    }
+
+    /**
+     * A cancel on request that ended FAILED because some cancels failed may be asked again: the sweep skips
+     * what it already cancelled and retries only the CANCEL_FAILED participants (TccCompositor's
+     * retry-with-backoff policy relies on it). A transaction that FAILED on its own — a confirm failure — is
+     * not reopened: its confirmed participants stay confirmed, as the TCC protocol left them.
+     */
+    private function retriesCancel(ExecutionState $state, ExecutionContext $context): bool
+    {
+        return $state->status === ExecutionStatus::Failed
+            && $this->orchestrator->cancelRequested($context)
+            && in_array(StepStatus::CancelFailed, $state->stepStatuses, true);
     }
 
     /** Why a cancel sweep that raised no error of its own still ended FAILED: the cancels that failed. */

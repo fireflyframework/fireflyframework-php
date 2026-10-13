@@ -240,3 +240,148 @@ it('checkpoints a required failure under CANCEL, so a crash right after it resum
     'a try failure' => ['TRY', StepStatus::Failed, ExecutionStatus::Canceled],
     'a confirm failure' => ['CONFIRM', StepStatus::ConfirmFailed, ExecutionStatus::Failed],
 ]);
+
+it('resumes a cancel on request interrupted mid-sweep as a cancel on request, confirmed participants included', function (): void {
+    $register = static function (TestEngines $engines, array &$log, int &$errors): void {
+        $call = static function (string $name, string $id) use (&$log): Closure {
+            return static function () use ($name, $id, &$log): string {
+                $log[] = "{$name} {$id}";
+
+                return $id;
+            };
+        };
+        $engines->tccRegistry->register(TccBuilder::tcc('transfer')
+            ->participant('debit')->order(1)->tryWith($call('try', 'debit'))->confirmWith($call('confirm', 'debit'))->cancelWith($call('cancel', 'debit'))->add()
+            ->participant('credit')->order(2)->tryWith($call('try', 'credit'))->confirmWith($call('confirm', 'credit'))->cancelWith($call('cancel', 'credit'))->add()
+            ->onError(static function () use (&$errors): void {
+                $errors++;
+            })
+            ->build());
+    };
+    $recording = new RecordingExecutionPersistence;
+    $first = TestEngines::create(persistence: $recording);
+    $firstLog = [];
+    $firstErrors = 0;
+    $register($first, $firstLog, $firstErrors);
+    $first->tccs->execute('transfer', correlationId: 't-15');
+    $first->tccs->compensate('t-15');
+
+    // The checkpoint after credit's cancel landed and before debit's: a crash there leaves a CONFIRMED debit.
+    $crashed = null;
+    foreach ($recording->saved as $state) {
+        if ($state->stepStatus('credit') === StepStatus::Canceled && $state->stepStatus('debit') === StepStatus::Confirmed) {
+            $crashed = $state;
+            break;
+        }
+    }
+    expect($crashed?->status)->toBe(ExecutionStatus::Canceling)
+        ->and($crashed?->currentPhase)->toBe(TccPhase::Cancel);
+
+    $second = TestEngines::create();
+    $log = [];
+    $errors = 0;
+    $register($second, $log, $errors);
+    $second->persistence->save($crashed ?? throw new LogicException('no mid-sweep checkpoint'));
+    $result = $second->tccs->resume('t-15');
+
+    expect($result->status)->toBe(ExecutionStatus::Canceled)
+        ->and($result->report?->failureReason)->toBe('canceled on request')
+        ->and($log)->toBe(['cancel debit'])
+        ->and($second->persistence->findById('t-15')?->stepStatus('debit'))->toBe(StepStatus::Canceled)
+        ->and($second->deadLetterStore->findByCorrelationId('t-15'))->toBe([])
+        ->and($errors)->toBe(0);
+});
+
+it('resumes a confirm failure whose failed participant was already cancelled as FAILED with its confirm error', function (): void {
+    $register = static function (TestEngines $engines, array &$log): void {
+        $call = static function (string $name, string $id, bool $fails = false) use (&$log): Closure {
+            return static function () use ($name, $id, $fails, &$log): string {
+                $log[] = "{$name} {$id}";
+                if ($fails) {
+                    throw new RuntimeException("{$name} {$id} refused");
+                }
+
+                return $id;
+            };
+        };
+        $engines->tccRegistry->register(TccBuilder::tcc('transfer')->retry(false)
+            ->participant('debit')->order(1)->tryWith($call('try', 'debit'))->confirmWith($call('confirm', 'debit'))->cancelWith($call('cancel', 'debit'))->add()
+            ->participant('credit')->order(2)->tryWith($call('try', 'credit'))->confirmWith($call('confirm', 'credit', true))->cancelWith($call('cancel', 'credit'))->add()
+            ->participant('notify')->order(3)->tryWith($call('try', 'notify'))->confirmWith($call('confirm', 'notify'))->cancelWith($call('cancel', 'notify'))->add()
+            ->build());
+    };
+    $recording = new RecordingExecutionPersistence;
+    $first = TestEngines::create(persistence: $recording);
+    $firstLog = [];
+    $register($first, $firstLog);
+    $first->tccs->execute('transfer', correlationId: 't-16');
+
+    // The sweep cancels notify, then the CONFIRM_FAILED credit, overwriting its status with CANCELED; a crash
+    // right after that checkpoint must not lose the confirm failure.
+    $crashed = null;
+    foreach ($recording->saved as $state) {
+        if ($state->status === ExecutionStatus::Canceling && $state->stepStatus('credit') === StepStatus::Canceled) {
+            $crashed = $state;
+            break;
+        }
+    }
+
+    $second = TestEngines::create();
+    $log = [];
+    $register($second, $log);
+    $second->persistence->save($crashed ?? throw new LogicException('no mid-sweep checkpoint'));
+    $result = $second->tccs->resume('t-16');
+
+    expect($result->status)->toBe(ExecutionStatus::Failed)
+        ->and($result->failedParticipantId)->toBe('credit')
+        ->and($result->failedPhase)->toBe(TccPhase::Confirm)
+        ->and($result->error?->getMessage())->toBe('confirm credit refused')
+        ->and($log)->toBe([])
+        ->and($second->persistence->findById('t-16')?->stepStatus('debit'))->toBe(StepStatus::Confirmed)
+        ->and($second->deadLetterStore->findByCorrelationId('t-16'))->toHaveCount(1);
+});
+
+it('compensates a cancel on request that ended FAILED again, retrying only the cancels that failed', function (): void {
+    $engines = TestEngines::create();
+    $log = [];
+    $creditFails = 1;
+    $engines->tccRegistry->register(TccBuilder::tcc('transfer')->retry(false)
+        ->participant('debit')->order(1)->tryWith(static fn (): string => 'debit')->confirmWith(static fn (): null => null)
+        ->cancelWith(static function () use (&$log): void {
+            $log[] = 'cancel debit';
+        })->add()
+        ->participant('credit')->order(2)->tryWith(static fn (): string => 'credit')->confirmWith(static fn (): null => null)
+        ->cancelWith(static function () use (&$log, &$creditFails): void {
+            $log[] = 'cancel credit';
+            if ($creditFails-- > 0) {
+                throw new RuntimeException('ledger offline');
+            }
+        })->add()
+        ->build());
+    $engines->tccs->execute('transfer', correlationId: 't-17');
+
+    $failed = $engines->tccs->compensate('t-17');
+    $retried = $engines->tccs->compensate('t-17');
+
+    expect($failed->status)->toBe(ExecutionStatus::Failed)
+        ->and($retried->status)->toBe(ExecutionStatus::Canceled)
+        ->and($log)->toBe(['cancel credit', 'cancel debit', 'cancel credit'])
+        ->and($engines->deadLetterStore->findByCorrelationId('t-17'))->toBe([]);
+});
+
+it('does not reopen a TCC that FAILED on a confirm failure', function (): void {
+    $engines = TestEngines::create();
+    $engines->tccRegistry->register(TccBuilder::tcc('transfer')->retry(false)
+        ->participant('debit')->order(1)->tryWith(static fn (): string => 'debit')->confirmWith(static fn (): null => null)->cancelWith(static fn (): null => null)->add()
+        ->participant('credit')->order(2)->tryWith(static fn (): string => 'credit')
+        ->confirmWith(static function (): void {
+            throw new RuntimeException('credit confirm refused');
+        })
+        ->cancelWith(static function (): void {
+            throw new RuntimeException('credit cancel refused');
+        })->add()
+        ->build());
+
+    expect($engines->tccs->execute('transfer', correlationId: 't-18')->status)->toBe(ExecutionStatus::Failed)
+        ->and(fn () => $engines->tccs->compensate('t-18'))->toThrow(InvalidExecutionStateException::class, 'already FAILED');
+});
