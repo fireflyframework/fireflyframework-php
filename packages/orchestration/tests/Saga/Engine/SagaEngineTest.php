@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Firefly\Orchestration\Core\Callback\CallbackDefinition;
 use Firefly\Orchestration\Core\Exception\BackpressureException;
+use Firefly\Orchestration\Core\Exception\InvalidExecutionStateException;
 use Firefly\Orchestration\Core\Exception\PatternDisabledException;
 use Firefly\Orchestration\Core\ExecutionContext;
 use Firefly\Orchestration\Core\ExecutionStatus;
@@ -114,6 +115,41 @@ it('compensates the completed steps in reverse, dead-letters the failure and cal
         ->and($engines->persistence->findById('c-2')?->failureReason)->toBe('card declined')
         ->and($engines->deadLetterStore->findByCorrelationId('c-2')[0]->stepId ?? null)->toBe('charge')
         ->and($engines->deadLetterStore->findByCorrelationId('c-2')[0]->input ?? null)->toBe(['orderId' => 7]);
+});
+
+it('refuses to start an execution again under a correlation id that already exists', function (bool $declined, ExecutionStatus $status): void {
+    $engines = TestEngines::create();
+    $log = [];
+    $saga = orchestrationOrderSaga($log, $declined);
+    $engines->sagas->execute($saga, ['orderId' => 7], correlationId: 'c-dup');
+    $ran = $log;
+    $before = $engines->persistence->findById('c-dup');
+
+    expect(fn () => $engines->sagas->execute($saga, ['orderId' => 7], correlationId: 'c-dup'))
+        ->toThrow(InvalidExecutionStateException::class, "Execution [c-dup] already exists (SAGA order, {$status->value})");
+
+    expect($log)->toBe($ran)
+        ->and($engines->persistence->findById('c-dup')?->status)->toBe($status)
+        ->and($engines->persistence->findById('c-dup')?->report)->toBe($before?->report);
+})->with([
+    'completed' => [false, ExecutionStatus::Completed],
+    'failed' => [true, ExecutionStatus::Failed],
+]);
+
+it('refuses to start over an execution that is still compensating, leaving its recovery state alone', function (): void {
+    $engines = TestEngines::create();
+    $log = [];
+    $declined = false;
+    $saga = orchestrationOrderSaga($log, $declined);
+    $engines->sagas->execute($saga, ['orderId' => 7], correlationId: 'c-mid');
+    $state = $engines->persistence->findById('c-mid') ?? throw new RuntimeException('c-mid was not persisted');
+    $engines->persistence->save($state->withStatus(ExecutionStatus::Compensating, new DateTimeImmutable));
+
+    expect(fn () => $engines->sagas->execute($saga, ['orderId' => 7], correlationId: 'c-mid'))
+        ->toThrow(InvalidExecutionStateException::class, 'COMPENSATING');
+
+    expect($log)->toBe(['reserve', 'charge', 'notify'])
+        ->and($engines->persistence->findById('c-mid')?->status)->toBe(ExecutionStatus::Compensating);
 });
 
 it('turns a suppressed error into COMPLETED, after compensating', function (): void {

@@ -57,14 +57,23 @@ final class SagaEngine
         $inputs = $input instanceof StepInputs ? $input : StepInputs::of($input);
         $context = ExecutionContext::start(ExecutionPattern::Saga, $definition->name, $inputs->global(), $headers, $correlationId, $this->support->now());
 
+        // Checked twice: up front, so a retried call is refused before admission, whose circuit breaker would
+        // count the refusal as a failed execution; and again under the lock, so two concurrent calls with one id
+        // cannot both pass.
+        $this->refuseExisting($context->correlationId);
+
         return $this->support->admission->admit(
             $definition->name,
-            fn (): SagaResult => $this->support->lock->synchronized($context->correlationId, fn (): SagaResult => $this->support->tracing->traceExecution(
-                $definition->name,
-                ExecutionPattern::Saga,
-                $context->correlationId,
-                fn (): SagaResult => $this->run($definition, $inputs, $context, fresh: true),
-            )),
+            fn (): SagaResult => $this->support->lock->synchronized($context->correlationId, function () use ($definition, $inputs, $context): SagaResult {
+                $this->refuseExisting($context->correlationId);
+
+                return $this->support->tracing->traceExecution(
+                    $definition->name,
+                    ExecutionPattern::Saga,
+                    $context->correlationId,
+                    fn (): SagaResult => $this->run($definition, $inputs, $context, fresh: true),
+                );
+            }),
             static fn (SagaResult $result): bool => $result->success,
         );
     }
@@ -188,6 +197,19 @@ final class SagaEngine
         }
 
         return new OrchestrationException("Saga [{$context->executionName}] failed.");
+    }
+
+    /**
+     * A caller-supplied correlation id that is already persisted belongs to an execution that exists: starting
+     * it again would overwrite its row (the first checkpoint is an upsert), run every step a second time with
+     * none of its idempotency keys, and lose its outcome or its compensation progress.
+     */
+    private function refuseExisting(string $correlationId): void
+    {
+        $state = $this->support->persistence->findById($correlationId);
+        if ($state !== null) {
+            throw new InvalidExecutionStateException("Execution [{$correlationId}] already exists ({$state->pattern->value} {$state->executionName}, {$state->status->value}); use resume() or compensate() instead of starting it again.");
+        }
     }
 
     private function load(string $correlationId): ExecutionState
