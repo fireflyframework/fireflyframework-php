@@ -10,15 +10,21 @@ use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Resilience\Method\ResilienceMethodInterceptor;
 use Firefly\Resilience\Store\CacheResilienceStore;
+use Firefly\Resilience\Store\InMemoryResilienceStore;
 use Firefly\Resilience\Store\ResilienceStore;
+use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository;
+use Psr\Log\LoggerInterface;
 
 /**
  * Always-on resilience wiring (an empty registry is cheap). #[Order(1000)] places it after user definitions;
  * each bean backs off #[ConditionalOnMissingBean] so an app that supplies its own store/registry wins. The
- * default store is Cache-backed (cross-FPM survival); the registry reads firefly.resilience.* and shares it.
+ * store is chosen by firefly.resilience.store.provider: `cache` (the default — cross-FPM survival on Laravel's
+ * cache, which must have atomic locks unless firefly.resilience.store.allow-lockless=true) or `memory` (one
+ * process: tests, CLI, a single long-running worker); the registry reads firefly.resilience.* and shares it.
  */
 #[Configuration]
 #[Order(1000)]
@@ -26,9 +32,28 @@ final class ResilienceAutoConfiguration
 {
     #[Bean]
     #[ConditionalOnMissingBean(ResilienceStore::class)]
-    public function resilienceStore(Repository $cache, Config $config): ResilienceStore
+    public function resilienceStore(Repository $cache, Config $config, ?LoggerInterface $logger = null): ResilienceStore
     {
-        return new CacheResilienceStore($cache, $this->lockBlockTimeout($config));
+        $provider = $config->string('firefly.resilience.store.provider', 'cache');
+
+        if ($provider === 'memory') {
+            return new InMemoryResilienceStore;
+        }
+
+        if ($provider !== 'cache') {
+            throw new ConfigurationException("firefly.resilience.store.provider must be 'cache' or 'memory', got '{$provider}'.");
+        }
+
+        $allowLockless = $config->bool('firefly.resilience.store.allow-lockless', false);
+        $store = $cache->getStore();
+
+        // Refused HERE, at boot: the bean is an eager singleton, so a deployment on a lockless store learns it
+        // before the first request rather than in the middle of an outage the breaker was meant to contain.
+        if (! $store instanceof LockProvider && ! $allowLockless) {
+            throw CacheResilienceStore::lockless($store);
+        }
+
+        return new CacheResilienceStore($cache, $this->lockBlockTimeout($config), $allowLockless, $logger);
     }
 
     #[Bean]

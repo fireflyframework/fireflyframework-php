@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Firefly\Resilience\Store;
 
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Kernel\Exception\Infrastructure\ServiceUnavailableException;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository;
+use Psr\Log\LoggerInterface;
 
 /**
  * The default ResilienceStore: Laravel's cache. Every mutator maps to an atomic cache primitive
@@ -36,6 +38,11 @@ use Illuminate\Contracts\Cache\Repository;
  * retryable error code RESILIENCE_STORE_LOCK_TIMEOUT, which is the honest description of "the shared state
  * store is too contended to answer right now" and is a status a caller, a load balancer and an SLO dashboard
  * all already know how to read.
+ *
+ * A store WITHOUT atomic locks (Laravel's apc and session stores) is refused: withLock() used to run the section
+ * unlocked without a word, which is the over-admitting race the store exists to prevent. Now it throws
+ * ConfigurationException (RESILIENCE_STORE_LOCKLESS) unless the store was built with $allowLockless — what
+ * firefly.resilience.store.allow-lockless=true does — and then it warns once per store before running unlocked.
  */
 final class CacheResilienceStore implements ResilienceStore
 {
@@ -61,10 +68,30 @@ final class CacheResilienceStore implements ResilienceStore
      */
     private const LOCK_POLL_MICROSECONDS = 5000;
 
+    /** Whether the lockless warning was already logged by this store, so a hot breaker does not flood the log. */
+    private bool $warnedLockless = false;
+
     public function __construct(
         private readonly Repository $cache,
         private readonly float $lockBlockTimeout = self::DEFAULT_LOCK_BLOCK_TIMEOUT,
+        private readonly bool $allowLockless = false,
+        private readonly ?LoggerInterface $logger = null,
     ) {}
+
+    /**
+     * The refusal, worded once for both places it is raised: at boot (ResilienceAutoConfiguration) and from a
+     * store someone constructed by hand.
+     */
+    public static function lockless(object $store): ConfigurationException
+    {
+        return new ConfigurationException(
+            'The resilience store\'s cache ['.$store::class.'] has no atomic locks, so a breaker or limiter transition could race '
+            .'between workers. Use a store that implements Illuminate\Contracts\Cache\LockProvider (redis, database, file, '
+            .'memcached, dynamodb, array), set firefly.resilience.store.provider=memory for a single process, or accept the '
+            .'race with firefly.resilience.store.allow-lockless=true.',
+            'RESILIENCE_STORE_LOCKLESS',
+        );
+    }
 
     public function get(string $key): mixed
     {
@@ -104,7 +131,15 @@ final class CacheResilienceStore implements ResilienceStore
     {
         $store = $this->cache->getStore();
         if (! $store instanceof LockProvider) {
-            // The driver has no atomic lock (unusual): run without a critical section rather than fail hard.
+            if (! $this->allowLockless) {
+                throw self::lockless($store);
+            }
+
+            if (! $this->warnedLockless) {
+                $this->warnedLockless = true;
+                $this->logger?->warning('The resilience store\'s cache ['.$store::class.'] has no atomic locks; circuit breaker, rate limiter and bulkhead transitions run without a critical section because firefly.resilience.store.allow-lockless is true.');
+            }
+
             return $callback();
         }
 
