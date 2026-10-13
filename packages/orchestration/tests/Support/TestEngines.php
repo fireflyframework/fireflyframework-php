@@ -29,6 +29,10 @@ use Firefly\Orchestration\Saga\Composition\SagaCompositor;
 use Firefly\Orchestration\Saga\Engine\SagaEngine;
 use Firefly\Orchestration\Saga\Engine\SagaExecutionOrchestrator;
 use Firefly\Orchestration\Saga\Registry\SagaRegistry;
+use Firefly\Orchestration\Tcc\Composition\TccCompositor;
+use Firefly\Orchestration\Tcc\Engine\TccEngine;
+use Firefly\Orchestration\Tcc\Engine\TccExecutionOrchestrator;
+use Firefly\Orchestration\Tcc\Registry\TccRegistry;
 use Firefly\Resilience\CircuitBreaker;
 use Firefly\Resilience\ResilienceRegistry;
 use Firefly\Resilience\Store\InMemoryResilienceStore;
@@ -74,6 +78,12 @@ final class TestEngines
     public readonly SagaEngine $sagas;
 
     public readonly SagaCompositor $compositor;
+
+    public readonly TccRegistry $tccRegistry;
+
+    public readonly TccEngine $tccs;
+
+    public readonly TccCompositor $tccCompositor;
 
     /**
      * @param  array<string, mixed>  $config
@@ -129,6 +139,10 @@ final class TestEngines
         );
         $this->sagas = new SagaEngine($this->sagaRegistry, new SagaExecutionOrchestrator($this->invoker, $this->support), $this->compensator, $this->support, $this->settings->saga);
         $this->compositor = new SagaCompositor($this->sagas, $this->events, $this->conditions, new CompositionDataFlowManager);
+
+        $this->tccRegistry = new TccRegistry;
+        $this->tccs = new TccEngine($this->tccRegistry, new TccExecutionOrchestrator($this->invoker, $this->support, $this->settings->tcc), $this->support, $this->settings->tcc);
+        $this->tccCompositor = new TccCompositor($this->tccs, $this->events, $this->conditions, new CompositionDataFlowManager, $this->settings->tcc);
     }
 
     /**
