@@ -6,6 +6,10 @@ use Firefly\Context\Boot\ApplicationContext;
 use Firefly\EventSourcing\EventSourcingServiceProvider;
 use Firefly\EventSourcing\EventSourcingWiringProvider;
 use Firefly\EventSourcing\Manifest\EventSourcingManifest;
+use Firefly\EventSourcing\Projection\CheckpointStore;
+use Firefly\EventSourcing\Projection\MemoryCheckpointStore;
+use Firefly\EventSourcing\Projection\ProjectionRegistry;
+use Firefly\EventSourcing\Projection\ProjectionRunner;
 use Firefly\EventSourcing\Snapshot\MemorySnapshotStore;
 use Firefly\EventSourcing\Snapshot\SnapshotStore;
 use Firefly\EventSourcing\Store\EventStore;
@@ -70,4 +74,12 @@ it('loads the migrations only while an eventsourcing store is database, and publ
     expect($memory->paths)->toBe([])
         ->and($database->paths)->toBe([EventSourcingWiringProvider::MIGRATIONS])
         ->and(ServiceProvider::pathsToPublish(EventSourcingWiringProvider::class, 'firefly-eventsourcing-migrations'))->toHaveKey(EventSourcingWiringProvider::MIGRATIONS);
+});
+
+it('binds memory checkpoints, an empty projection registry and a runner by default', function (): void {
+    $app = fireflyApplication([], [EventSourcingServiceProvider::class, EventSourcingWiringProvider::class]);
+
+    expect($app->make(CheckpointStore::class))->toBeInstanceOf(MemoryCheckpointStore::class)
+        ->and($app->make(ProjectionRegistry::class)->all())->toBe([])
+        ->and($app->make(ProjectionRunner::class)->statuses())->toBe([]);
 });

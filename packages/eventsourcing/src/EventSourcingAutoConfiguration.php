@@ -24,6 +24,12 @@ use Firefly\EventSourcing\Metadata\AuthenticatedUserMetadataContributor;
 use Firefly\EventSourcing\Metadata\CorrelationIdMetadataContributor;
 use Firefly\EventSourcing\Metadata\EventMetadataContributor;
 use Firefly\EventSourcing\Metadata\MetadataResolver;
+use Firefly\EventSourcing\Projection\CheckpointStore;
+use Firefly\EventSourcing\Projection\DatabaseCheckpointStore;
+use Firefly\EventSourcing\Projection\MemoryCheckpointStore;
+use Firefly\EventSourcing\Projection\Projection;
+use Firefly\EventSourcing\Projection\ProjectionRegistry;
+use Firefly\EventSourcing\Projection\ProjectionRunner;
 use Firefly\EventSourcing\Publishing\AfterCommitEventStorePublisher;
 use Firefly\EventSourcing\Publishing\EventStorePublisher;
 use Firefly\EventSourcing\Publishing\NoOpEventStorePublisher;
@@ -41,6 +47,8 @@ use Firefly\EventSourcing\Store\TenantScopedEventStore;
 use Firefly\EventSourcing\Upcasting\EventUpcaster;
 use Firefly\EventSourcing\Upcasting\UpcasterChain;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Scheduling\Lock\DistributedLock;
+use Firefly\Scheduling\Lock\NoneLock;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Database\Connection;
@@ -58,6 +66,8 @@ use Psr\Log\NullLogger;
  *
  * Collections come from scanned components through the Firefly container's getAll(): EventUpcaster beans make up the
  * UpcasterChain, and EventMetadataContributor beans join the framework's correlation-id and user contributors.
+ * Projection components make up the ProjectionRegistry, and the ProjectionRunner leases each projection on whatever
+ * DistributedLock firefly.scheduling.lock.provider binds (NoneLock when firefly/scheduling is not booted).
  */
 #[Configuration]
 #[Order(1000)]
@@ -189,6 +199,51 @@ final class EventSourcingAutoConfiguration
         $logger = $app->bound(LoggerInterface::class) ? $app->make(LoggerInterface::class) : null;
 
         return new EventSourcingSupport($store, $mapper, $snapshots, SnapshotPolicy::fromSettings($settings), $metadata, $logger instanceof LoggerInterface ? $logger : new NullLogger);
+    }
+
+    #[Bean]
+    #[Lazy]
+    #[ConditionalOnMissingBean(CheckpointStore::class)]
+    public function checkpointStore(EventSourcingSettings $settings, Container $app): CheckpointStore
+    {
+        return $settings->checkpointStore === 'database'
+            ? new DatabaseCheckpointStore(self::connection($app, $settings->connection, 'firefly.eventsourcing.projection.checkpoint-store'))
+            : new MemoryCheckpointStore;
+    }
+
+    #[Bean]
+    #[Lazy]
+    #[ConditionalOnMissingBean(ProjectionRegistry::class)]
+    public function projectionRegistry(FireflyContainer $beans): ProjectionRegistry
+    {
+        $registry = new ProjectionRegistry;
+        foreach ($beans->getAll(Projection::class) as $projection) {
+            if ($projection instanceof Projection) {
+                $registry->register($projection);
+            }
+        }
+
+        return $registry;
+    }
+
+    #[Bean]
+    #[Lazy]
+    #[ConditionalOnMissingBean(ProjectionRunner::class)]
+    public function projectionRunner(EventStore $store, CheckpointStore $checkpoints, ProjectionRegistry $projections, EventSourcingSettings $settings, Container $app): ProjectionRunner
+    {
+        $lock = $app->bound(DistributedLock::class) ? $app->make(DistributedLock::class) : null;
+        $logger = $app->bound(LoggerInterface::class) ? $app->make(LoggerInterface::class) : null;
+
+        return new ProjectionRunner(
+            $store,
+            $checkpoints,
+            $projections,
+            $lock instanceof DistributedLock ? $lock : new NoneLock,
+            $settings->projectionBatchSize,
+            $settings->leaseTtl,
+            $settings->pollInterval,
+            $logger instanceof LoggerInterface ? $logger : new NullLogger,
+        );
     }
 
     /** The concrete connection $name names (null = the default), refused with the key that asked for it. */

@@ -6,6 +6,25 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\EventSourcing\\Actuator\\EventSourcingHealthIndicator',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Health\\ConditionalHealthIndicator',
+            1 => 'Firefly\\Actuator\\Health\\HealthIndicator',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Container\\Container',
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\EventSourcing\\EventSourcingAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -159,6 +178,47 @@ return [
                     3 => 'Firefly\\EventSourcing\\EventSourcingSettings',
                     4 => 'Firefly\\EventSourcing\\Metadata\\MetadataResolver',
                     5 => 'Illuminate\\Container\\Container',
+                ],
+            ],
+            11 => [
+                'method' => 'checkpointStore',
+                'returns' => 'Firefly\\EventSourcing\\Projection\\CheckpointStore',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => true,
+                'dependencies' => [
+                    0 => 'Firefly\\EventSourcing\\EventSourcingSettings',
+                    1 => 'Illuminate\\Container\\Container',
+                ],
+            ],
+            12 => [
+                'method' => 'projectionRegistry',
+                'returns' => 'Firefly\\EventSourcing\\Projection\\ProjectionRegistry',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => true,
+                'dependencies' => [
+                    0 => 'Firefly\\Container\\Container',
+                ],
+            ],
+            13 => [
+                'method' => 'projectionRunner',
+                'returns' => 'Firefly\\EventSourcing\\Projection\\ProjectionRunner',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => true,
+                'dependencies' => [
+                    0 => 'Firefly\\EventSourcing\\Store\\EventStore',
+                    1 => 'Firefly\\EventSourcing\\Projection\\CheckpointStore',
+                    2 => 'Firefly\\EventSourcing\\Projection\\ProjectionRegistry',
+                    3 => 'Firefly\\EventSourcing\\EventSourcingSettings',
+                    4 => 'Illuminate\\Container\\Container',
                 ],
             ],
         ],

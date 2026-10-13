@@ -137,6 +137,39 @@ return [
                     ],
                 ],
             ],
+            11 => [
+                'method' => 'checkpointStore',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\EventSourcing\\Projection\\CheckpointStore',
+                        ],
+                    ],
+                ],
+            ],
+            12 => [
+                'method' => 'projectionRegistry',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\EventSourcing\\Projection\\ProjectionRegistry',
+                        ],
+                    ],
+                ],
+            ],
+            13 => [
+                'method' => 'projectionRunner',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\EventSourcing\\Projection\\ProjectionRunner',
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
 ];
