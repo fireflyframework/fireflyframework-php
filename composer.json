@@ -265,6 +265,7 @@
                 "Firefly\\OpenApi\\OpenApiServiceProvider",
                 "Firefly\\OpenApi\\OpenApiWiringProvider",
                 "Firefly\\Scheduling\\Database\\SchedulingDatabaseServiceProvider",
+                "Firefly\\Scheduling\\Database\\SchedulingDatabaseBootServiceProvider",
                 "Firefly\\Scheduling\\Postgres\\SchedulingPostgresServiceProvider",
                 "Firefly\\Security\\OAuth2\\Client\\SecurityOAuth2ClientServiceProvider",
                 "Firefly\\Security\\OAuth2\\Client\\SecurityOAuth2ClientWiringProvider",

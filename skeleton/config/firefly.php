@@ -2231,12 +2231,24 @@ return [
     |   'none'     — no coordination (correct for a single instance). The default.
     |   'cache'    — the app's atomic cache lock.
     |   'postgres' — Postgres advisory locks; requires firefly/scheduling-postgres.
+    |   'database' — a lease table on any database connection; requires firefly/scheduling-database.
     |
     */
 
     'scheduling' => [
         'lock' => [
             'provider' => env('FIREFLY_SCHEDULING_LOCK', 'none'),
+
+            /*
+             | provider=database — the lease table firefly_scheduling_locks (run `php artisan migrate`) on
+             | `connection` (UNSET, null or blank = the default connection). The TTL is honoured on every
+             | driver: a hung task blocks its schedule for at most its #[Scheduled(lockTtl:)].
+             |
+             | Default: connection unset.
+            */
+            // 'database' => [
+            //     'connection' => 'mysql',
+            // ],
         ],
 
         /*

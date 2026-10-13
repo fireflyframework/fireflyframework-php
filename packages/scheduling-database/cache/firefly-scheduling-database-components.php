@@ -16,6 +16,19 @@ return [
         'interfaces' => [
         ],
         'beans' => [
+            0 => [
+                'method' => 'databaseLeaseLock',
+                'returns' => 'Firefly\\Scheduling\\Lock\\DistributedLock',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Illuminate\\Database\\ConnectionResolverInterface',
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [

@@ -35,7 +35,8 @@
     "extra": {
         "laravel": {
             "providers": [
-                "Firefly\\Scheduling\\Database\\SchedulingDatabaseServiceProvider"
+                "Firefly\\Scheduling\\Database\\SchedulingDatabaseServiceProvider",
+                "Firefly\\Scheduling\\Database\\SchedulingDatabaseBootServiceProvider"
             ]
         },
         "branch-alias": {
