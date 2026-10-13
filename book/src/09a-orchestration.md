@@ -78,7 +78,7 @@ final class PayoutSaga
 }
 ```
 
-Read it as three local transactions and two undos. `debit` sends the same `Withdraw` command the REST endpoint sends, so it runs in its own `#[Transactional]` boundary and under its own `#[PreAuthorize]` — a saga step is not a back door around method security. `compensate: 'refund'` names the method that undoes it; `dependsOn` orders the steps into topology layers, and `#[Input('…')]` reads a key of the execution's input, `#[FromStep('submit')]` the result an earlier step returned. A compensation receives the forward step's result as its implicit argument (`cancel()` gets the bank reference `submit()` returned) and may also ask for `#[Input]` values, which is how `refund()` knows how much to give back. `confirm` has no compensation because nothing runs after it.
+Read it as three local transactions and two undos. `debit` sends the same `Withdraw` command the REST endpoint sends, so it runs in its own `#[Transactional]` boundary and under its own `#[PreAuthorize]` — a saga step is not a back door around method security: a customer can pay out only from a wallet they own (Chapter 10), and anyone else's payout is refused with the withdraw's own 403 before the bank is called. `compensate: 'refund'` names the method that undoes it; `dependsOn` orders the steps into topology layers, and `#[Input('…')]` reads a key of the execution's input, `#[FromStep('submit')]` the result an earlier step returned. A compensation receives the forward step's result as its implicit argument (`cancel()` gets the bank reference `submit()` returned) and may also ask for `#[Input]` values, which is how `refund()` knows how much to give back. `confirm` has no compensation because nothing runs after it.
 
 ---
 

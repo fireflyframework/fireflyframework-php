@@ -211,7 +211,7 @@ Granting a loan pays the principal into the wallet; repaying takes the amount ba
 
 <!-- source: samples/lumen/src/Application/Loan/RepayLoanHandler.php -->
 ```php
-    #[PreAuthorize("hasRole('ADMIN') or hasRole('WALLET_OWNER')")]
+    #[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command, 'debit'))")]
     #[Transactional]
     public function handle(RepayLoan $command): int
     {
@@ -250,7 +250,7 @@ The order is deliberate. The repayment is appended first, and only then is the w
         ->and($this->queries()->ask(new GetBalance($walletId)))->toBe(5000);
 ```
 
-The stream still holds only `loan.granted`, the loan still owes 900.00, and the wallet still holds its 50.00: nothing half-happened. The handler is guarded like Chapter 10's `Withdraw`, and it is `#[Lazy]` for the repository's reason. One more consequence of sharing the transaction: `save()` drains the loan's buffer, so its events are never dispatched a second time by `firefly/data`'s after-commit wiring (Chapter 9); the wallet's own `FundsWithdrawn` still is.
+The stream still holds only `loan.granted`, the loan still owes 900.00, and the wallet still holds its 50.00: nothing half-happened. The handler is guarded like Chapter 10's `Withdraw`: an `ADMIN` may repay any loan, a `WALLET_OWNER` only a loan paid into a wallet they own — `WalletPermissionEvaluator` loads the loan to find that wallet, and refuses a loan it cannot find. It is `#[Lazy]` for the repository's reason. One more consequence of sharing the transaction: `save()` drains the loan's buffer, so its events are never dispatched a second time by `firefly/data`'s after-commit wiring (Chapter 9); the wallet's own `FundsWithdrawn` still is.
 
 ---
 

@@ -723,13 +723,15 @@ use Lumen\Infrastructure\WalletRepository;
  * raises a ConflictException that rolls the transaction back and surfaces as a CommandProcessingException), persists,
  * and returns the new balance in minor units. #[Transactional] for the same reason as the sibling handlers.
  *
- * Guarded by #[PreAuthorize]: only an ADMIN or the WALLET_OWNER may debit. SecurityExpressionEvaluator is a CLOSED
- * whitelist (booleans and/or/not, string literals, #param, and eight fixed functions — no `==`, no `.property`
- * navigation), so ownership is modelled as a granted WALLET_OWNER authority rather than an `#command.ownerId ==
- * authentication.name` comparison, which the parser cannot express. SecurityCommandAuthorizer enforces this at the bus
- // …
- * (The faithful owner-only alternative — hasPermission(#command, 'withdraw') backed by a custom PermissionEvaluator
- * bean that loads the wallet and compares its owner_id to the current principal — is left to a later step.)
+ * Guarded by #[PreAuthorize]: an ADMIN may debit any wallet; a WALLET_OWNER only the wallet it owns. The role alone
+ * is not ownership — any customer holds it — so the rule also asks hasPermission(#command, 'debit'), which the
+ * framework hands, with the Withdraw bound to #command, to the application's PermissionEvaluator:
+ * WalletPermissionEvaluator loads the wallet and grants the debit only when its owner_id is the principal's name.
+ * SecurityExpressionEvaluator is a CLOSED whitelist (booleans and/or/not, string literals, #param, and a fixed set of
+ * functions — no `==`, no `.property` navigation), so the comparison cannot be written in the expression; the
+ * evaluator is where it lives. SecurityCommandAuthorizer enforces this at the bus BEFORE the handler runs; a denied
+ * withdraw surfaces as CommandProcessingException wrapping AuthorizationException (403) for a signed-in principal
+ * without the role or without the wallet, or AuthenticationException (401) when there is no principal at all.
  *
  * Intentionally NOT final: the generated transactional proxy subclasses this handler.
  */
@@ -738,7 +740,7 @@ class WithdrawHandler
 {
     public function __construct(private readonly WalletRepository $wallets) {}
 
-    #[PreAuthorize("hasRole('ADMIN') or hasRole('WALLET_OWNER')")]
+    #[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command, 'debit'))")]
     #[Transactional]
     public function handle(Withdraw $command): int
     {
@@ -753,7 +755,81 @@ class WithdrawHandler
 }
 ```
 
-Lee con atención el segundo párrafo de ese docblock — es toda la lección en miniatura. La forma *ingenua* de expresar "solo el propio dueño del monedero puede retirar" sería algo como `#command.ownerId == authentication.name`, y la gramática sencillamente no puede decir eso: no hay operador `.` ni `==`. La alternativa real, distribuida, es más burda pero genuinamente expresable: conceder una autoridad `WALLET_OWNER` a quien deba tener permiso, y comprobar `hasRole('WALLET_OWNER')`. Una comprobación de propiedad genuina por recurso, cuando la necesitas, pasa por `hasPermission(#command, 'withdraw')` y un bean `PermissionEvaluator` a medida que hace la comparación real en PHP ordinario — la gramática despacha hacia tu código, no intenta volverse lo bastante expresiva como para escribir ella misma la comparación.
+Lee con atención el segundo párrafo de ese docblock — es toda la lección en miniatura. La forma *ingenua* de expresar "solo el propio dueño del monedero puede retirar" sería algo como `#command.ownerId == authentication.name`, y la gramática sencillamente no puede decir eso: no hay operador `.` ni `==`. Tampoco basta el rol por sí solo. Todos los clientes tienen `WALLET_OWNER`, así que una regla que se quedara en `hasRole('WALLET_OWNER')` dejaría a cualquier cliente cargar en *cualquier* monedero cuyo id llegara a conocer — una referencia directa insegura a objetos, el agujero que deja siempre una regla basada solo en el rol. El rol dice qué clase de principal es; no dice *cuál* de los monederos es suyo.
+
+Esa pregunta va a `hasPermission(#command, 'debit')`. El escáner enlaza `#command` con el parámetro `$command` del manejador, el bus entrega a la expresión el `Withdraw` que está a punto de despachar, y `hasPermission()` pasa ese comando, junto con la `Authentication` actual, al `PermissionEvaluator` de la aplicación. La gramática despacha hacia tu código; no intenta volverse lo bastante expresiva como para escribir ella misma la comparación. El evaluador de Lumen es un componente normal:
+
+<!-- source: samples/lumen/src/Security/WalletPermissionEvaluator.php -->
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace Lumen\Security;
+
+use Firefly\Container\Attributes\Component;
+use Firefly\Security\Access\PermissionEvaluator;
+use Firefly\Security\Core\Authentication;
+use Illuminate\Contracts\Container\Container;
+use Lumen\Application\Command\Withdraw;
+use Lumen\Application\Loan\RepayLoan;
+use Lumen\Infrastructure\Loan\LoanRepository;
+use Lumen\Infrastructure\WalletRepository;
+
+/**
+ * Backs `hasPermission(#command, 'debit')`: a principal may debit a wallet only when it owns it. The target is the
+ * command the bus is about to dispatch — a Withdraw names its wallet, a RepayLoan names a loan whose wallet is read
+ * from the event store — and the debit is granted only when that wallet's owner_id equals the authenticated
+ * principal's name. Everything else fails closed: a permission other than `debit`, a target of any other type, a
+ * wallet or loan that does not exist, an unauthenticated principal (whom the bus still answers with a 401, not a 403).
+ *
+ * Being a PermissionEvaluator bean is the whole registration: SecurityAutoConfiguration binds its deny-all default
+ * only #[ConditionalOnMissingBean(PermissionEvaluator::class)], so this component displaces it.
+ *
+ * The loan repository is looked up when a repayment is checked, not injected: the security beans that hold this
+ * evaluator are built at boot in every harness, while LoanRepository is #[Lazy] and can only be built where
+ * firefly/eventsourcing's providers boot. A RepayLoan never reaches the bus anywhere else.
+ */
+#[Component]
+final class WalletPermissionEvaluator implements PermissionEvaluator
+{
+    public const string DEBIT = 'debit';
+
+    public function __construct(
+        private readonly WalletRepository $wallets,
+        private readonly Container $container,
+    ) {}
+
+    public function hasPermission(Authentication $authentication, mixed $target, string $permission): bool
+    {
+        if ($permission !== self::DEBIT || ! $authentication->isAuthenticated()) {
+            return false;
+        }
+
+        $walletId = match (true) {
+            $target instanceof Withdraw => $target->walletId,
+            $target instanceof RepayLoan => $this->walletOfLoan($target->loanId),
+            default => null,
+        };
+        if ($walletId === null) {
+            return false;
+        }
+
+        $owner = $this->wallets->findById($walletId)?->ownerId() ?? '';
+
+        return $owner !== '' && $owner === $authentication->getName();
+    }
+
+    private function walletOfLoan(string $loanId): ?string
+    {
+        $loans = $this->container->make(LoanRepository::class);
+
+        return $loans->find($loanId)?->walletId();
+    }
+}
+```
+
+Hay tres cosas en él que merece la pena copiar. **Se registra por ser un bean**: `SecurityAutoConfiguration` define su `DenyAllPermissionEvaluator` solo `#[ConditionalOnMissingBean(PermissionEvaluator::class)]`, así que un componente escaneado que implemente la interfaz desplaza al predeterminado sin más cableado. **Falla cerrado**: un nombre de permiso distinto de `debit`, un tipo de objetivo para el que no se escribió, un monedero o un préstamo que no existe, o un principal no autenticado responden todos `false`, y una excepción lanzada dentro lo captura el `catch (\Throwable)` del evaluador de expresiones y también se convierte en `false`. **Responde a una sola pregunta para cada comando que carga en un monedero**: un `Withdraw` nombra su monedero, un `RepayLoan` (Capítulo 9B) nombra un préstamo cuyo monedero el evaluador lee del almacén de eventos, así que los dos manejadores llevan la misma regla. El analizador no cortocircuita `or`, así que el evaluador también se ejecuta para un `ADMIN`; allí su respuesta, sencillamente, no cambia el resultado.
 
 ---
 
@@ -1011,6 +1087,31 @@ Las tres costuras de aplicación dan el mismo par de respuestas, porque comparte
 
 El bus envuelve cualquiera de las dos en una `CommandProcessingException`, que copia el código de error, el estado HTTP y la categoría de la causa — así que el cable lleva `AUTHENTICATION_FAILED` o `ACCESS_DENIED` y no el código genérico del bus. Y en las dos pruebas la aserción sobre el saldo, después, hace trabajo real: demuestra que el débito genuinamente nunca ocurrió, no solo que la respuesta HTTP tuviera apariencia de rechazo.
 
+El rol sin el monedero se rechaza igual. Un principal con `ROLE_WALLET_OWNER` que es dueño de *algún* monedero, pero no de este, recibe el 403 y no se mueve nada:
+
+<!-- source: samples/lumen/tests/Web/WalletRestTest.php -->
+```php
+it('denies a withdraw from a WALLET_OWNER who does not own the wallet as 403 problem+json', function () {
+    // …
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('owner-7b', 'owner-7b', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
+    // …
+    $id = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-7a', 'currency' => 'EUR'])->json('wallet_id');
+    $this->postJson("/api/v1/wallets/{$id}/deposit", ['amount_minor' => 5000]);
+
+    $this->postJson("/api/v1/wallets/{$id}/withdraw", ['amount_minor' => 1000])
+        ->assertStatus(403)
+        // …
+        ->assertJsonPath('code', 'ACCESS_DENIED')
+        ->assertJsonPath('category', 'security');
+
+    // Nothing was debited, and the ledger never saw a withdrawal.
+    $this->getJson("/api/v1/wallets/{$id}/balance")->assertJson(['balance_minor' => 5000]);
+```
+
+Esa es la prueba que más importa de este capítulo: es la petición que de verdad enviaría un atacante. El 401 y el 403 sin rol de más arriba demuestran que el endpoint está protegido; esta demuestra que la protección mira el monedero.
+
 Concede la autoridad correcta y el mismo comando tiene éxito:
 
 <!-- source: samples/lumen/tests/Web/WalletRestTest.php -->
@@ -1035,7 +1136,7 @@ it('allows an authorized withdraw and renders an overdraw as 409 problem+json', 
         ->assertJsonPath('category', 'business');
 ```
 
-La autoridad concedida es `'ROLE_WALLET_OWNER'` — ya con el prefijo `ROLE_` incorporado — y la expresión de `WithdrawHandler` llama a `hasRole('WALLET_OWNER')`, que `SecurityExpressionRoot::hasRole()` normaliza a la cadena idéntica `'ROLE_WALLET_OWNER'` antes de comprobar la pertenencia; las dos formas de escribirlo se encuentran en el medio. El `409` de la segunda llamada es el contraste importante: la autorización y la validación de dominio son dos capas genuinamente independientes — que se te *permita* retirar no dice nada sobre si la retirada en sí es *válida*, y la propia invariante de no-sobregiro de `Wallet::withdraw()` (Capítulo 6) sigue aplicándose exactamente igual que antes.
+La autoridad concedida es `'ROLE_WALLET_OWNER'` — ya con el prefijo `ROLE_` incorporado — y la expresión de `WithdrawHandler` llama a `hasRole('WALLET_OWNER')`, que `SecurityExpressionRoot::hasRole()` normaliza a la cadena idéntica `'ROLE_WALLET_OWNER'` antes de comprobar la pertenencia; las dos formas de escribirlo se encuentran en el medio. El principal es `owner-4` y el monedero se abre para `owner-4`, y eso es lo que permite que `hasPermission(#command, 'debit')` conceda el cargo. El `409` de la segunda llamada es el contraste importante: la autorización y la validación de dominio son dos capas genuinamente independientes — que se te *permita* retirar no dice nada sobre si la retirada en sí es *válida*, y la propia invariante de no-sobregiro de `Wallet::withdraw()` (Capítulo 6) sigue aplicándose exactamente igual que antes.
 
 `samples/lumen/tests/Application/TransferSecurityTest.php` demuestra el mismo guardián directamente contra el `CommandBus`, con el patrón de desenvolver mediante `getPrevious()` que introdujo el Capítulo 7:
 
@@ -1093,6 +1194,7 @@ it('enforces #[PreAuthorize] on withdraw: denies without the owner role, allows 
 | `HttpSecurity` | Reglas de URL que deniegan por defecto, primera-coincidencia-gana, compilando hacia la misma gramática de expresiones que la seguridad de método |
 | `SecurityExpressionEvaluator` | Un tokenizador/analizador hecho a mano, de lista blanca cerrada — sin `eval`, sin `==`, sin navegación `.propiedad`; diez funciones en total (`hasRole`, `hasAnyRole`, `hasAuthority`, `hasAnyAuthority`, `hasScope`, `hasAnyScope`, `hasPermission`, `isAuthenticated`, `permitAll`, `denyAll`) más las referencias `#param` |
 | `hasRole('X')` | Normaliza a `hasAuthority('ROLE_X')` — las formas desnuda y con prefijo `ROLE_` son equivalentes |
+| `hasPermission(#command, 'debit')` | Entrega el comando y el principal al `PermissionEvaluator` de la aplicación; el `WalletPermissionEvaluator` de Lumen concede un cargo solo al dueño del monedero y deniega todo lo demás |
 | `SecurityCommandAuthorizer` / `SecurityQueryAuthorizer` | Las implementaciones reales en `#[Order(500)]` que reemplazan al `AllowAllAuthorizer` del Capítulo 7, solo cuando `firefly.security.enabled=true` |
 | `MethodSecurityMessageEnforcer` | Une el `HandlerManifest` de CQRS con el `SecurityMethodManifest` compilado; hace cumplir la regla antes de que `handle()` llegue a ejecutarse |
 | `SecurityContextPersistenceFilter` | Carga el contexto desde la sesión en `-94`, guarda lo que cambió, y limpia el portador en un `finally` |
@@ -1110,7 +1212,7 @@ it('enforces #[PreAuthorize] on withdraw: denies without the owner role, allows 
 ## Ponlo en práctica {.exercises}
 
 1. **Escribe una expresión rechazada.** Intenta compilar `#[PreAuthorize("#command.ownerId == authentication.name")]` en un manejador de prueba y ejecuta `php artisan firefly:cache`. Confirma que `MethodSecurityScanner` falla de forma ruidosa con una `ConfigurationException` que nombra la clase y el método exactos, en vez de aceptar silenciosamente una expresión que siempre denegaría (o fallaría al analizar) en tiempo de ejecución.
-2. **Añade una comprobación real de propiedad.** En una copia de prueba del proyecto, implementa un bean `PermissionEvaluator` que cargue un monedero por id y compare su `owner_id` con `Authentication::getName()`, enlázalo para que reemplace a `DenyAllPermissionEvaluator`, y cambia la expresión de `WithdrawHandler` a `hasPermission(#command, 'withdraw')`. Confirma que un principal sin `WALLET_OWNER` que genuinamente sea dueño del monedero ahora puede retirar, mientras que un dueño distinto no puede.
+2. **Amplía la comprobación de propiedad.** En una copia de prueba del proyecto, pon `#[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command, 'debit'))")]` en `TransferHandler::handle()` y enseña a `WalletPermissionEvaluator` que un `Transfer` carga en su `sourceWalletId`. Confirma que el dueño del monedero de origen puede transferir desde él, mientras que un dueño distinto recibe un 403 y los dos saldos se quedan como estaban.
 3. **Adueñate de la página de login.** Añade una acción `#[GetMapping('/login')]` propia a un proyecto de prueba con `form_login.enabled` encendido, arráncalo, y confirma que la página del framework *no* reemplaza a la tuya — después confirma que tu formulario sigue dando acceso a la gente enviando el token de sesión a la URL de procesamiento, porque `FormLoginFilter` responde antes del enrutado de cualquier modo.
 4. **Mira al punto de entrada cambiar de respuesta.** Contra una ruta protegida, envía `Accept: text/html` y después `Accept: application/json`, y confirma que obtienes una redirección a `/login` y un `401 application/problem+json` respectivamente. Después pon `firefly.security.http.entry_point` a `problem` y confirma que la petición del navegador también recibe el 401.
 5. **Pon una regla sobre un servicio corriente.** Añade `#[PreAuthorize("hasRole('ADMIN')")]` a un método de un `#[Service]` no final que no sea ni controlador ni manejador, ejecuta `php artisan firefly:cache`, y confirma que la llamada se rechaza. Después marca la clase como `final`, vuelve a ejecutar la caché, y confirma que el escáner rechaza en tiempo de compilación en vez de distribuir una regla que nada podría hacer cumplir.

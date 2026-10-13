@@ -211,7 +211,7 @@ Conceder un préstamo ingresa el principal en el monedero; amortizarlo vuelve a 
 
 <!-- source: samples/lumen/src/Application/Loan/RepayLoanHandler.php -->
 ```php
-    #[PreAuthorize("hasRole('ADMIN') or hasRole('WALLET_OWNER')")]
+    #[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command, 'debit'))")]
     #[Transactional]
     public function handle(RepayLoan $command): int
     {
@@ -250,7 +250,7 @@ El orden es deliberado. Primero se añade la amortización, y solo entonces se c
         ->and($this->queries()->ask(new GetBalance($walletId)))->toBe(5000);
 ```
 
-El flujo sigue conteniendo solo `loan.granted`, el préstamo sigue debiendo 900,00 y el monedero sigue teniendo sus 50,00: nada se quedó a medias. El manejador está protegido como el `Withdraw` del Capítulo 10, y es `#[Lazy]` por la razón del repositorio. Una consecuencia más de compartir la transacción: `save()` vacía el búfer del préstamo, así que el cableado posterior al commit de `firefly/data` (Capítulo 9) nunca despacha sus eventos una segunda vez; el `FundsWithdrawn` del propio monedero, sí.
+El flujo sigue conteniendo solo `loan.granted`, el préstamo sigue debiendo 900,00 y el monedero sigue teniendo sus 50,00: nada se quedó a medias. El manejador está protegido como el `Withdraw` del Capítulo 10: un `ADMIN` puede amortizar cualquier préstamo, y un `WALLET_OWNER` solo uno abonado en un monedero suyo — `WalletPermissionEvaluator` carga el préstamo para averiguar ese monedero, y deniega si no lo encuentra. Es `#[Lazy]` por la razón del repositorio. Una consecuencia más de compartir la transacción: `save()` vacía el búfer del préstamo, así que el cableado posterior al commit de `firefly/data` (Capítulo 9) nunca despacha sus eventos una segunda vez; el `FundsWithdrawn` del propio monedero, sí.
 
 ---
 

@@ -818,7 +818,7 @@ class WithdrawHandler
 {
     public function __construct(private readonly WalletRepository $wallets) {}
 
-    #[PreAuthorize("hasRole('ADMIN') or hasRole('WALLET_OWNER')")]
+    #[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command, 'debit'))")]
     #[Transactional]
     public function handle(Withdraw $command): int
     {
@@ -834,7 +834,10 @@ class WithdrawHandler
 ```
 
 `SecurityCommandAuthorizer` enforces this **before** the handler runs, at the bus — a denied withdraw surfaces
-as a `CommandProcessingException` wrapping an `AuthorizationException` (403), never a silent no-op. The same
+as a `CommandProcessingException` wrapping an `AuthorizationException` (403), never a silent no-op. The role
+alone is not ownership: `hasPermission(#command, 'debit')` hands the `Withdraw` to the application's
+`PermissionEvaluator` bean (Lumen's `WalletPermissionEvaluator`), which grants the debit only when the
+principal owns that wallet, so one customer cannot debit another's. The same
 rules hold on the controller dispatcher and on **any stereotyped bean**, through the one compiled proxy chain
 `#[Transactional]` already used — so a `#[Service]` method carrying `#[PreAuthorize]`, `#[PostAuthorize]`,
 `#[PreFilter]` or `#[PostFilter]` is guarded wherever it is called from, and a refusal never opens a

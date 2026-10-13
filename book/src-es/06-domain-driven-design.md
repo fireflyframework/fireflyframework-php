@@ -309,6 +309,14 @@ final class Wallet extends Model implements RecordsDomainEvents
         });
     }
 
+    /** Who the wallet belongs to: the principal name WalletPermissionEvaluator compares against before a debit. */
+    public function ownerId(): string
+    {
+        $value = $this->getAttribute('owner_id');
+
+        return is_string($value) ? $value : '';
+    }
+
     public function balanceMoney(): Money
     {
         $value = $this->getAttribute('balance_minor');
