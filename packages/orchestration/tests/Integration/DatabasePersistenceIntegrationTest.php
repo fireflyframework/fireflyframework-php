@@ -75,6 +75,9 @@ foreach (IntegrationDatabase::serverLanes() as $lane) {
                 ->and(ExecutionPersistenceContract::ids($two->findBySearchAttributes(['customer' => 'barbara'])))->toBe(['a2'])
                 ->and($first->table(OrchestrationSchema::SEARCH_ATTRIBUTES)->whereIn('correlation_id', ['a1', 'a2'])->count())->toBe(3);
         } finally {
+            if ($lane === 'sqlsrv') {
+                $second->unprepared('SET LOCK_TIMEOUT -1'); // pooled SQL Server sessions keep session SETs past disconnect()
+            }
             if ($first->transactionLevel() > 0) {
                 $first->rollBack();
             }

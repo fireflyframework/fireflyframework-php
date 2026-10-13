@@ -61,6 +61,18 @@ function translationShortLockWait(Connection $connection, string $lane): void
     };
 }
 
+/**
+ * Put the server's own lock wait back. The ODBC driver manager on the CI runner pools SQL Server sessions, so a
+ * session-level SET outlives disconnect() and would decide a later test's outcome (the deadlock test below saw a
+ * 300 ms lock timeout and lost by timing out instead of by being chosen as the deadlock victim).
+ */
+function translationDefaultLockWait(Connection $connection, string $lane): void
+{
+    if ($lane === 'sqlsrv') {
+        $connection->unprepared('set lock_timeout -1');
+    }
+}
+
 foreach (IntegrationDsn::lanes() as $lane) {
     it("translates integrity, grammar and lock-wait failures on {$lane}", function () use ($lane): void {
         $overrides = $lane === 'sqlite' ? ['database' => IntegrationDsn::sqlitePath('translation'), 'busy_timeout' => 300] : [];
@@ -83,6 +95,7 @@ foreach (IntegrationDsn::lanes() as $lane) {
             translationShortLockWait($b, $lane);
             $waited = translationOf($b, static fn () => $b->table('firefly_translation_parents')->where('id', 1)->update(['name' => 'waiter']));
             $a->rollBack();
+            translationDefaultLockWait($b, $lane);
 
             expect($waited)->toBeInstanceOf(CannotAcquireLockException::class);
         } finally {
@@ -98,6 +111,7 @@ foreach (IntegrationDsn::lanes() as $lane) {
 foreach (['pgsql', 'mysql', 'mariadb', 'sqlsrv'] as $lane) {
     it("translates the deadlock victim on {$lane}, whichever process the server picks", function () use ($lane): void {
         $connection = IntegrationDsn::connect($lane, 'deadlock-parent');
+        translationDefaultLockWait($connection, $lane); // a pooled session may carry another test's lock timeout
         $schema = $connection->getSchemaBuilder();
         $schema->dropIfExists('firefly_deadlock_probe');
         $schema->create('firefly_deadlock_probe', static function (Blueprint $table): void {
@@ -128,7 +142,7 @@ foreach (['pgsql', 'mysql', 'mariadb', 'sqlsrv'] as $lane) {
             $racerSaw = trim($racer->getOutput());
 
             // Exactly one side lost, and it was told so in the kernel's own vocabulary.
-            expect($parent instanceof DeadlockLoserDataAccessException xor str_ends_with($racerSaw, 'deadlock'))->toBeTrue('parent: '.($parent === null ? 'committed' : $parent::class.' — '.$parent->getMessage().' — previous: '.($parent->getPrevious()?->getMessage() ?? 'none')).'; parent lock_timeout: '.json_encode($connection->selectOne('select @@lock_timeout as value')).'; racer: '.$racerSaw)
+            expect($parent instanceof DeadlockLoserDataAccessException xor str_ends_with($racerSaw, 'deadlock'))->toBeTrue('parent: '.($parent === null ? 'committed' : $parent::class.' — '.$parent->getMessage().' — previous: '.($parent->getPrevious()?->getMessage() ?? 'none')).($lane === 'sqlsrv' ? '; parent lock_timeout: '.json_encode($connection->selectOne('select @@lock_timeout as value')) : '').'; racer: '.$racerSaw)
                 ->and($parent === null || $parent instanceof DeadlockLoserDataAccessException)->toBeTrue();
         } finally {
             $racer->stop();

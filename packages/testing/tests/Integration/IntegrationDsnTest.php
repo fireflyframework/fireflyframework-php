@@ -84,7 +84,7 @@ it('builds a Laravel connection config per driver', function () {
         'password' => 'pw', 'prefix' => '', 'charset' => 'utf8', 'search_path' => 'public',
     ])->and(IntegrationDsn::connectionConfigFor('mariadb', 'FIREFLY_TEST_DSN')['charset'])->toBe('utf8mb4')
         ->and(IntegrationDsn::connectionConfigFor('sqlsrv', 'FIREFLY_TEST_DSN'))->toMatchArray([
-            'driver' => 'sqlsrv', 'encrypt' => 'yes', 'trust_server_certificate' => 'false', 'pooling' => false,
+            'driver' => 'sqlsrv', 'encrypt' => 'yes', 'trust_server_certificate' => 'false',
         ])->and(IntegrationDsn::connectionConfigFor('mysql', 'FIREFLY_TEST_DSN', ['database' => 'other'])['database'])->toBe('other');
 });
 

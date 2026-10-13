@@ -173,9 +173,7 @@ final class IntegrationDsn
         $config = match ($driver) {
             'pgsql' => [...$config, 'charset' => 'utf8', 'search_path' => $parts['search_path'] ?? 'public'],
             'mysql', 'mariadb' => [...$config, 'charset' => 'utf8mb4', 'collation' => 'utf8mb4_unicode_ci'],
-            // pooling off: the ODBC driver would otherwise hand a later test the same physical session, SET options
-            // (a short LOCK_TIMEOUT) included, so one test's session state could decide another's outcome.
-            'sqlsrv' => [...$config, 'charset' => 'utf8', 'encrypt' => $parts['encrypt'] ?? 'yes', 'trust_server_certificate' => $parts['trust_server_certificate'] ?? 'false', 'pooling' => false],
+            'sqlsrv' => [...$config, 'charset' => 'utf8', 'encrypt' => $parts['encrypt'] ?? 'yes', 'trust_server_certificate' => $parts['trust_server_certificate'] ?? 'false'],
             default => $config,
         };
 
