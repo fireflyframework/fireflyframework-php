@@ -3,15 +3,16 @@
 This is a hand-built, step-by-step walkthrough of building a real LaraFly feature from an empty
 `firefly new` application to a fully attribute-driven slice — a REST controller, a service, typed
 configuration, a repository-backed domain model, request validation, RFC-7807 error handling, a CQRS
-command/query pair, a domain event listener, a database-agnostic outbox, and a compensating saga. Every
+command/query pair, a domain event listener, a database-agnostic outbox, a compensating saga, and an event-sourced journal. Every
 code block below is accurate to the framework as shipped in this repository — attributes, class names, and
 method signatures are taken verbatim from `firefly/*` package sources and the runnable `samples/lumen`
 wallet sample, not invented for the tutorial.
 
 By the end you will have grown the `firefly/skeleton` starter's sample `Greeting` slice into a small
 "greetings" feature with a persisted `greetings` table, an `#[EventListener]` reacting to a domain event
-delivered through a database outbox, a greeting-card saga that undoes itself, and a zero-reflection cached
-boot — the same architecture the [Lumen sample](#step-14-whats-next) uses at larger scale.
+delivered through a database outbox, a greeting-card saga that undoes itself, an event-sourced greeting journal
+projected into a read model, and a zero-reflection cached boot — the same architecture the
+[Lumen sample](#step-15-whats-next) uses at larger scale.
 
 ## Table of Contents
 
@@ -28,7 +29,8 @@ boot — the same architecture the [Lumen sample](#step-14-whats-next) uses at l
 11. [Step 11: The Zero-Reflection Cache and Health Introspection](#step-11-the-zero-reflection-cache-and-health-introspection)
 12. [Step 12: A Database-Agnostic Outbox and a Consumer](#step-12-a-database-agnostic-outbox-and-a-consumer)
 13. [Step 13: A Saga with Compensation — `#[Saga]`](#step-13-a-saga-with-compensation-saga)
-14. [Step 14: What's Next](#step-14-whats-next)
+14. [Step 14: Event-Sourced Greetings — `#[EventType]`](#step-14-event-sourced-greetings-eventtype)
+15. [Step 15: What's Next](#step-15-whats-next)
 
 ## Prerequisites
 
@@ -1417,12 +1419,351 @@ operator commands.
 
 ---
 
-## Step 14: What's Next
+## Step 14: Event-Sourced Greetings — `#[EventType]`
+
+Step 6 stored each greeting as a row, and Step 9's rename overwrote it: the table knows the current message and
+nothing about the ones before it. Event sourcing keeps that other half. In this step every greeting you send to a
+name is recorded as an **event** in an event store, a small aggregate is rebuilt from those events on every
+request, and a **projection** keeps a read model — how many times each name was greeted, and the last message — up
+to date from a **checkpoint**.
+
+The event store's provider sits in the `eventsourcing` block of `config/firefly.php`:
+
+<!-- source: skeleton/config/firefly.php -->
+
+```php
+'eventsourcing' => [
+    // …
+    'store' => [
+        'provider' => env('FIREFLY_EVENTSOURCING_STORE', 'memory'),
+        'connection' => env('FIREFLY_EVENTSOURCING_DB_CONNECTION'),
+        'batch-size' => 500,
+    ],
+    // …
+],
+```
+
+`memory` forgets everything when the process ends; move it to the database:
+
+```bash
+echo 'FIREFLY_EVENTSOURCING_STORE=database' >> .env
+```
+
+First the event, `app/Greetings/GreetingSaid.php`. `#[EventType]` gives it the stable name the store keeps:
+
+<!-- source: tests/Fixtures/Tutorial/app/Greetings/GreetingSaid.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Greetings;
+
+use DateTimeImmutable;
+use Firefly\Domain\DomainEvent;
+use Firefly\EventSourcing\Event\Attributes\EventType;
+
+#[EventType(name: 'greeting.said')]
+final readonly class GreetingSaid extends DomainEvent
+{
+    public function __construct(
+        public string $name,
+        public string $message,
+        ?string $eventId = null,
+        ?DateTimeImmutable $occurredAt = null,
+    ) {
+        parent::__construct($eventId, $occurredAt);
+    }
+}
+```
+
+Then the aggregate, `app/Greetings/GreetingJournal.php` — one journal per name, its id the name itself:
+
+<!-- source: tests/Fixtures/Tutorial/app/Greetings/GreetingJournal.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Greetings;
+
+use Firefly\EventSourcing\Aggregate\EventSourcedAggregateRoot;
+
+final class GreetingJournal extends EventSourcedAggregateRoot
+{
+    private int $times = 0;
+
+    private string $lastMessage = '';
+
+    public static function aggregateType(): string
+    {
+        return 'greeting.journal';
+    }
+
+    public static function begin(string $name, string $message): self
+    {
+        $journal = new self($name);
+        $journal->recordThat(new GreetingSaid($name, $message));
+
+        return $journal;
+    }
+
+    public function say(string $message): void
+    {
+        $this->recordThat(new GreetingSaid($this->id(), $message));
+    }
+
+    public function times(): int
+    {
+        return $this->times;
+    }
+
+    public function lastMessage(): string
+    {
+        return $this->lastMessage;
+    }
+
+    protected function applyGreetingSaid(GreetingSaid $event): void
+    {
+        $this->times++;
+        $this->lastMessage = $event->message;
+    }
+}
+```
+
+Its repository, `app/Greetings/GreetingJournals.php`, is one constructor:
+
+<!-- source: tests/Fixtures/Tutorial/app/Greetings/GreetingJournals.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Greetings;
+
+use Firefly\Container\Attributes\Component;
+use Firefly\EventSourcing\Aggregate\EventSourcedRepository;
+use Firefly\EventSourcing\Aggregate\EventSourcingSupport;
+
+/** @extends EventSourcedRepository<GreetingJournal> */
+#[Component]
+final class GreetingJournals extends EventSourcedRepository
+{
+    public function __construct(EventSourcingSupport $support)
+    {
+        parent::__construct($support, GreetingJournal::class);
+    }
+}
+```
+
+The read model is an ordinary table. Create `database/migrations/2026_10_13_000000_create_greeting_counts_table.php`:
+
+<!-- source: tests/Fixtures/Tutorial/database/migrations/2026_10_13_000000_create_greeting_counts_table.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('greeting_counts', function (Blueprint $table): void {
+            $table->string('name')->primary();
+            $table->unsignedInteger('times');
+            $table->string('last_message');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('greeting_counts');
+    }
+};
+```
+
+and the projection that fills it, `app/Greetings/GreetingCounts.php`:
+
+<!-- source: tests/Fixtures/Tutorial/app/Greetings/GreetingCounts.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Greetings;
+
+use Firefly\Container\Attributes\Component;
+use Firefly\EventSourcing\Event\StoredEvent;
+use Firefly\EventSourcing\Projection\Projection;
+use Illuminate\Support\Facades\DB;
+
+#[Component]
+final class GreetingCounts implements Projection
+{
+    public const string TABLE = 'greeting_counts';
+
+    public function name(): string
+    {
+        return 'greeting.counts';
+    }
+
+    public function handles(): array
+    {
+        return ['greeting.said'];
+    }
+
+    public function handle(StoredEvent $event): void
+    {
+        $message = $event->payload['message'] ?? '';
+        $message = is_string($message) ? $message : '';
+
+        if (DB::table(self::TABLE)->where('name', $event->aggregateId)->exists()) {
+            DB::table(self::TABLE)->where('name', $event->aggregateId)->increment('times', 1, ['last_message' => $message]);
+
+            return;
+        }
+
+        DB::table(self::TABLE)->insert(['name' => $event->aggregateId, 'times' => 1, 'last_message' => $message]);
+    }
+
+    public function reset(): void
+    {
+        DB::table(self::TABLE)->delete();
+    }
+
+    /** @return array{name: string, times: int, lastMessage: string}|null */
+    public static function find(string $name): ?array
+    {
+        $row = DB::table(self::TABLE)->where('name', $name)->first();
+        if ($row === null) {
+            return null;
+        }
+
+        $values = (array) $row;
+        $times = $values['times'] ?? 0;
+        $message = $values['last_message'] ?? '';
+
+        return ['name' => $name, 'times' => is_numeric($times) ? (int) $times : 0, 'lastMessage' => is_string($message) ? $message : ''];
+    }
+}
+```
+
+Finally the endpoints, `app/Http/GreetingJournalController.php` — the `POST` writes through the aggregate, the `GET`
+reads the projection:
+
+<!-- source: tests/Fixtures/Tutorial/app/Http/GreetingJournalController.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http;
+
+use App\Greetings\GreetingCounts;
+use App\Greetings\GreetingJournal;
+use App\Greetings\GreetingJournals;
+use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
+use Firefly\Web\Attributes\GetMapping;
+use Firefly\Web\Attributes\PathVariable;
+use Firefly\Web\Attributes\PostMapping;
+use Firefly\Web\Attributes\RestController;
+
+#[RestController]
+final class GreetingJournalController
+{
+    public function __construct(private readonly GreetingJournals $journals) {}
+
+    /** @return array{name: string, times: int} */
+    #[PostMapping('/journal/{name}', status: 201)]
+    public function say(#[PathVariable] string $name): array
+    {
+        $message = "Hello, {$name}!";
+        $journal = $this->journals->find($name);
+
+        if ($journal === null) {
+            $journal = GreetingJournal::begin($name, $message);
+        } else {
+            $journal->say($message);
+        }
+
+        $this->journals->save($journal);
+
+        return ['name' => $name, 'times' => $journal->times()];
+    }
+
+    /** @return array{name: string, times: int, lastMessage: string} */
+    #[GetMapping('/journal/{name}')]
+    public function show(#[PathVariable] string $name): array
+    {
+        return GreetingCounts::find($name)
+            ?? throw new ResourceNotFoundException("No greeting to {$name} has been projected yet.");
+    }
+}
+```
+
+Element by element:
+
+- **`#[EventType(name: 'greeting.said')]`** names the event for the store; `firefly:cache` compiles it, and an
+  event class without one is refused at append, so nothing is stored that cannot be read back.
+- **`GreetingJournal`** holds no row. `recordThat()` applies the event at once and buffers it; `applyGreetingSaid()`
+  is the only code that changes `times` and `lastMessage`, so replaying the events rebuilds the same journal.
+- **`GreetingJournals::find()`** replays a name's events (`null` when there are none); **`save()`** appends the new
+  ones under the version it loaded — two requests that greet Ada from the same version cannot both win: the second
+  gets a 409 `ConcurrencyException`.
+- **`GreetingCounts`** is a `#[Component]`, so the projection runner finds it. It reads the global stream from its
+  checkpoint, and its rows and the checkpoint commit in one transaction on the same connection.
+
+Recompile, migrate, and greet Ada twice:
+
+```bash
+php artisan firefly:cache
+php artisan migrate        # the event store's tables and greeting_counts
+
+curl -X POST http://127.0.0.1:8000/journal/Ada
+# {"name":"Ada","times":1}
+curl -X POST http://127.0.0.1:8000/journal/Ada
+# {"name":"Ada","times":2}
+
+curl -i http://127.0.0.1:8000/journal/Ada
+# HTTP/1.1 404 Not Found   <- problem+json: nothing has projected the greetings yet
+```
+
+The two events are in `firefly_eventsourcing_events`; the read model has not heard of them. Catch it up:
+
+```bash
+php artisan firefly:eventsourcing:projections:run
+#   INFO  greeting.counts: caught-up, 2 event(s) handled, at position 2.
+
+curl http://127.0.0.1:8000/journal/Ada
+# {"name":"Ada","times":2,"lastMessage":"Hello, Ada!"}
+```
+
+The repository's own test (`tests/TutorialGreetingJournalTest.php`) makes exactly these requests and runs exactly
+this command. In production keep `php artisan firefly:eventsourcing:projections:run --live` running under a process
+supervisor; `php artisan firefly:eventsourcing:projections` shows every projection's checkpoint and lag, and
+`php artisan firefly:eventsourcing:projections:rebuild greeting.counts` throws the read model away and replays
+every event into it — the test deletes `greeting_counts` and gets it back that way. See
+[Event Sourcing](modules/eventsourcing.md) for snapshots, upcasters, publishing appended events through the outbox,
+and the event-sourced orchestration store, and Chapter 9B of the [book](book.md) for all of them on the Lumen sample.
+
+---
+
+## Step 15: What's Next
 
 You've built one small feature slice — `#[RestController]` → `#[Service]` → `#[ConfigProperties]` →
 `#[Repository]` → `#[Valid]` → RFC-7807 errors → `#[CommandHandler]`/`#[QueryHandler]` →
-`#[EventListener]` → a database outbox → a `#[Saga]` → a cached, zero-reflection boot — using nothing but
-the framework's own real, shipped attributes. From here:
+`#[EventListener]` → a database outbox → a `#[Saga]` → an `#[EventType]` journal and its projection →
+a cached, zero-reflection boot — using nothing but the framework's own real, shipped attributes. From here:
 
 ### Foundation
 
@@ -1458,6 +1799,8 @@ the framework's own real, shipped attributes. From here:
 - [Orchestration](modules/orchestration.md) — sagas, TCC and durable workflows: everything Step 13 left out.
 - [Webhooks](modules/webhooks.md) and [Callbacks](modules/callbacks.md) — signed webhooks in, signed callbacks
   out, both on the event bus.
+- [Event Sourcing](modules/eventsourcing.md) — the event store from Step 14, plus snapshots, upcasters,
+  publishing through the outbox, and sagas stored as event streams.
 
 ### Production
 

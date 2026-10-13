@@ -4,7 +4,7 @@ Este es un recorrido paso a paso, construido a mano, de cómo levantar una funci
 una aplicación creada con `firefly new` hasta una porción completa gobernada por atributos — un controlador REST,
 un servicio, configuración tipada, un modelo de dominio respaldado por un repositorio, validación de
 peticiones, manejo de errores RFC-7807, un par de comando/consulta CQRS, un listener de evento de dominio,
-un outbox agnóstico de la base de datos y una saga que se compensa. Cada bloque de código de abajo es fiel
+un outbox agnóstico de la base de datos, una saga que se compensa y un diario de greetings con event sourcing. Cada bloque de código de abajo es fiel
 al framework tal como se distribuye en este repositorio — los atributos, nombres de clase y firmas de
 método se toman literalmente de las fuentes de los paquetes `firefly/*` y del sample de wallet ejecutable
 `samples/lumen`; no se inventan para el tutorial.
@@ -12,8 +12,9 @@ método se toman literalmente de las fuentes de los paquetes `firefly/*` y del s
 Al terminar habrás hecho crecer la porción de ejemplo `Greeting` del starter `firefly/skeleton` hasta
 convertirla en una pequeña funcionalidad de "greetings" con una tabla `greetings` persistida, un
 `#[EventListener]` que reacciona a un evento de dominio entregado a través de un outbox de base de datos, una
-saga de tarjetas de felicitación que se deshace sola y un arranque cacheado sin reflexión — la misma
-arquitectura que usa el [sample de Lumen](#paso-14-y-ahora-que) a mayor escala.
+saga de tarjetas de felicitación que se deshace sola, un diario de greetings con event sourcing proyectado en un
+modelo de lectura y un arranque cacheado sin reflexión — la misma arquitectura que usa el
+[sample de Lumen](#paso-15-y-ahora-que) a mayor escala.
 
 ## Tabla de contenidos
 
@@ -30,7 +31,8 @@ arquitectura que usa el [sample de Lumen](#paso-14-y-ahora-que) a mayor escala.
 11. [Paso 11: la caché sin reflexión y la introspección de salud](#paso-11-la-cache-sin-reflexion-y-la-introspeccion-de-salud)
 12. [Paso 12: un outbox agnóstico de la base de datos y un consumidor](#paso-12-un-outbox-agnostico-de-la-base-de-datos-y-un-consumidor)
 13. [Paso 13: una saga con compensación — `#[Saga]`](#paso-13-una-saga-con-compensacion-saga)
-14. [Paso 14: y ahora qué](#paso-14-y-ahora-que)
+14. [Paso 14: greetings con event sourcing — `#[EventType]`](#paso-14-greetings-con-event-sourcing-eventtype)
+15. [Paso 15: y ahora qué](#paso-15-y-ahora-que)
 
 ## Requisitos previos
 
@@ -1444,12 +1446,355 @@ que esperan señales y temporizadores, la recuperación y los comandos de operac
 
 ---
 
-## Paso 14: y ahora qué
+## Paso 14: greetings con event sourcing — `#[EventType]`
+
+El Paso 6 guardó cada greeting como una fila, y el renombrado del Paso 9 la sobrescribió: la tabla conoce el
+mensaje actual y nada de los anteriores. El event sourcing conserva esa otra mitad. En este paso cada greeting que
+envías a un nombre se registra como un **evento** en un almacén de eventos, un pequeño agregado se reconstruye a
+partir de esos eventos en cada petición, y una **proyección** mantiene al día un modelo de lectura — cuántas veces
+se ha saludado a cada nombre, y el último mensaje — desde un **punto de control**.
+
+El proveedor del almacén de eventos está en el bloque `eventsourcing` de `config/firefly.php`:
+
+<!-- source: skeleton/config/firefly.php -->
+
+```php
+'eventsourcing' => [
+    // …
+    'store' => [
+        'provider' => env('FIREFLY_EVENTSOURCING_STORE', 'memory'),
+        'connection' => env('FIREFLY_EVENTSOURCING_DB_CONNECTION'),
+        'batch-size' => 500,
+    ],
+    // …
+],
+```
+
+`memory` lo olvida todo cuando termina el proceso; pásalo a la base de datos:
+
+```bash
+echo 'FIREFLY_EVENTSOURCING_STORE=database' >> .env
+```
+
+Primero el evento, `app/Greetings/GreetingSaid.php`. `#[EventType]` le da el nombre estable que guarda el almacén:
+
+<!-- source: tests/Fixtures/Tutorial/app/Greetings/GreetingSaid.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Greetings;
+
+use DateTimeImmutable;
+use Firefly\Domain\DomainEvent;
+use Firefly\EventSourcing\Event\Attributes\EventType;
+
+#[EventType(name: 'greeting.said')]
+final readonly class GreetingSaid extends DomainEvent
+{
+    public function __construct(
+        public string $name,
+        public string $message,
+        ?string $eventId = null,
+        ?DateTimeImmutable $occurredAt = null,
+    ) {
+        parent::__construct($eventId, $occurredAt);
+    }
+}
+```
+
+Después el agregado, `app/Greetings/GreetingJournal.php` — un diario por nombre, cuyo id es el propio nombre:
+
+<!-- source: tests/Fixtures/Tutorial/app/Greetings/GreetingJournal.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Greetings;
+
+use Firefly\EventSourcing\Aggregate\EventSourcedAggregateRoot;
+
+final class GreetingJournal extends EventSourcedAggregateRoot
+{
+    private int $times = 0;
+
+    private string $lastMessage = '';
+
+    public static function aggregateType(): string
+    {
+        return 'greeting.journal';
+    }
+
+    public static function begin(string $name, string $message): self
+    {
+        $journal = new self($name);
+        $journal->recordThat(new GreetingSaid($name, $message));
+
+        return $journal;
+    }
+
+    public function say(string $message): void
+    {
+        $this->recordThat(new GreetingSaid($this->id(), $message));
+    }
+
+    public function times(): int
+    {
+        return $this->times;
+    }
+
+    public function lastMessage(): string
+    {
+        return $this->lastMessage;
+    }
+
+    protected function applyGreetingSaid(GreetingSaid $event): void
+    {
+        $this->times++;
+        $this->lastMessage = $event->message;
+    }
+}
+```
+
+Su repositorio, `app/Greetings/GreetingJournals.php`, es un único constructor:
+
+<!-- source: tests/Fixtures/Tutorial/app/Greetings/GreetingJournals.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Greetings;
+
+use Firefly\Container\Attributes\Component;
+use Firefly\EventSourcing\Aggregate\EventSourcedRepository;
+use Firefly\EventSourcing\Aggregate\EventSourcingSupport;
+
+/** @extends EventSourcedRepository<GreetingJournal> */
+#[Component]
+final class GreetingJournals extends EventSourcedRepository
+{
+    public function __construct(EventSourcingSupport $support)
+    {
+        parent::__construct($support, GreetingJournal::class);
+    }
+}
+```
+
+El modelo de lectura es una tabla corriente. Crea `database/migrations/2026_10_13_000000_create_greeting_counts_table.php`:
+
+<!-- source: tests/Fixtures/Tutorial/database/migrations/2026_10_13_000000_create_greeting_counts_table.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('greeting_counts', function (Blueprint $table): void {
+            $table->string('name')->primary();
+            $table->unsignedInteger('times');
+            $table->string('last_message');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('greeting_counts');
+    }
+};
+```
+
+y la proyección que la rellena, `app/Greetings/GreetingCounts.php`:
+
+<!-- source: tests/Fixtures/Tutorial/app/Greetings/GreetingCounts.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Greetings;
+
+use Firefly\Container\Attributes\Component;
+use Firefly\EventSourcing\Event\StoredEvent;
+use Firefly\EventSourcing\Projection\Projection;
+use Illuminate\Support\Facades\DB;
+
+#[Component]
+final class GreetingCounts implements Projection
+{
+    public const string TABLE = 'greeting_counts';
+
+    public function name(): string
+    {
+        return 'greeting.counts';
+    }
+
+    public function handles(): array
+    {
+        return ['greeting.said'];
+    }
+
+    public function handle(StoredEvent $event): void
+    {
+        $message = $event->payload['message'] ?? '';
+        $message = is_string($message) ? $message : '';
+
+        if (DB::table(self::TABLE)->where('name', $event->aggregateId)->exists()) {
+            DB::table(self::TABLE)->where('name', $event->aggregateId)->increment('times', 1, ['last_message' => $message]);
+
+            return;
+        }
+
+        DB::table(self::TABLE)->insert(['name' => $event->aggregateId, 'times' => 1, 'last_message' => $message]);
+    }
+
+    public function reset(): void
+    {
+        DB::table(self::TABLE)->delete();
+    }
+
+    /** @return array{name: string, times: int, lastMessage: string}|null */
+    public static function find(string $name): ?array
+    {
+        $row = DB::table(self::TABLE)->where('name', $name)->first();
+        if ($row === null) {
+            return null;
+        }
+
+        $values = (array) $row;
+        $times = $values['times'] ?? 0;
+        $message = $values['last_message'] ?? '';
+
+        return ['name' => $name, 'times' => is_numeric($times) ? (int) $times : 0, 'lastMessage' => is_string($message) ? $message : ''];
+    }
+}
+```
+
+Por último los endpoints, `app/Http/GreetingJournalController.php` — el `POST` escribe a través del agregado y el
+`GET` lee la proyección:
+
+<!-- source: tests/Fixtures/Tutorial/app/Http/GreetingJournalController.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http;
+
+use App\Greetings\GreetingCounts;
+use App\Greetings\GreetingJournal;
+use App\Greetings\GreetingJournals;
+use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
+use Firefly\Web\Attributes\GetMapping;
+use Firefly\Web\Attributes\PathVariable;
+use Firefly\Web\Attributes\PostMapping;
+use Firefly\Web\Attributes\RestController;
+
+#[RestController]
+final class GreetingJournalController
+{
+    public function __construct(private readonly GreetingJournals $journals) {}
+
+    /** @return array{name: string, times: int} */
+    #[PostMapping('/journal/{name}', status: 201)]
+    public function say(#[PathVariable] string $name): array
+    {
+        $message = "Hello, {$name}!";
+        $journal = $this->journals->find($name);
+
+        if ($journal === null) {
+            $journal = GreetingJournal::begin($name, $message);
+        } else {
+            $journal->say($message);
+        }
+
+        $this->journals->save($journal);
+
+        return ['name' => $name, 'times' => $journal->times()];
+    }
+
+    /** @return array{name: string, times: int, lastMessage: string} */
+    #[GetMapping('/journal/{name}')]
+    public function show(#[PathVariable] string $name): array
+    {
+        return GreetingCounts::find($name)
+            ?? throw new ResourceNotFoundException("No greeting to {$name} has been projected yet.");
+    }
+}
+```
+
+Elemento a elemento:
+
+- **`#[EventType(name: 'greeting.said')]`** da nombre al evento para el almacén; `firefly:cache` lo compila, y una
+  clase de evento sin él se rechaza al hacer append, así que no se guarda nada que no se pueda volver a leer.
+- **`GreetingJournal`** no tiene fila. `recordThat()` aplica el evento en el acto y lo deja en el búfer;
+  `applyGreetingSaid()` es el único código que cambia `times` y `lastMessage`, así que reproducir los eventos
+  reconstruye el mismo diario.
+- **`GreetingJournals::find()`** reproduce los eventos de un nombre (`null` cuando no hay ninguno); **`save()`**
+  añade los nuevos bajo la versión que cargó — dos peticiones que saludan a Ada desde la misma versión no pueden
+  ganar las dos: la segunda recibe un 409 `ConcurrencyException`.
+- **`GreetingCounts`** es un `#[Component]`, así que el ejecutor de proyecciones lo encuentra. Lee el flujo global
+  desde su punto de control, y sus filas y el punto de control se confirman en una sola transacción sobre la
+  misma conexión.
+
+Vuelve a compilar, migra y saluda dos veces a Ada:
+
+```bash
+php artisan firefly:cache
+php artisan migrate        # las tablas del almacén de eventos y greeting_counts
+
+curl -X POST http://127.0.0.1:8000/journal/Ada
+# {"name":"Ada","times":1}
+curl -X POST http://127.0.0.1:8000/journal/Ada
+# {"name":"Ada","times":2}
+
+curl -i http://127.0.0.1:8000/journal/Ada
+# HTTP/1.1 404 Not Found   <- problem+json: nada ha proyectado aún los greetings
+```
+
+Los dos eventos están en `firefly_eventsourcing_events`; el modelo de lectura no ha oído hablar de ellos. Ponlo al
+día:
+
+```bash
+php artisan firefly:eventsourcing:projections:run
+#   INFO  greeting.counts: caught-up, 2 event(s) handled, at position 2.
+
+curl http://127.0.0.1:8000/journal/Ada
+# {"name":"Ada","times":2,"lastMessage":"Hello, Ada!"}
+```
+
+El propio test del repositorio (`tests/TutorialGreetingJournalTest.php`) hace exactamente estas peticiones y
+ejecuta exactamente este comando. En producción mantén `php artisan firefly:eventsourcing:projections:run --live`
+en marcha bajo un supervisor de procesos; `php artisan firefly:eventsourcing:projections` muestra el punto de
+control y el retraso de cada proyección, y `php artisan firefly:eventsourcing:projections:rebuild greeting.counts`
+tira el modelo de lectura y reproduce en él cada evento — el test borra `greeting_counts` y lo recupera así.
+Consulta [Event Sourcing](modules/eventsourcing.md) para las instantáneas, los upcasters, la publicación de los
+eventos añadidos por el outbox y el almacén de orquestación con event sourcing, y el Capítulo 9B del
+[libro](book.md) para todos ellos sobre el sample de Lumen.
+
+---
+
+## Paso 15: y ahora qué
 
 Has construido una pequeña porción de funcionalidad — `#[RestController]` → `#[Service]` →
 `#[ConfigProperties]` → `#[Repository]` → `#[Valid]` → errores RFC-7807 →
 `#[CommandHandler]`/`#[QueryHandler]` → `#[EventListener]` → un outbox de base de datos → una `#[Saga]` →
-un arranque cacheado, sin reflexión — usando
+un diario `#[EventType]` y su proyección → un arranque cacheado, sin reflexión — usando
 únicamente los atributos reales y ya distribuidos del propio framework. Desde aquí:
 
 ### Fundamentos
@@ -1488,6 +1833,8 @@ un arranque cacheado, sin reflexión — usando
   fuera.
 - [Webhooks](modules/webhooks.md) y [Callbacks](modules/callbacks.md) — webhooks firmados de entrada,
   callbacks firmados de salida, ambos sobre el bus de eventos.
+- [Event Sourcing](modules/eventsourcing.md) — el almacén de eventos del Paso 14, más instantáneas, upcasters,
+  la publicación por el outbox y las sagas guardadas como flujos de eventos.
 
 ### Producción
 
