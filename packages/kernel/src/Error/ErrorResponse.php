@@ -83,7 +83,9 @@ final readonly class ErrorResponse
             code: $e->errorCode(),
             category: $e->category(),
             severity: $e->severity(),
-            detail: $e->getMessage(),
+            // detail(), not getMessage(): a wrapper's message is the log's line, and its detail is the
+            // cause's own sentence or null (the member is then left out) — see FireflyException.
+            detail: $e->detail(),
             type: $type,
             instance: $instance,
             traceId: $traceId,

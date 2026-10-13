@@ -151,3 +151,12 @@ it('keeps extension members out of the array when there are none', function () {
 
     expect(array_keys($payload))->toBe(['status', 'title', 'code', 'category', 'severity', 'detail']);
 });
+
+it('publishes the exception\'s detail rather than its message, and leaves the member out when it is withheld', function () {
+    $replaced = ErrorResponse::fromException((new ResourceNotFoundException('Loading [App\Order] failed: Order 42 not found'))->withDetail('Order 42 not found'));
+    $withheld = ErrorResponse::fromException((new ResourceNotFoundException('select * from orders where id = 42'))->withDetail(null));
+
+    expect($replaced->detail)->toBe('Order 42 not found')
+        ->and($withheld->detail)->toBeNull()
+        ->and($withheld->toArray())->not->toHaveKey('detail');
+});
