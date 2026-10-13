@@ -28,6 +28,20 @@ trait BootsLumenOnIntegrationServer
         parent::setUp();
     }
 
+    /**
+     * Closes the lane connection before the application is flushed. On the sqlite lane the next test's migrate:fresh
+     * truncates the database FILE (SQLiteBuilder::refreshDatabaseFile); a WAL connection the previous application
+     * left open over it would then answer "database is locked" on the next boot's journal_mode pragma.
+     */
+    protected function tearDown(): void
+    {
+        if ($this->app !== null) {
+            $this->app->make('db')->disconnect('lumen-it');
+        }
+
+        parent::tearDown();
+    }
+
     protected function resolveApplicationConfiguration($app): void
     {
         parent::resolveApplicationConfiguration($app);
