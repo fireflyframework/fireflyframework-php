@@ -10,7 +10,9 @@ use Firefly\EventSourcing\Event\StoredEvent;
 /**
  * Narrows a global read: any of the event types, any of the aggregate types, occurredAt in [from, before), and one
  * tenant. Empty lists and nulls do not narrow. The database store turns each member into a WHERE; matches() is the
- * same rule for the memory store.
+ * same rule for the memory store. The filter matches the STORED type and metadata, before upcasting: a WHERE can
+ * only see the stored columns, so an event whose upcaster renames it is found by its stored name, never by the
+ * name it is read as.
  */
 final readonly class EventFilter
 {

@@ -36,7 +36,11 @@ interface EventStore
 
     public function exists(string $aggregateId): bool;
 
-    /** @return list<StoredEvent> */
+    /**
+     * The filter matches the stored type and metadata, before upcasting; only the matching events are upcast.
+     *
+     * @return list<StoredEvent>
+     */
     public function readAll(int $afterPosition = 0, int $limit = 500, ?EventFilter $filter = null): array;
 
     /** The highest global position given so far (0 for an empty store). */

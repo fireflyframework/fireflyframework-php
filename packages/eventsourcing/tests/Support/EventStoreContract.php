@@ -169,6 +169,19 @@ final class EventStoreContract
                 expect([$loaded->eventVersion, $loaded->payload])->toBe([2, ['total' => 5, 'currency' => 'EUR']])
                     ->and([$read->eventVersion, $read->payload])->toBe([2, ['total' => 5, 'currency' => 'EUR']]);
             },
+            'filters the global stream on the stored type, before a renaming upcaster runs' => static function (Closure $make): void {
+                $store = self::store($make, new UpcasterChain([new CallbackEventUpcaster('order.created', 1, static fn (array $p): array => $p, toType: 'order.placed')]));
+                $store->append('o-1', 'order', [self::event('order.created')], 0);
+                $store->append('o-2', 'order', [self::event('order.placed')], 0);
+
+                $byStoredName = $store->readAll(0, 100, EventFilter::ofEventTypes('order.created'));
+                $byReadName = $store->readAll(0, 100, EventFilter::ofEventTypes('order.placed'));
+
+                expect(self::ids($byStoredName))->toBe(['o-1'])
+                    ->and(array_map(static fn (StoredEvent $e): array => [$e->eventType, $e->eventVersion], $byStoredName))->toBe([['order.placed', 2]])
+                    ->and(self::ids($byReadName))->toBe(['o-2'])
+                    ->and(array_map(static fn (StoredEvent $e): string => $e->eventType, $store->readAll(0, 100)))->toBe(['order.placed', 'order.placed']);
+            },
             'treats an empty append as a no-op and reports itself healthy' => static function (Closure $make): void {
                 $store = self::store($make);
 

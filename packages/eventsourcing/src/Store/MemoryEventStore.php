@@ -21,7 +21,9 @@ use Firefly\EventSourcing\Upcasting\UpcasterChain;
  * firefly.eventsourcing.store.provider=memory: one process, lost on exit. It is the reference behavior of the
  * contract, and it stores what the database stores: every event goes through the PayloadNormalizer and the
  * EventEnvelopeCodec on the way in and is decoded and upcast on the way out. A payload that works here therefore
- * works on a database too. One process is its own commit order, so global positions are given at append.
+ * works on a database too. readAll() matches its EventFilter against the stored, pre-upcast event and upcasts only
+ * the matches, as the database's WHERE does. One process is its own commit order, so global positions are given at
+ * append.
  */
 final class MemoryEventStore implements EventStore
 {
@@ -87,7 +89,7 @@ final class MemoryEventStore implements EventStore
         foreach ($this->streams[$aggregateId] ?? [] as $record) {
             $version = $record['event']->aggregateVersion;
             if ($version >= $fromVersion && ($toVersion === null || $version <= $toVersion)) {
-                $events[] = $this->read($record);
+                $events[] = $this->upcasters->apply($this->decode($record));
             }
         }
 
@@ -109,9 +111,9 @@ final class MemoryEventStore implements EventStore
         $events = [];
         for ($position = max(0, $afterPosition); $position < count($this->global) && count($events) < max(1, $limit); $position++) {
             [$aggregateId, $index] = $this->global[$position];
-            $event = $this->read($this->streams[$aggregateId][$index]);
+            $event = $this->decode($this->streams[$aggregateId][$index]);
             if ($filter === null || $filter->matches($event)) {
-                $events[] = $event;
+                $events[] = $this->upcasters->apply($event);
             }
         }
 
@@ -128,13 +130,18 @@ final class MemoryEventStore implements EventStore
         return true;
     }
 
-    /** @param array{event: StoredEvent, raw: string} $record */
-    private function read(array $record): StoredEvent
+    /**
+     * The event as the database would hand it back, before upcasting: the stored type, version and metadata the
+     * EventFilter matches, exactly as the database store's WHERE does.
+     *
+     * @param  array{event: StoredEvent, raw: string}  $record
+     */
+    private function decode(array $record): StoredEvent
     {
         $decoded = $this->codec->decode($record['raw']);
         $event = $record['event'];
 
-        return $this->upcasters->apply(new StoredEvent($event->eventId, $event->aggregateId, $event->aggregateType, $event->aggregateVersion, $event->globalPosition, $event->eventType, $event->eventVersion, $decoded['payload'], $decoded['metadata'], $event->occurredAt, $event->recordedAt));
+        return new StoredEvent($event->eventId, $event->aggregateId, $event->aggregateType, $event->aggregateVersion, $event->globalPosition, $event->eventType, $event->eventVersion, $decoded['payload'], $decoded['metadata'], $event->occurredAt, $event->recordedAt);
     }
 
     /** @return array<string, mixed> */
