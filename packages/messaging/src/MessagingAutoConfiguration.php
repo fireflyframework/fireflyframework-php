@@ -9,6 +9,7 @@ use Firefly\Container\Attributes\Bean;
 use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Messaging\Broker\InMemoryMessageBroker;
 use Firefly\Messaging\Broker\QueueMessageBroker;
 use Firefly\Messaging\DeadLetter\DeadLetterStore;
@@ -17,7 +18,7 @@ use Illuminate\Container\Container;
 
 /**
  * Always-on messaging transport wiring. Selects the MessageBrokerPort adapter by firefly.messaging.provider
- * (`memory` default | `queue`) and the DeadLetterStore default. #[Order(1000)] places it after user definitions;
+ * (`memory` default | `queue`; `kafka` and `rabbitmq` are bound by the eda-kafka / eda-rabbitmq adapters) and the DeadLetterStore default. #[Order(1000)] places it after user definitions;
  * each #[ConditionalOnMissingBean] lets an app bind its own and win. Both adapters are singletons (the #[Bean]
  * default), so the wiring pass and the queue worker share ONE subscriber set. Mirrors EdaAutoConfiguration.
  */
@@ -29,7 +30,16 @@ final class MessagingAutoConfiguration
     #[ConditionalOnMissingBean(MessageBrokerPort::class)]
     public function messageBroker(Config $config, Container $container): MessageBrokerPort
     {
-        if ($config->string('firefly.messaging.provider', 'memory') === 'queue') {
+        $provider = $config->string('firefly.messaging.provider', 'memory');
+
+        // kafka and rabbitmq are bound at #[Order(900)] by eda-kafka / eda-rabbitmq, before this configuration is
+        // asked. Reaching here with either means that adapter did not bind — falling back to the in-memory broker
+        // would publish into the void.
+        if ($provider === 'kafka' || $provider === 'rabbitmq') {
+            throw new ConfigurationException("firefly.messaging.provider={$provider} but no {$provider} MessageBrokerPort was bound; is the firefly/eda-{$provider} adapter installed and, for kafka, ext-rdkafka loaded?");
+        }
+
+        if ($provider === 'queue') {
             $connection = $config->has('firefly.messaging.queue.connection') ? $config->string('firefly.messaging.queue.connection') : null;
             $queue = $config->has('firefly.messaging.queue.name') ? $config->string('firefly.messaging.queue.name') : null;
 
