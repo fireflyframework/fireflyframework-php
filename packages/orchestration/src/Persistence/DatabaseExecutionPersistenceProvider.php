@@ -23,7 +23,10 @@ use Throwable;
  * nothing (every first save) takes a gap lock, and two workers saving new executions whose ids share an index
  * gap then deadlock on each other's INSERT (MySQL and MariaDB error 1213). save() instead reads the stored
  * keys with a plain select, deletes only the obsolete ones by exact primary key (record locks, no gap
- * locks) and upserts the new set on [correlation_id, attribute_key]. A top-level save() also retries a
+ * locks), updates each kept key by exact primary key and inserts the new ones. The attributes are not upserted:
+ * SQL Server runs a multi-row upsert as a MERGE that can scan the whole table, and under READ COMMITTED that scan
+ * waits on every row another worker's open checkpoint holds — so a save of one execution blocked behind a save
+ * of another. Statements keyed on this execution's own primary keys touch only its own rows on every server. A top-level save() also retries a
  * deadlock or serialization failure up to ATTEMPTS times; inside a caller's transaction Laravel cannot
  * retry a nested block, so the error reaches the caller, whose own transaction decides what to do.
  */
@@ -67,7 +70,8 @@ final class DatabaseExecutionPersistenceProvider implements ExecutionPersistence
         $this->connection->transaction(function () use ($row, $state, $attributes): void {
             $this->connection->table(OrchestrationSchema::EXECUTIONS)->upsert([$row], ['correlation_id'], self::UPDATED);
 
-            $obsolete = array_values(array_diff($this->attributeKeys($state->correlationId), array_column($attributes, 'attribute_key')));
+            $stored = $this->attributeKeys($state->correlationId);
+            $obsolete = array_values(array_diff($stored, array_column($attributes, 'attribute_key')));
             if ($obsolete !== []) {
                 $this->connection->table(OrchestrationSchema::SEARCH_ATTRIBUTES)
                     ->where('correlation_id', $state->correlationId)
@@ -75,8 +79,21 @@ final class DatabaseExecutionPersistenceProvider implements ExecutionPersistence
                     ->delete();
             }
 
-            if ($attributes !== []) {
-                $this->connection->table(OrchestrationSchema::SEARCH_ATTRIBUTES)->upsert($attributes, ['correlation_id', 'attribute_key'], ['attribute_value']);
+            $new = [];
+            foreach ($attributes as $attribute) {
+                if (! in_array($attribute['attribute_key'], $stored, true)) {
+                    $new[] = $attribute;
+
+                    continue;
+                }
+                $this->connection->table(OrchestrationSchema::SEARCH_ATTRIBUTES)
+                    ->where('correlation_id', $attribute['correlation_id'])
+                    ->where('attribute_key', $attribute['attribute_key'])
+                    ->update(['attribute_value' => $attribute['attribute_value']]);
+            }
+
+            if ($new !== []) {
+                $this->connection->table(OrchestrationSchema::SEARCH_ATTRIBUTES)->insert($new);
             }
         }, self::ATTEMPTS);
     }
