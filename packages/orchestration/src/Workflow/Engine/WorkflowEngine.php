@@ -61,10 +61,13 @@ final class WorkflowEngine
 
     private const int BACKOFF_MAX_SECONDS = 3600;
 
-    /** @var array<string, true> the executions this process is driving right now */
+    /**
+     * @var array<string, int> the executions this process is driving right now, by nesting depth: the lock is
+     *                         reentrant, so one execution can be driven again from inside its own drive
+     */
     private array $driving = [];
 
-    /** @var array<string, true> the executions this process is cancelling or compensating right now */
+    /** @var array<string, int> the executions this process is cancelling or compensating right now, by nesting depth */
     private array $settling = [];
 
     public function __construct(
@@ -465,7 +468,7 @@ final class WorkflowEngine
 
     private function drive(WorkflowDefinition $workflow, ExecutionContext $context): ExecutionState
     {
-        $this->driving[$context->correlationId] = true;
+        self::enter($this->driving, $context->correlationId);
         try {
             $this->applyDeadline($workflow, $context);
 
@@ -494,7 +497,7 @@ final class WorkflowEngine
                 };
             }
         } finally {
-            unset($this->driving[$context->correlationId]);
+            self::leave($this->driving, $context->correlationId);
         }
     }
 
@@ -676,11 +679,36 @@ final class WorkflowEngine
      */
     private function settle(string $correlationId, callable $work): mixed
     {
-        $this->settling[$correlationId] = true;
+        self::enter($this->settling, $correlationId);
         try {
             return $work();
         } finally {
-            unset($this->settling[$correlationId]);
+            self::leave($this->settling, $correlationId);
+        }
+    }
+
+    /**
+     * Marks `$correlationId` one level deeper in `$marks`. A depth, not a flag: a nested call for the same
+     * execution (a compensation that cancels its own workflow, under the reentrant lock) must not clear the
+     * outer call's mark when it returns.
+     *
+     * @param  array<string, int>  $marks
+     */
+    private static function enter(array &$marks, string $correlationId): void
+    {
+        $marks[$correlationId] = ($marks[$correlationId] ?? 0) + 1;
+    }
+
+    /**
+     * @param  array<string, int>  $marks
+     */
+    private static function leave(array &$marks, string $correlationId): void
+    {
+        $depth = ($marks[$correlationId] ?? 1) - 1;
+        if ($depth > 0) {
+            $marks[$correlationId] = $depth;
+        } else {
+            unset($marks[$correlationId]);
         }
     }
 

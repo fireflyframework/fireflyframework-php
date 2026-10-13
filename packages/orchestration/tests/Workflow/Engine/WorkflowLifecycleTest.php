@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 use Firefly\Orchestration\Core\Exception\InvalidExecutionStateException;
 use Firefly\Orchestration\Core\ExecutionContext;
+use Firefly\Orchestration\Core\ExecutionPattern;
 use Firefly\Orchestration\Core\ExecutionStatus;
 use Firefly\Orchestration\Tests\Support\TestEngines;
 use Firefly\Orchestration\Workflow\Builder\WorkflowBuilder;
+use Firefly\Orchestration\Workflow\Engine\WorkflowEngine;
 
 function orchestrationLifecycleEngines(): TestEngines
 {
@@ -86,4 +88,48 @@ it('keeps the deadline of a waiting workflow in its wake-up when its search attr
     expect($waiting->wakeAt)->not->toBeNull()
         ->and($upserted->wakeAt)->toEqual($waiting->wakeAt)
         ->and($engines->workflows->find('w-2')?->wakeAt)->toEqual($waiting->wakeAt);
+});
+
+it('keeps an execution marked as settling while a nested cancel of the same execution returns', function (): void {
+    $engines = TestEngines::create();
+    $engine = $engines->workflows;
+    $marked = [];
+    $peek = static fn (string $id): bool => (bool) Closure::bind(fn (): bool => isset($this->settling[$id]), $engine, WorkflowEngine::class)();
+    $engines->workflowRegistry->register(WorkflowBuilder::workflow('undo')
+        ->step('a')->handler(static fn (): string => 'did a')->compensation(static function () use ($engine, $peek, &$marked): void {
+            // A compensation that cancels its own workflow re-enters settle() for the same id under the
+            // reentrant lock; returning from it must not clear the outer compensation's mark.
+            $engine->cancel('h-1');
+            $marked[] = $peek('h-1');
+        })->add()
+        ->build());
+    $engine->start('undo', correlationId: 'h-1');
+
+    $engine->compensate('h-1');
+
+    expect($marked)->toBe([true])
+        ->and($peek('h-1'))->toBeFalse();
+});
+
+it('keeps an execution marked as driving while a nested drive of the same execution returns', function (): void {
+    $engines = TestEngines::create();
+    $engine = $engines->workflows;
+    $inner = WorkflowBuilder::workflow('inner')->step('noop')->handler(static fn (): string => 'ok')->add()->build();
+    $marked = [];
+    $peek = static fn (string $id): bool => (bool) Closure::bind(fn (): bool => isset($this->driving[$id]), $engine, WorkflowEngine::class)();
+    $outer = WorkflowBuilder::workflow('outer')
+        ->step('nest')->handler(static function () use ($engine, $engines, $inner, $peek, &$marked): string {
+            Closure::bind(function () use ($inner, $engines): void {
+                $this->drive($inner, ExecutionContext::start(ExecutionPattern::Workflow, 'inner', [], [], 'h-2', $engines->clock->now()));
+            }, $engine, WorkflowEngine::class)();
+            $marked[] = $peek('h-2');
+
+            return 'nested';
+        })->add()
+        ->build();
+
+    $engine->start($outer, correlationId: 'h-2');
+
+    expect($marked)->toBe([true])
+        ->and($peek('h-2'))->toBeFalse();
 });
