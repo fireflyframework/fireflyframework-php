@@ -12,6 +12,7 @@ use Firefly\Eda\Postgres\Outbox\OutboxSchema;
 use Firefly\Eda\Postgres\PostgresEventConsumer;
 use Firefly\Eda\Postgres\PostgresEventPublisher;
 use Firefly\Eda\Postgres\Tests\Fixtures\SpyDownstreamPublisher;
+use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -32,24 +33,11 @@ uses(TestCase::class);
  * Every payload/headers assertion decodes the jsonb/json column and compares the MAP (never a raw-string equality,
  * which pgsql key/whitespace normalisation would false-fail).
  *
- * @return array<string, mixed> a Laravel pgsql connection config parsed from FIREFLY_PG_DSN
+ * @return array<string, mixed>
  */
 function outbox_pg_config(): array
 {
-    $parts = [];
-    foreach (explode(';', (string) getenv('FIREFLY_PG_DSN')) as $kv) {
-        [$key, $value] = array_pad(explode('=', $kv, 2), 2, '');
-        $parts[$key] = $value;
-    }
-
-    return [
-        'driver' => 'pgsql',
-        'host' => $parts['host'] ?? '127.0.0.1',
-        'port' => $parts['port'] ?? '5432',
-        'database' => $parts['dbname'] ?? 'postgres',
-        'username' => $parts['user'] ?? 'postgres',
-        'password' => $parts['password'] ?? '',
-    ];
+    return IntegrationDsn::connectionConfig('pgsql');
 }
 
 /** Decode a json/jsonb column value to a comparable map (jsonb-aware — never a raw-string compare). */
@@ -171,6 +159,6 @@ it('same-tx write -> terminal in-process consumer, crash-safety, plus optional r
     $writer->disconnect();
     $consumerConn->disconnect();
 })->skip(
-    ! extension_loaded('pdo_pgsql') || getenv('FIREFLY_PG_DSN') === false,
-    'Set FIREFLY_PG_DSN (and pdo_pgsql) to run the @group integration Postgres outbox round-trip.',
+    IntegrationDsn::skipReason('pgsql') !== null,
+    (string) IntegrationDsn::skipReason('pgsql'),
 )->group('integration');

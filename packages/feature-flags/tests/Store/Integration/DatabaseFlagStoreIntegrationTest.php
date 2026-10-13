@@ -8,6 +8,7 @@ use Firefly\FeatureFlags\Store\FeatureFlagSchema;
 use Firefly\FeatureFlags\Store\FlagStoreConflict;
 use Firefly\FeatureFlags\Tests\Support\DatabaseStoreIntegration;
 use Firefly\FeatureFlags\Tests\Support\FlagStores;
+use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Database\QueryException;
 use Symfony\Component\Process\Process;
 
@@ -32,7 +33,7 @@ foreach (['Postgres' => ['pgsql', 'FIREFLY_PG_DSN'], 'Mysql' => ['mysql', 'FIREF
         expect($store->get('A'))->toBeNull()->and($store->get('a')?->version)->toBe(1)
             ->and($store->history('A')[0]->previous)->toBe($store->get('a')?->definition);
         FeatureFlagSchema::drop($connection->getSchemaBuilder());
-    })->group('integration')->skip(getenv($variable) === false, "Set {$variable} to an isolated server.");
+    })->group('integration')->skip(IntegrationDsn::missing($variable), "Set {$variable} to an isolated server.");
 
     it("rolls back failed audit writes inside an outer transaction on {$backend}", function () use ($driver, $variable): void {
         $connection = DatabaseStoreIntegration::connection($driver, $variable);
@@ -51,7 +52,7 @@ foreach (['Postgres' => ['pgsql', 'FIREFLY_PG_DSN'], 'Mysql' => ['mysql', 'FIREF
         expect($store->get('new'))->toBeNull()->and($store->get('keep')?->version)->toBe(1)
             ->and(count($store->history('keep')))->toBe(1);
         FeatureFlagSchema::drop($connection->getSchemaBuilder());
-    })->group('integration')->skip(getenv($variable) === false, "Set {$variable} to an isolated server.");
+    })->group('integration')->skip(IntegrationDsn::missing($variable), "Set {$variable} to an isolated server.");
     it("serializes competing process updates and emits only surviving callbacks on {$backend}", function () use ($driver, $variable): void {
         $connection = DatabaseStoreIntegration::connection($driver, $variable);
         FeatureFlagSchema::drop($connection->getSchemaBuilder());
@@ -91,7 +92,7 @@ foreach (['Postgres' => ['pgsql', 'FIREFLY_PG_DSN'], 'Mysql' => ['mysql', 'FIREF
             $process->stop();
             FeatureFlagSchema::drop($connection->getSchemaBuilder());
         }
-    })->group('integration')->skip(getenv($variable) === false, "Set {$variable} to an isolated server.");
+    })->group('integration')->skip(IntegrationDsn::missing($variable), "Set {$variable} to an isolated server.");
 
     it("reads PyFly microsecond UTC rows independently of the SQL session zone on {$backend}", function () use ($driver, $variable): void {
         $connection = DatabaseStoreIntegration::connection($driver, $variable);
@@ -106,6 +107,6 @@ foreach (['Postgres' => ['pgsql', 'FIREFLY_PG_DSN'], 'Mysql' => ['mysql', 'FIREF
         expect($store->get('pyfly')?->updatedAt->format('Y-m-d H:i:s.uP'))->toBe('2026-10-01 12:00:00.123456+00:00')
             ->and($store->history('pyfly')[0]->changedAt->format('Y-m-d H:i:s.uP'))->toBe('2026-10-01 12:00:00.123456+00:00');
         FeatureFlagSchema::drop($connection->getSchemaBuilder());
-    })->group('integration')->skip(getenv($variable) === false, "Set {$variable} to an isolated server.");
+    })->group('integration')->skip(IntegrationDsn::missing($variable), "Set {$variable} to an isolated server.");
 
 }

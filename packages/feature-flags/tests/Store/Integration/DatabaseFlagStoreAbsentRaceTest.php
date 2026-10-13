@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Firefly\FeatureFlags\Store\DatabaseFlagStore;
 use Firefly\FeatureFlags\Store\FeatureFlagSchema;
 use Firefly\FeatureFlags\Tests\Support\DatabaseStoreIntegration;
+use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Database\Schema\Blueprint;
 use Symfony\Component\Process\InputStream;
 use Symfony\Component\Process\Process;
@@ -98,7 +99,7 @@ foreach (['Postgres' => ['pgsql', 'FIREFLY_PG_DSN'], 'Mysql' => ['mysql', 'FIREF
                     $connection->getSchemaBuilder()->drop('recovery_markers');
                     FeatureFlagSchema::drop($connection->getSchemaBuilder());
                 }
-            })->with($ownership === 'root' ? ['direct'] : ['direct', 'callback'])->group('integration')->skip(getenv($variable) === false, "Set {$variable} to an isolated server.");
+            })->with($ownership === 'root' ? ['direct'] : ['direct', 'callback'])->group('integration')->skip(IntegrationDsn::missing($variable), "Set {$variable} to an isolated server.");
         }
     }
 }
