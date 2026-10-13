@@ -74,6 +74,9 @@ See [Installation](installation.md) for requirements and manual setup, and
   dispatches commands and queries, with domain events bridged onto the event-transport bus after commit.
 - **Event-driven, with real brokers** — an in-memory default plus a same-transaction outbox on every SQL database
   (with LISTEN/NOTIFY on PostgreSQL), RabbitMQ and Kafka adapters behind one `EventPublisher` port.
+- **Work that spans systems** — [sagas with compensation, TCC and durable workflows](modules/orchestration.md)
+  with checkpoints, recovery and a dead-letter queue, signed inbound [webhooks](modules/webhooks.md) and
+  outbound [callbacks](modules/callbacks.md), all on the same event bus.
 - **Secure by default** — a session-persisted `SecurityContext`, form login on the framework's own page, HTTP
   Basic, remember-me, logout, deny-by-default [`HttpSecurity`](modules/security.md) URL rules, and method
   security (`#[PreAuthorize]`, `#[PostAuthorize]`, `#[PreFilter]`, `#[PostFilter]`) enforced on **any**
@@ -126,7 +129,7 @@ Want to see it all working together? The
 [Lumen sample](https://github.com/fireflyframework/fireflyframework-php/tree/main/samples/lumen) is a
 runnable digital-wallet & ledger vertical slice exercising `#[Transactional]`, CQRS, domain events over EDA,
 method security, and a REST layer with RFC-7807 problem-details. The guided, book-style *larafly by example*
-book — 16 chapters plus appendices, bilingual (English + Spanish), building this exact sample — is available
+book — 18 chapters plus appendices, bilingual (English + Spanish), building this exact sample — is available
 as [PDF and EPUB downloads in English and Spanish](book.md).
 
 ## Quick Links

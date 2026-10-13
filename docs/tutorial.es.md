@@ -3,15 +3,17 @@
 Este es un recorrido paso a paso, construido a mano, de cómo levantar una funcionalidad LaraFly real desde
 una aplicación creada con `firefly new` hasta una porción completa gobernada por atributos — un controlador REST,
 un servicio, configuración tipada, un modelo de dominio respaldado por un repositorio, validación de
-peticiones, manejo de errores RFC-7807, un par de comando/consulta CQRS y un listener de evento de dominio.
-Cada bloque de código de abajo es fiel al framework tal como se distribuye en este repositorio — los
-atributos, nombres de clase y firmas de método se toman literalmente de las fuentes de los paquetes
-`firefly/*` y del sample de wallet ejecutable `samples/lumen`; no se inventan para el tutorial.
+peticiones, manejo de errores RFC-7807, un par de comando/consulta CQRS, un listener de evento de dominio,
+un outbox agnóstico de la base de datos y una saga que se compensa. Cada bloque de código de abajo es fiel
+al framework tal como se distribuye en este repositorio — los atributos, nombres de clase y firmas de
+método se toman literalmente de las fuentes de los paquetes `firefly/*` y del sample de wallet ejecutable
+`samples/lumen`; no se inventan para el tutorial.
 
 Al terminar habrás hecho crecer la porción de ejemplo `Greeting` del starter `firefly/skeleton` hasta
 convertirla en una pequeña funcionalidad de "greetings" con una tabla `greetings` persistida, un
-`#[EventListener]` que reacciona a un evento de dominio y un arranque cacheado sin reflexión — la misma
-arquitectura que usa el [sample de Lumen](#paso-12-y-ahora-que) a mayor escala.
+`#[EventListener]` que reacciona a un evento de dominio entregado a través de un outbox de base de datos, una
+saga de tarjetas de felicitación que se deshace sola y un arranque cacheado sin reflexión — la misma
+arquitectura que usa el [sample de Lumen](#paso-14-y-ahora-que) a mayor escala.
 
 ## Tabla de contenidos
 
@@ -26,7 +28,9 @@ arquitectura que usa el [sample de Lumen](#paso-12-y-ahora-que) a mayor escala.
 9. [Paso 9: comandos y consultas — CQRS](#paso-9-comandos-y-consultas-cqrs)
 10. [Paso 10: reaccionando a un evento de dominio — `#[EventListener]`](#paso-10-reaccionando-a-un-evento-de-dominio-eventlistener)
 11. [Paso 11: la caché sin reflexión y la introspección de salud](#paso-11-la-cache-sin-reflexion-y-la-introspeccion-de-salud)
-12. [Paso 12: y ahora qué](#paso-12-y-ahora-que)
+12. [Paso 12: un outbox agnóstico de la base de datos y un consumidor](#paso-12-un-outbox-agnostico-de-la-base-de-datos-y-un-consumidor)
+13. [Paso 13: una saga con compensación — `#[Saga]`](#paso-13-una-saga-con-compensacion-saga)
+14. [Paso 14: y ahora qué](#paso-14-y-ahora-que)
 
 ## Requisitos previos
 
@@ -1147,11 +1151,305 @@ lista completa de endpoints y el modelo de exposición/seguridad.
 
 ---
 
-## Paso 12: y ahora qué
+## Paso 12: un outbox agnóstico de la base de datos y un consumidor
+
+En el Paso 10 el listener se ejecutó dentro de la petición `PATCH`, porque el bus de eventos del skeleton vive en
+memoria: rápido, y perdido si el proceso muere entre el commit y el listener. El outbox de base de datos cierra ese
+hueco sin que cambie una sola línea de tu código. El evento se escribe en una tabla **en la misma transacción** que
+el greeting renombrado, y un worker lo entrega después — igual en SQLite, MySQL, MariaDB, PostgreSQL o SQL Server.
+
+El proveedor es la primera clave del bloque `eda` de `config/firefly.php`:
+
+<!-- source: skeleton/config/firefly.php -->
+
+```php
+'eda' => [
+
+    'provider' => env('FIREFLY_EDA_PROVIDER', 'memory'),
+    // …
+],
+```
+
+Cámbialo con la variable de entorno y crea la tabla del outbox — la migración se registra en cuanto el proveedor
+es `database`:
+
+```bash
+echo 'FIREFLY_EDA_PROVIDER=database' >> .env
+php artisan migrate        # crea firefly_eda_outbox
+```
+
+Reinicia `php artisan firefly:serve`, vuelve a renombrar el greeting y mira el log:
+
+```bash
+curl -X PATCH http://127.0.0.1:8000/greetings/Ada/record \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello from the outbox!"}'
+# {"name":"Ada","message":"Hello from the outbox!"}
+
+tail -n 1 storage/logs/laravel.log   # todavía la línea del Paso 10: nada ha entregado aún el evento nuevo
+```
+
+El evento `GreetingRenamed` es una fila `PENDING` en `firefly_eda_outbox`, confirmada junto con el mensaje nuevo.
+Entrégalo con el consumidor — un worker de larga duración en producción, un solo mensaje aquí:
+
+```bash
+php artisan firefly:eda:consume --max-messages=1
+tail -n 1 storage/logs/laravel.log
+```
+
+```
+[2026-07-28 12:20:41] local.INFO: greeting.renamed {"name":"Ada","oldMessage":"Hello again from the database!","newMessage":"Hello from the outbox!", ...}
+```
+
+Qué cambió y qué no:
+
+- **Tu código no cambió.** `GreetingRenamedListener`, `RenameGreetingHandler` y `#[PublishDomainEvent]` están
+  exactamente como los dejaron los Pasos 9 y 10. El outbox se engancha *antes* del commit, a través de la misma
+  frontera `#[Transactional]` que publicaba el evento después de él.
+- **La atomicidad sí.** Si el handler lanza una excepción después de `rename()`, la fila se revierte con el
+  greeting: ningún evento para una escritura que nunca ocurrió, y — como la fila se confirma con el greeting —
+  ningún evento perdido para una que sí ocurrió.
+- **La entrega es un worker.** La fila se *arrienda* a un consumidor antes de que se ejecute el listener, así que
+  puedes lanzar tantos workers `php artisan firefly:eda:consume` como quieras. En SQLite la estrategia de
+  reclamación `auto` es un arrendamiento optimista; en PostgreSQL, MySQL 8.0.1+ y MariaDB 10.6+ es
+  `FOR UPDATE SKIP LOCKED`; en SQL Server, `READPAST`. Un worker que cae a mitad de una entrega deja su fila para
+  que se entregue de nuevo cuando termine el arrendamiento (`firefly.eda.database.lease-seconds`, 300 por
+  defecto) — así que mantén tus listeners idempotentes.
+- **PostgreSQL puede hacerlo mejor.** `FIREFLY_EDA_PROVIDER=postgres` es el mismo outbox más un `pg_notify` al
+  escribir y un despertar por `LISTEN` en el consumidor, de modo que la entrega es inmediata en lugar de por sondeo.
+
+Consulta [Outbox de base de datos de EDA](modules/eda-database.md) para las estrategias de reclamación, el relay
+opcional a RabbitMQ o Kafka (`php artisan firefly:outbox:relay`) y el componente de salud `outbox`, y la
+[Matriz de soporte de bases de datos](database-support.md) para lo que hace cada servidor.
+
+---
+
+## Paso 13: una saga con compensación — `#[Saga]`
+
+Hasta aquí todo ha cabido en una transacción. Vender una tarjeta de felicitación no cabe: reserva una tarjeta
+impresa del stock, cobra al cliente a través de un proveedor de pagos y entrega la tarjeta a un servicio de envío —
+tres sistemas, tres commits y ninguna transacción que los abarque. Si falla el envío, el cobro ya se ha hecho. La
+respuesta es una **saga**: cada paso confirma por su cuenta, cada paso que cambió algo nombra una *compensación*
+que lo deshace, y un fallo ejecuta las compensaciones de los pasos completados, del más reciente al más antiguo.
+
+Los tres sistemas tienen un único sustituto, `app/Cards/CardDesk.php` — en una aplicación real cada uno sería un
+adaptador detrás de su propio puerto; aquí una sola clase en memoria mantiene el paso centrado en la saga, y su
+`$journal` registra cada llamada:
+
+<!-- source: tests/Fixtures/Tutorial/app/Cards/CardDesk.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Cards;
+
+use Firefly\Container\Attributes\Component;
+use RuntimeException;
+
+/**
+ * A stand-in for the three systems a greeting-card order touches — the card stock, the payment provider and the
+ * mailer. A real application has one adapter per system; one in-memory class keeps this step about the saga.
+ * $journal records every call, in order.
+ */
+#[Component]
+final class CardDesk
+{
+    /** @var list<string> */
+    public array $journal = [];
+
+    private int $cards = 0;
+
+    private int $payments = 0;
+
+    public function reserve(): string
+    {
+        $card = 'card-'.++$this->cards;
+        $this->journal[] = "reserve {$card}";
+
+        return $card;
+    }
+
+    public function release(string $card): void
+    {
+        $this->journal[] = "release {$card}";
+    }
+
+    public function charge(int $amountMinor): string
+    {
+        $payment = 'payment-'.++$this->payments;
+        $this->journal[] = "charge {$payment} {$amountMinor}";
+
+        return $payment;
+    }
+
+    public function refund(string $payment): void
+    {
+        $this->journal[] = "refund {$payment}";
+    }
+
+    public function send(string $card, string $to): string
+    {
+        if ($to === 'Nobody') {
+            throw new RuntimeException("The mailer has no address for {$to}.");
+        }
+
+        $this->journal[] = "send {$card} to {$to}";
+
+        return "sent {$card} to {$to}";
+    }
+}
+```
+
+Ahora la saga, `app/Cards/GreetingCardSaga.php`:
+
+<!-- source: tests/Fixtures/Tutorial/app/Cards/GreetingCardSaga.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Cards;
+
+use Firefly\Container\Attributes\Service;
+use Firefly\Orchestration\Core\Argument\FromStep;
+use Firefly\Orchestration\Core\Argument\Input;
+use Firefly\Orchestration\Saga\Attributes\Saga;
+use Firefly\Orchestration\Saga\Attributes\SagaStep;
+
+#[Service]
+#[Saga(name: 'greeting-card')]
+final class GreetingCardSaga
+{
+    public const int PRICE_MINOR = 300;
+
+    public function __construct(private readonly CardDesk $desk) {}
+
+    #[SagaStep(id: 'reserve', compensate: 'release')]
+    public function reserve(): string
+    {
+        return $this->desk->reserve();
+    }
+
+    public function release(string $card): void
+    {
+        $this->desk->release($card);
+    }
+
+    #[SagaStep(id: 'charge', dependsOn: ['reserve'], compensate: 'refund')]
+    public function charge(): string
+    {
+        return $this->desk->charge(self::PRICE_MINOR);
+    }
+
+    public function refund(string $payment): void
+    {
+        $this->desk->refund($payment);
+    }
+
+    #[SagaStep(id: 'send', dependsOn: ['charge'])]
+    public function send(#[FromStep('reserve')] string $card, #[Input('to')] string $to): string
+    {
+        return $this->desk->send($card, $to);
+    }
+}
+```
+
+Elemento a elemento:
+
+- **`#[Saga(name: 'greeting-card')]`** sobre un bean `#[Service]` declara la saga; `firefly:cache` la compila en
+  el manifiesto de orquestación, y la topología se valida en el arranque.
+- **`#[SagaStep(id: 'reserve', compensate: 'release')]`** — un paso hacia delante y el método que lo deshace. La
+  compensación recibe el resultado del paso: `release()` recibe el id de tarjeta que devolvió `reserve()`.
+- **`dependsOn: ['reserve']`** ordena los pasos en capas: `charge` solo se ejecuta después de que `reserve` haya
+  tenido éxito, y `send` solo después de `charge`.
+- **`#[FromStep('reserve')]`** le pasa a `send()` la tarjeta que reservó el primer paso; **`#[Input('to')]`** lee
+  una clave de la entrada de la saga.
+- `send` no tiene compensación: es el último paso, así que nada posterior puede fallar y dejarlo colgado.
+
+Exponla, `app/Http/GreetingCardController.php`:
+
+<!-- source: tests/Fixtures/Tutorial/app/Http/GreetingCardController.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http;
+
+use Firefly\Kernel\Exception\Business\ConflictException;
+use Firefly\Orchestration\Saga\Engine\SagaEngine;
+use Firefly\Web\Attributes\PathVariable;
+use Firefly\Web\Attributes\PostMapping;
+use Firefly\Web\Attributes\RestController;
+
+#[RestController]
+final class GreetingCardController
+{
+    public function __construct(private readonly SagaEngine $sagas) {}
+
+    /** @return array{order: string, status: string} */
+    #[PostMapping('/cards/{to}', status: 201)]
+    public function send(#[PathVariable] string $to): array
+    {
+        $result = $this->sagas->execute('greeting-card', ['to' => $to]);
+
+        if (! $result->success) {
+            throw new ConflictException("The card for {$to} was not sent; every completed step was undone.", 'CARD_NOT_SENT', $result->error);
+        }
+
+        return ['order' => $result->correlationId, 'status' => $result->status->value];
+    }
+}
+```
+
+`SagaEngine::execute()` ejecuta la saga dentro de la petición y devuelve un `SagaResult`; una saga fallida se
+convierte en una `ConflictException`, que la capa web renderiza como problem+json RFC-7807 exactamente igual que
+los errores del Paso 8. Vuelve a compilar y prueba los dos casos:
+
+```bash
+php artisan firefly:cache
+
+curl -X POST http://127.0.0.1:8000/cards/Ada
+# {"order":"…","status":"COMPLETED"}
+
+curl -i -X POST http://127.0.0.1:8000/cards/Nobody
+# HTTP/1.1 409 Conflict   <- problem+json con el código CARD_NOT_SENT
+```
+
+El segundo pedido reservó una tarjeta y cobró al cliente antes de que el envío fallara. El journal muestra lo que
+pasó después, y el propio test del repositorio (`tests/TutorialGreetingCardSagaTest.php`) comprueba exactamente
+este orden:
+
+```
+reserve card-1
+charge payment-1 300
+refund payment-1
+release card-1
+```
+
+El cobro se reembolsó **antes** de liberar la tarjeta — del más reciente al más antiguo, la política
+`strict-sequential` que `firefly.orchestration.saga.compensation-policy` tiene por defecto. Por defecto los puntos
+de control de la saga y sus cartas muertas viven en memoria, lo adecuado para una saga que termina dentro de una
+petición. Define `FIREFLY_ORCHESTRATION_PERSISTENCE=database` y `FIREFLY_ORCHESTRATION_DLQ_STORE=database`
+(después de `php artisan vendor:publish --tag=firefly-orchestration-migrations` y `php artisan migrate`) y cada
+frontera de paso se escribe en `firefly_orchestration_executions`, un pedido fallido acaba en
+`firefly_orchestration_dead_letters`, y `php artisan firefly:orchestration:list --name=greeting-card` y
+`php artisan firefly:orchestration:dlq --name=greeting-card` los muestran. Consulta
+[Orquestación](modules/orchestration.md) para las cinco políticas de compensación, TCC, los workflows duraderos
+que esperan señales y temporizadores, la recuperación y los comandos de operación.
+
+---
+
+## Paso 14: y ahora qué
 
 Has construido una pequeña porción de funcionalidad — `#[RestController]` → `#[Service]` →
 `#[ConfigProperties]` → `#[Repository]` → `#[Valid]` → errores RFC-7807 →
-`#[CommandHandler]`/`#[QueryHandler]` → `#[EventListener]` → un arranque cacheado, sin reflexión — usando
+`#[CommandHandler]`/`#[QueryHandler]` → `#[EventListener]` → un outbox de base de datos → una `#[Saga]` →
+un arranque cacheado, sin reflexión — usando
 únicamente los atributos reales y ya distribuidos del propio framework. Desde aquí:
 
 ### Fundamentos
@@ -1184,6 +1482,12 @@ Has construido una pequeña porción de funcionalidad — `#[RestController]` �
   y la distinción entre las dos superficies de evento (`#[AsEventListener]` frente a `#[EventListener]`).
 - [Brokers de EDA](modules/eda-brokers.md) y [Mensajería](modules/messaging.md) — adaptadores de broker
   reales y el `MessageBrokerPort` de bajo nivel, de bytes en bruto.
+- [Outbox de base de datos de EDA](modules/eda-database.md) — el outbox portable del Paso 12: las estrategias
+  de reclamación, el relay y la matriz de soporte de bases de datos.
+- [Orquestación](modules/orchestration.md) — sagas, TCC y workflows duraderos: todo lo que el Paso 13 dejó
+  fuera.
+- [Webhooks](modules/webhooks.md) y [Callbacks](modules/callbacks.md) — webhooks firmados de entrada,
+  callbacks firmados de salida, ambos sobre el bus de eventos.
 
 ### Producción
 
@@ -1198,10 +1502,12 @@ Has construido una pequeña porción de funcionalidad — `#[RestController]` �
 - [Trazas](modules/tracing.md) y [Logging](modules/logging.md) — un `traceparent` W3C propagado por HTTP,
   por los buses de CQRS y por el bus de eventos, y los mismos identificadores en cada registro de log
   estructurado.
-- [Resiliencia](modules/resilience.md) y [Planificación](modules/scheduling.md) — `Retry`/
-  `CircuitBreaker`/`Bulkhead` y `#[Scheduled]`.
+- [Resiliencia](modules/resilience.md), [Planificación](modules/scheduling.md) y
+  [Bloqueos de planificación en base de datos](modules/scheduling-database.md) — `Retry`/
+  `CircuitBreaker`/`Bulkhead`, `#[Scheduled]` y el bloqueo que mantiene una tarea en un solo nodo.
 - [Testing](modules/testing.md) — el arnés de arranque de `firefly/testing` y los dobles de grabación para
-  cada puerto usado en este tutorial.
+  cada puerto usado en este tutorial, y [Pruebas de integración](modules/integration-testing.md) para los
+  mismos tests sobre servidores reales.
 
 ### Verlo a escala
 

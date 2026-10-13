@@ -32,7 +32,7 @@ site's own [Modules](modules.md) landing page use. All 39 are listed here, and n
 number is maintained on trust: `tests/ModuleDocumentationTest.php` fails the build if a guide is missing
 from the navigation, from the table below, from the root `README.md`'s table, from `docs/index.md` or from
 the landing page, and `tests/SiteNavigationTest.php` reads that number off `docs/modules/*.md` itself, so a
-thirty-ninth guide turns this page red rather than quietly making it wrong.
+fortieth guide turns this page red rather than quietly making it wrong.
 
 ### Foundation
 
@@ -130,7 +130,7 @@ thirty-ninth guide turns this page red rather than quietly making it wrong.
 | Document | Description |
 |----------|-------------|
 | [Modules](modules.md) | The grouped index of all 39 module guides, and how a package wires itself |
-| [CLI Reference](cli.md) | Every `firefly:*` command and `make:firefly-*` generator, including the seventeen contributed by capability packages |
+| [CLI Reference](cli.md) | Every `firefly:*` command and `make:firefly-*` generator, including the twenty contributed by capability packages |
 | [Database Support Matrix](database-support.md) | What each database-backed capability does on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite, and which CI lane proves it |
 | [Laravel Comparison](laravel-comparison.md) | Side-by-side concept mapping for developers coming from plain Laravel |
 | [Versioning](versioning.md) | CalVer (`YY.MM.Patch`), no `version` field, how Packagist derives releases from tags |

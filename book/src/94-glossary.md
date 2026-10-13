@@ -24,21 +24,31 @@
 
 **BootPass** — A single, ordered unit of boot-time work — scanning, condition evaluation, bean registration, route mounting — run by the `FireflyKernel` at a specific `BootPhase`. `ActuatorRouteRegistrar` and `MeterBindingsPass` are both `BootPass`es (Chapters 2, 11).
 
+**Callback (outbound webhook)** — An HTTP request LaraFly sends to a subscriber when an event the subscriber asked for happens on the bus: signed with `X-Firefly-Timestamp` and `X-Firefly-Signature`, retried with back-off, guarded by a circuit breaker per endpoint, and recorded in a replayable execution log. Shipped by `firefly/callbacks` (Chapter 8A).
+
 **Circuit breaker** — A resilience pattern that trips to an open state after a threshold of consecutive failures against a dependency, short-circuiting further calls until the dependency has had time to recover. `firefly/observability`'s `MeterBindingsPass` exposes each configured breaker's live state as a `resilience_circuit_breaker_state{name}` gauge (Chapter 11).
+
+**Claim strategy** — How an outbox consumer picks a row without another consumer picking the same one: `skip-locked` (PostgreSQL, MySQL 8.0.1+, MariaDB 10.6+), `read-past` (SQL Server) or the portable `optimistic-lease`, chosen by `auto` from the server's reported version (Chapter 8).
 
 **Command (CQRS)** — An object expressing a single write intent — "withdraw funds", "open a wallet" — dispatched through the `CommandBus` to exactly one `#[CommandHandler]`. Commands may be denied before they ever reach their handler by a `CommandAuthorizer` (Chapters 7, 10).
 
 **CommandBus** — The pipeline that receives a `Command`, runs it through a bounded sequence of stages (correlate → validate → authorize → invoke → metrics), and routes it to its one registered `#[CommandHandler]` (Chapter 7).
 
+**Compensation** — The action that semantically undoes a completed saga step — a refund for a charge, a cancellation for a submitted transfer. Compensations run newest first when a later step fails; they roll nothing back, they add the opposite effect (Chapter 9A).
+
 **Component** — The generic stereotype attribute for a managed bean that does not fit the more specific `#[Service]`/`#[Repository]`/`#[Configuration]` roles. All stereotypes are equivalent to the container; the distinction is for human readers and tooling (Chapter 2).
 
 **Condition (`#[ConditionalOn*]`)** — An attribute (`#[ConditionalOnProperty]`, `#[ConditionalOnBean]`, `#[ConditionalOnMissingBean]`) evaluated during the boot pipeline's condition pass to decide whether a bean definition survives. `DbHealthIndicator`'s `#[ConditionalOnProperty(matchIfMissing: true)]` is what keeps it on by default; a separate interface, `ConditionalHealthIndicator::available()`, is what keeps a database-less application from a surprise `DOWN` (Chapters 2, 11).
+
+**Dead letter** — An event or message that exhausted its retries, kept rather than lost so it can be inspected and replayed: in memory or in `firefly_eda_dead_letters` for the event bus (`firefly:eda:dead-letters:replay`), in their own tables for messaging and orchestration; a `FAILED` outbox row is the outbox's dead letter (Chapters 8, 8A, 9A).
 
 **Deptrac** — The static architecture-boundary linter (`deptrac/deptrac`) that enforces which package may depend on which, as declared layers in `deptrac.yaml`. A `0` violation count is part of this book's own definition of done for every chapter's code (Chapters 2, 11, 13).
 
 **Domain event** — An immutable record of a business fact that has already happened — "wallet opened", "funds withdrawn" — recorded by an aggregate root and published, after a successful commit, through an `ApplicationEventPublisher` (Chapters 6, 8, 9).
 
 **DTO (Data Transfer Object)** — A plain object carrying data across a layer boundary — a request body, a `#[ConfigProperties]`-bound configuration subtree — without exposing internal domain types (Chapters 3, 4).
+
+**Durable workflow** — An orchestration that can wait — for a signal, for a timer — across requests and processes, because every step boundary writes a checkpoint it resumes from (`#[Workflow]`, `#[WaitForSignal]`, `#[WaitForTimer]`) (Chapter 9A).
 
 **Entity** — A domain object with a stable identity that persists through state changes. LaraFly's `make:firefly-entity` scaffolds a class extending `Firefly\Domain\Entity` — there is no `#[Entity]` attribute (Chapters 6, 13).
 
@@ -56,6 +66,8 @@
 
 **Integration event** — A domain event that has crossed the boundary from the in-process domain model onto the broker-backed EDA bus, via the guarded after-commit bridge introduced alongside CQRS. Not the same object, and not the same surface, as the domain event that produced it (Chapters 7, 8, 9).
 
+**Integration lane** — One real backend the `integration` test group runs against — PostgreSQL, MySQL, MariaDB, SQL Server, a SQLite file, or the brokers — selected by its DSN variable through `IntegrationDsn`; CI runs one job per lane (Chapter 12).
+
 **JWT (JSON Web Token)** — A signed, expiring bearer token `JwtService` issues and validates. LaraFly's `JwtService` refuses to boot at all with a weak or placeholder signing secret, and refuses to accept any token missing its `exp` claim, however valid its signature (Chapter 10).
 
 **Manifest** — A compiled, cacheable snapshot of everything a scanner found — routes, CQRS handlers, event listeners, security rules, transactional methods — written to `bootstrap/cache/firefly/` by `firefly:cache` and loaded back in at boot with no reflection at all (Chapters 2, 13).
@@ -64,7 +76,9 @@
 
 **Method security** — Attribute-declared authorization (`#[PreAuthorize]`, `#[Secured]`, `#[RolesAllowed]`) enforced at the CQRS bus and the controller dispatcher by a closed-whitelist expression evaluator that never calls `eval()` (Chapter 10).
 
-**Outbox pattern** — A technique for publishing a domain event reliably alongside the database write that produced it: both are written in the same local transaction, eliminating the need for a two-phase commit between the database and the message broker (Chapters 8, 9).
+**Outbox lease** — The claim an outbox consumer holds on a row: `claimed_by` and `claimed_until`, committed before any listener runs. While the lease lives no other consumer takes the row; when it ends, a crashed consumer's row is delivered again (Chapter 8).
+
+**Outbox pattern** — A technique for publishing a domain event reliably alongside the database write that produced it: both are written in the same local transaction, eliminating the need for a two-phase commit between the database and the message broker (Chapters 8, 9; `firefly.eda.provider=database` on any database).
 
 **Pest expectation** — A custom `expect()->extend(...)` matcher `firefly/testing` installs — `toHavePublished`, `toHaveHandledCommand`, `toBeUp`, `toHaveRecordedMetric`, `toBeProblemDetails` — registered once from the monorepo's root `tests/Pest.php` (Chapter 12).
 
@@ -86,6 +100,8 @@
 
 **Repository** — A collection-like abstraction over persistence, letting application code load and save aggregates or entities with no SQL of its own. `CrudRepository` is the typed base every domain repository extends (Chapter 5).
 
+**Saga** — A business operation made of local transactions that each commit on their own, with a compensation for every step that changed something; a failure undoes the completed steps instead of rolling them back (`#[Saga]`, `#[SagaStep]`) (Chapter 9A).
+
 **Secure by default** — LaraFly's operational posture wherever it applies: an actuator endpoint is unreachable (404) until explicitly exposed, an `HttpSecurity` URL rule denies anything unmatched, and a JWT secret that looks weak refuses to boot at all — the system fails closed, not open (Chapters 10, 11).
 
 **SecurityContext** / **SecurityContextHolder** — An immutable snapshot of the current `Authentication`, held per-request by a static accessor backed by Laravel's own `Context` facade. Every authentication filter clears it in a `finally` block so one request's principal can never leak into the next (Chapter 10).
@@ -96,10 +112,14 @@
 
 **Stereotype** — An attribute that both registers a class as a bean and signals its architectural role — `#[Service]`, `#[Repository]`, `#[Component]`, `#[Configuration]`, `#[RestController]`. Every stereotype is a specialization of the base `#[Component]` (Chapter 2).
 
+**TCC (Try-Confirm-Cancel)** — An orchestration pattern in which every participant first reserves (*try*), and only when every try succeeded are all of them confirmed; if any try fails, every participant that tried is cancelled (`#[Tcc]`, `#[TccParticipant]`) (Chapter 9A).
+
 **Testcontainers** — A library that starts real Docker containers for integration tests and tears them down afterward. `firefly/testing`'s `RequiresDocker` trait and `fireflyConfigFor()` helper make a testcontainers-backed test opt-in and CI-safe even with no Docker present (Chapter 12).
 
 **Transactional (`#[Transactional]`)** — A class/method attribute declaring propagation (`REQUIRED`, `REQUIRES_NEW`, `NESTED`, …), isolation, read-only, and rollback rules — enforced by a generated proxy rather than a manual `DB::transaction()` closure (Chapter 9).
 
 **Value object** — An immutable domain object identified by its value rather than by an identity field; two value objects are equal if all their fields are equal. `Money` — an integer amount in minor units plus a `Currency` — is Lumen's canonical value object (Chapter 6).
+
+**Webhook** — An HTTP request one system sends another to say that something happened. `firefly/webhooks` receives them at `POST /webhooks/{provider}`, verifies the signature, deduplicates redeliveries and publishes them to the event bus (Chapter 8A).
 
 **Zero-reflection boot** — The state an application reaches once `firefly:cache` has run: every manifest is loaded from a pre-compiled PHP file under `bootstrap/cache/firefly/`, so no attribute, class, or method is ever reflected on again at request time (Chapter 13).

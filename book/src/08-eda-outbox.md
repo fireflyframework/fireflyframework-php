@@ -2,7 +2,7 @@
 
 # Event-Driven Architecture and the Transactional Outbox {.chtitle}
 
-By the end of this chapter you will know the two, deliberately distinct event surfaces LaraFly ships and why confusing them is the single most common mistake; the `EventPublisher` port and the `EventEnvelope` it carries; how `#[EventListener]` matches an event's **type name** — not its destination — a real gotcha the `samples/lumen` build hit while wiring `LedgerProjector` in Chapter 6; the in-memory and queue adapters; the retry/dead-letter model every listener is wrapped in; and — closing the durability gap the domain→integration bridge leaves open — the genuine **same-transaction outbox** `firefly/eda-postgres` writes atomically with the aggregate that raised the event.
+By the end of this chapter you will know the two, deliberately distinct event surfaces LaraFly ships and why confusing them is the single most common mistake; the `EventPublisher` port and the `EventEnvelope` it carries; how `#[EventListener]` matches an event's **type name** — not its destination — a real gotcha the `samples/lumen` build hit while wiring `LedgerProjector` in Chapter 6; the in-memory and queue adapters; the retry/dead-letter model every listener is wrapped in; and — closing the durability gap the domain→integration bridge leaves open — the genuine **same-transaction outbox** `firefly/eda-database` writes atomically with the aggregate that raised the event, on any of the five databases; how its consumers lease rows so that any number of them can run at once; the optional `firefly:outbox:relay`; what `firefly/eda-postgres` adds on top; where a dead letter goes when it must outlive the process (`firefly:eda:dead-letters:replay`); and how `firefly/messaging` consumes from Kafka and RabbitMQ (`firefly:messaging:consume`).
 
 !!! note "New term: integration event"
     Chapter 6 built **domain events** — `WalletOpened`, `FundsDeposited` — facts an aggregate raises for consumers inside the *same* process and the *same* deployable. An **integration event** is the same fact re-emitted across a process or service boundary: a JSON-ish envelope with a type name, a payload, and routing headers, carried by a broker (or, in-process, by the very same bus). This chapter is about the machinery on the far side of that boundary, and the bridge that gets a domain event onto it.
@@ -18,7 +18,7 @@ LaraFly ships two unrelated event mechanisms that happen to share a similar-look
 | In-process application events | `#[AsEventListener]` | a PHP event **class** | synchronous, same process, no broker | `firefly/context` |
 | EDA broker bus | `#[EventListener]` | an event-type **pattern** (fnmatch glob, e.g. `'user.*'`) | in-memory (sync) or queue (async) | `firefly/eda` |
 
-`#[AsEventListener]` fires when application code calls `ApplicationEventPublisher::publish(object $event)` with a typed PHP object — the seam Chapter 6's after-commit dispatch itself rides on (`DomainEventDispatcher` calls exactly this to publish a drained `DomainEvent`). `#[EventListener]`, this chapter's subject, fires when an `EventEnvelope` whose `eventType` string matches your pattern arrives on the **eda** bus — in-memory, via a queue worker, or (this chapter's second half) via a Postgres outbox row. Neither package depends on the other; nothing in `firefly/eda` even imports Illuminate's `Dispatcher`.
+`#[AsEventListener]` fires when application code calls `ApplicationEventPublisher::publish(object $event)` with a typed PHP object — the seam Chapter 6's after-commit dispatch itself rides on (`DomainEventDispatcher` calls exactly this to publish a drained `DomainEvent`). `#[EventListener]`, this chapter's subject, fires when an `EventEnvelope` whose `eventType` string matches your pattern arrives on the **eda** bus — in-memory, via a queue worker, or (this chapter's second half) via an outbox row. Neither package depends on the other; nothing in `firefly/eda` even imports Illuminate's `Dispatcher`.
 
 ---
 
@@ -64,7 +64,7 @@ final readonly class EventEnvelope
 }
 ```
 
-`eventType` and `destination` are two genuinely different things, and the rest of this chapter hinges on that distinction: `destination` is *where* the envelope is routed on the wire (a queue name, a Postgres outbox row's `destination` column); `eventType` is *what fact it carries*, and it is the **only** field a `#[EventListener]` pattern is ever matched against.
+`eventType` and `destination` are two genuinely different things, and the rest of this chapter hinges on that distinction: `destination` is *where* the envelope is routed on the wire (a queue name, an outbox row's `destination` column); `eventType` is *what fact it carries*, and it is the **only** field a `#[EventListener]` pattern is ever matched against.
 
 `withHeaders(array $extra): self` returns a copy with merged headers — used internally to stamp `x-correlation-id`, and (you'll meet this again below) `x-original-topic`/`x-exception` on a dead-lettered envelope. `start()`/`stop()` are no-ops on the in-memory and queue adapters; the outbox's own consumer (later in this chapter) is where they start doing real work.
 
@@ -374,11 +374,50 @@ When no `firefly/eda` `EventPublisher` is bound at all, `CqrsAutoConfiguration` 
 
 ---
 
-## The genuine same-transaction outbox (`firefly/eda-postgres`)
+## The genuine same-transaction outbox (`firefly/eda-database`)
 
-`firefly/eda-postgres` closes the gap by writing the outbox row **inside** the aggregate's own open transaction, on the aggregate's own connection — so it commits or rolls back atomically with the aggregate, with no dual-write and nothing to "hope" about after the fact.
+`firefly/eda-database` closes the gap by writing the outbox row **inside** the aggregate's own open transaction, on the aggregate's own connection — so it commits or rolls back atomically with the aggregate, with no dual-write and nothing to "hope" about after the fact — and it does so on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite alike. `firefly/eda-postgres` is the same outbox with two PostgreSQL optimizations, and the end of this section shows exactly what they are.
 
 ::: figure art/figures/outbox-flow.svg | Figure 8.2 — The same-transaction outbox: the aggregate's own commit and the outbox INSERT are one atomic unit; a consumer claims PENDING rows independently.
+
+### Switching it on
+
+The outbox is one setting and one table. `firefly.eda.provider=database` selects it; the reference configuration ships its block commented out at the defaults:
+
+<!-- source: skeleton/config/firefly.php -->
+```php
+// 'database' => [
+//     'connection' => 'mysql',
+//     'channel' => 'firefly_eda_events',
+//     'max-attempts' => 3,
+//     'claim-strategy' => env('FIREFLY_EDA_CLAIM_STRATEGY', 'auto'),
+//     'lease-seconds' => 300,
+//     'poll-interval-ms' => 500,
+//     'relay' => [
+//         'downstream-provider' => 'rabbitmq',
+//     ],
+// ],
+```
+
+<!-- illustrative: the two commands a deployment runs once it selects provider=database -->
+```bash
+php artisan migrate               # creates firefly_eda_outbox (and adds the lease columns to an older one)
+php artisan firefly:eda:consume   # the terminal in-process delivery — run one or more as long-lived workers
+```
+
+Nothing in Lumen's code changes. The sample's `OutboxDatabaseTestCase` adds `firefly/eda-database`'s provider and sets the key, and the same `OpenWallet` and `Deposit` commands now leave their events in the table until a consumer comes for them:
+
+<!-- source: samples/lumen/tests/Outbox/OutboxDatabaseDeliveryTest.php -->
+```php
+    // Committed with the wallet and waiting for a consumer: the projector has not run yet.
+    expect(DB::table(OutboxSchema::TABLE)->where('status', OutboxSchema::STATUS_PENDING)->orderBy('id')->pluck('event_type')->all())
+        ->toBe(['WalletOpened', 'FundsDeposited'])
+        ->and(LedgerEntry::query()->where('wallet_id', $id)->count())->toBe(0);
+
+    $exit = Artisan::call('firefly:eda:consume', ['--max-messages' => 2, '--time-limit' => 10, '--poll-timeout' => 100]);
+```
+
+That is the trade the outbox makes, stated as two assertions: the events are durable the instant the wallet commits, and `LedgerProjector` runs a moment later, in a worker, instead of inside the request. The rest of this section is how both halves are guaranteed.
 
 ### The seam: `PreCommitEventHook`
 
@@ -572,8 +611,87 @@ Under `provider=postgres`, `PostgresEventConsumer` is this class plus Postgres's
 
 This is a **durable** `PENDING`→`PUBLISHED` status window, not an in-memory high-water mark: a restarted consumer resumes at the oldest claimable row and never replays a `PUBLISHED` one. Any number of consumer workers may run at once, on any of the five databases — each row is delivered once while its consumer lives within its lease (`firefly.eda.database.lease-seconds`, 300 by default); a consumer that crashes mid-handler leaves its row to be claimed again when the lease ends, so across a crash delivery is at-least-once and listeners should still be idempotent.
 
+### How a claim is chosen, server by server
+
+`claimOne()` never hard-codes its SQL. An `OutboxClaimStrategy` does the picking, and `firefly.eda.database.claim-strategy=auto` (the default) chooses one from what the server reports about itself — `DatabaseCapabilities` in `firefly/data` reads the version, never the driver name, so a `mysql` connection whose server is MariaDB is recognized as MariaDB:
+
+| Strategy | How it picks a row | `auto` chooses it on |
+|---|---|---|
+| `skip-locked` | `SELECT … FOR UPDATE SKIP LOCKED` in a short claim transaction (MySQL and MariaDB run it `READ COMMITTED`, so publishers never wait on its gap locks) | PostgreSQL; MySQL 8.0.1+; MariaDB 10.6+ |
+| `read-past` | `SELECT TOP n … WITH (UPDLOCK, READPAST, ROWLOCK)` in a short claim transaction | SQL Server |
+| `optimistic-lease` | an unlocked read, then one conditional `UPDATE … WHERE status = 'PENDING' AND (claimed_until IS NULL OR claimed_until < now)` per row; the row is won when exactly one row changed | SQLite; any server the probe does not recognise; older MySQL and MariaDB |
+
+A strategy forced by name that the server cannot run fails at the first claim with an error naming the server and its version — it is never downgraded in silence — and the choice is made at that first claim, so booting an application opens no connection to find out. Lease instants are the application's clock in UTC at millisecond precision, so keep the nodes' clocks synchronized well within `firefly.eda.database.lease-seconds`.
+
+### Any number of consumers
+
+Because every strategy ends with the row leased to exactly one claimant, scaling delivery is starting another `firefly:eda:consume`. Each row is delivered once while its worker lives within its lease; a worker that dies mid-delivery leaves its row leased until the lease ends, and then another worker delivers it — across a crash, delivery is at least once. `packages/eda-database/tests/Integration/OutboxConcurrencyIntegrationTest.php` races two processes over one outbox on every server, and the sample runs its own round trip on each of them, one dataset entry per lane:
+
+<!-- source: samples/lumen/tests/Integration/OutboxDatabaseRoundTripTest.php -->
+```php
+    $exit = Artisan::call('firefly:eda:consume', ['--max-messages' => 2, '--time-limit' => 20, '--poll-timeout' => 500]);
+
+    expect($exit)->toBe(0)
+        ->and(DB::table(OutboxSchema::TABLE)->where('status', OutboxSchema::STATUS_PENDING)->count())->toBe(0)
+        ->and(LedgerEntry::query()->where('wallet_id', $id)->orderBy('id')->pluck('event_type')->all())
+        ->toBe(['WalletOpened', 'FundsDeposited']);
+})->with(IntegrationDsn::lanes())->group('integration');
+```
+
+Under `provider=database` the actuator's health report gains an `outbox` component — the driver, the strategy in use and the `PENDING` backlog, or `DOWN` with the error — so a consumer fleet that has stopped keeping up is visible before anyone asks why the ledger is late.
+
+### Forwarding to a broker: `firefly:outbox:relay`
+
+`firefly:eda:consume` delivers rows to this application's own listeners. When other services must hear the events too, the relay forwards committed rows to a second broker and marks each one `PUBLISHED` — the same lease, the same `max-attempts`, the trace each row carries continued across the hop. `firefly.eda.database.relay.downstream-provider` names the broker (`rabbitmq`, `kafka`, an `EventPublisher` class-string or a container id), and the relay refuses the outbox writer itself as its downstream:
+
+<!-- illustrative: an operator running the optional relay as its own worker -->
+```bash
+php artisan firefly:outbox:relay --batch-size=50 --sleep=1
+```
+
+### What `firefly/eda-postgres` adds
+
+Everything above works on PostgreSQL as it is. `firefly.eda.provider=postgres` is that same outbox — the same table, the same claims, the same consumer — plus the two things only PostgreSQL offers: `PostgresEventPublisher` raises `pg_notify` inside the writing transaction, and `PostgresEventConsumer` `LISTEN`s and waits on the notification instead of sleeping `poll-interval-ms` between empty claims. Every `firefly.eda.postgres.*` key keeps working as an alias of its `firefly.eda.database.*` twin, and the database key wins when both are set, so moving between the two providers loses no setting.
+
 !!! laravel "Laravel parity"
-    Plain Laravel has no first-party transactional-outbox pattern at all — the idiom you'd hand-roll is an `outbox` table plus a scheduled command that polls it, with no framework help keeping the `INSERT` inside the same transaction as your domain write. `firefly/eda-postgres` is exactly that idiom, but with the atomicity guaranteed by construction (`PreCommitEventHook` runs while the transaction is still open) rather than left to developer discipline.
+    Plain Laravel has no first-party transactional-outbox pattern at all — the idiom you'd hand-roll is an `outbox` table plus a scheduled command that polls it, with no framework help keeping the `INSERT` inside the same transaction as your domain write. `firefly/eda-database` is exactly that idiom, on any database Laravel speaks, but with the atomicity guaranteed by construction (`PreCommitEventHook` runs while the transaction is still open) rather than left to developer discipline.
+
+---
+
+## Dead letters that survive the process
+
+The retry model at the start of this chapter ends with a dead letter, and by default that dead letter lives in `InMemoryDeadLetterStore` — gone when the process exits. That is fine for a test and wrong for a worker, so `firefly.eda.dead-letter.store` picks the store under every provider:
+
+<!-- source: skeleton/config/firefly.php -->
+```php
+'dead-letter' => [
+    'store' => env('FIREFLY_EDA_DEAD_LETTER_STORE', 'memory'),
+    // 'connection' => 'mysql',
+],
+```
+
+`database` writes one `firefly_eda_dead_letters` row per exhausted envelope, on `firefly.eda.dead-letter.connection` (the default connection when unset). Both stores implement `ReplayableDeadLetterStore`, which is what the replay command needs: it republishes entries, oldest first, through the bound `EventPublisher` to their original destination, and removes each one that republished:
+
+<!-- illustrative: an operator inspecting, then replaying, the dead letters of one event type -->
+```bash
+php artisan firefly:eda:dead-letters:replay --event-type=FundsDeposited --dry-run
+php artisan firefly:eda:dead-letters:replay --event-type=FundsDeposited --limit=100
+```
+
+`--id`, `--destination` and `--keep` narrow and preserve; `--dry-run` lists and changes nothing. `firefly/messaging` has the same pair — `firefly.messaging.dead-letter.store=memory|database` and `php artisan firefly:messaging:dead-letters:replay` — for its raw `MessageBrokerPort`. An outbox row that exhausts `max-attempts` is different: it is marked `FAILED` in place, because the row *is* the outbox's dead letter, and both proofs are on every server in the matrix (see the database support matrix in the documentation).
+
+---
+
+## Messaging on Kafka and RabbitMQ
+
+`firefly/messaging` is the lower-level sibling of the event bus: raw `Message` payloads on a `MessageBrokerPort`, consumed by `#[MessageListener]` methods. `firefly.messaging.provider=kafka` (with `ext-rdkafka`) and `=rabbitmq` bind a listener container on the same client factories the event bus's adapters use, and one worker consumes from it:
+
+<!-- illustrative: a messaging worker bounded by a message count and a time limit, as a supervisor would run it -->
+```bash
+php artisan firefly:messaging:consume --max-messages=1000 --time-limit=3600
+```
+
+The container owns retries: a delivery is attempted `firefly.messaging.listener.retry.max-attempts` times (five by default) with exponential back-off from one second, doubling, capped at thirty; a listener with `retries: N` gets N + 1 attempts with its own linear `retryDelay` instead. Then a dead letter — Kafka produces the record to the listener's `deadLetterTopic` or `<topic>.DLT`, RabbitMQ republishes it to `deadLetterTopic` or lets the queue's dead-letter exchange move it to `<queue>.dlq` — carrying `x-original-topic`, `x-exception`, `x-exception-message` and `x-delivery-attempts`. A record is committed, or a message acknowledged, only after its listeners handled it or it was dead-lettered, so delivery is at least once; consumer groups are real (one Kafka consumer group per listener group, one durable RabbitMQ queue per group). On `memory` and `queue` the command refuses with exit code 1, because those providers have no consumer loop.
 
 ---
 
@@ -587,8 +705,12 @@ This is a **durable** `PENDING`→`PUBLISHED` status window, not an in-memory hi
 | `RetryingEventHandler` | Always wraps every listener: linear-backoff retry, then dead-letter (or re-throw with no store bound) |
 | `InMemoryEventBus` / `QueueEventBus` | Synchronous vs. queue-backed (fire-and-forget) `EventPublisher` adapters, identical port |
 | `DomainEventBridge` | The after-commit trigger republishing a committed `DomainEvent` as an integration event — best-effort, non-atomic |
-| `OutboxPreCommitHook` / `PostgresEventPublisher` | Writes the outbox row **inside** the aggregate's own open transaction — genuinely atomic |
+| `OutboxPreCommitHook` / `DatabaseEventPublisher` | Writes the outbox row **inside** the aggregate's own open transaction — genuinely atomic, on any of the five databases; `PostgresEventPublisher` adds `pg_notify` |
 | `DatabaseEventConsumer` / `PostgresEventConsumer` | Leases `PENDING` rows (SKIP LOCKED, READPAST or a conditional UPDATE — any number of workers), drives `#[EventListener]` handlers directly, no re-`INSERT`; Postgres adds `LISTEN`/`NOTIFY` |
+| `OutboxClaimStrategy` | `skip-locked`, `read-past` or `optimistic-lease`, chosen by `auto` from the server's version; every one leases a row to exactly one claimant |
+| `firefly:outbox:relay` | Optional: forwards committed rows to a second broker (`firefly.eda.database.relay.downstream-provider`) |
+| `firefly.eda.dead-letter.store=database` | Dead letters in `firefly_eda_dead_letters`, replayed by `firefly:eda:dead-letters:replay` (messaging has the same pair) |
+| `firefly:messaging:consume` | The Kafka/RabbitMQ listener-container worker: container retries, dead-letter topics or queues, at-least-once commits |
 
 ---
 
@@ -596,4 +718,4 @@ This is a **durable** `PENDING`→`PUBLISHED` status window, not an in-memory hi
 
 1. **Reproduce the gotcha, deliberately.** In a scratch copy of the project, change `LedgerProjector`'s `#[EventListener]` patterns to `['wallet.*']` and re-run its test suite. Confirm the projector silently never fires and no `ledger_entries` rows are ever written — then restore the original type-name patterns and confirm they pass again.
 2. **Force a dead letter.** Write a small `#[EventListener]` handler that always throws, configure `firefly.eda.retries=2` and bind an `InMemoryDeadLetterStore`, publish a matching event, and inspect `DeadLetterStore::all()` afterward. Confirm the entry's `exceptionMessage` matches what your handler threw.
-3. **Prove the outbox rollback yourself.** Using a Postgres connection (`@group('integration')`, per the framework's own test conventions), reproduce the two `OutboxSameTransactionTest` cases this chapter quoted — publish-then-commit and publish-then-throw — and confirm the row's presence or absence matches this chapter's description.
+3. **Prove the outbox on a real server.** Export one lane's DSN (Chapter 12 shows how) and run `composer test:integration -- samples/lumen/tests/Integration/OutboxDatabaseRoundTripTest.php`. Confirm the two rows are `PENDING` before the consumer runs and `PUBLISHED` after it, then read `OutboxSameTransactionTest` for the rollback half: the row from a failed unit of work never exists at all.

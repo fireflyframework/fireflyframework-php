@@ -8,11 +8,14 @@ framework stereotype (`make:firefly-*`), and thinly delegates to Laravel's own `
 commands (`firefly:serve`/`firefly:schedule`/`firefly:db`). Its own Deptrac `Cli` layer — depends on the rest of
 the framework, depended on by nothing.
 
-Seven more `firefly:*` commands ship with the capability they belong to rather than with the console:
+Twenty more `firefly:*` commands ship with the capability they belong to rather than with the console:
 `firefly:management:serve` (`firefly/actuator`), `firefly:openapi` (`firefly/openapi`), `firefly:eda:consume` and
 `firefly:eda:dead-letters:replay` (`firefly/eda`), `firefly:outbox:relay` (`firefly/eda-database`),
-`firefly:messaging:dead-letters:replay` (`firefly/messaging`) and `firefly:flags` (`firefly/feature-flags`). They
-are all listed at the end of this page.
+`firefly:messaging:consume` and `firefly:messaging:dead-letters:replay` (`firefly/messaging`), six
+`firefly:orchestration:*` commands (`firefly/orchestration`), three `firefly:eventsourcing:projections*` commands
+(`firefly/eventsourcing`), `firefly:flags` (`firefly/feature-flags`), `firefly:webhooks:prune` (`firefly/webhooks`)
+and `firefly:callbacks:list` and `firefly:callbacks:replay` (`firefly/callbacks`). They are all listed at the end of
+this page.
 
 ## `firefly:cache`
 
