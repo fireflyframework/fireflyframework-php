@@ -82,6 +82,27 @@ its `composer.json` asks for the library and a CLI component requirement beside 
 The template is bundled in the library and supplied to Composer by `firefly new`; it does not need a
 separate Packagist package. See [Publishing](publishing.md) for the transition from split packages.
 
+## What else ships in the box
+
+The skeleton starts small, but the library it installs already carries the parts most services reach for next,
+each off until its key is set:
+
+- **An outbox on any database.** `FIREFLY_EDA_PROVIDER=database` writes every domain event in the same transaction
+  as the data it describes, on SQLite, MySQL, MariaDB, PostgreSQL or SQL Server, and
+  `php artisan firefly:eda:consume` delivers it — [Tutorial Step 12](tutorial.md#step-12-a-database-agnostic-outbox-and-a-consumer),
+  [EDA Database Outbox](modules/eda-database.md).
+- **Sagas, TCC and durable workflows.** `firefly/orchestration` coordinates work that spans more than one
+  transaction, with compensation, checkpoints, recovery and a dead-letter queue —
+  [Tutorial Step 13](tutorial.md#step-13-a-saga-with-compensation-saga), [Orchestration](modules/orchestration.md).
+- **Webhooks in, callbacks out.** `firefly/webhooks` verifies and deduplicates inbound webhooks and publishes them
+  to the event bus; `firefly/callbacks` sends signed, retried callbacks to subscribers —
+  [Webhooks](modules/webhooks.md), [Callbacks](modules/callbacks.md).
+- **A query cache, brokers and locks.** `#[CachedQuery]` ([CQRS](modules/cqrs.md#query-cache)), Kafka and
+  RabbitMQ for `firefly/messaging` ([Messaging](modules/messaging.md)), and scheduler locks on any database
+  ([Scheduling Database Locks](modules/scheduling-database.md)).
+
+The [book](book.md) walks all of them on the Lumen sample, in Chapters 7, 8, 8A and 9A.
+
 ## Where to next
 
 - [Architecture](architecture.md) — how the boot engine, DI, and auto-configuration fit together.

@@ -21,7 +21,7 @@
 
 <p align="center">
   <em>Dependency injection with stereotypes, conditional auto-configuration, hexagonal ports &amp; adapters,
-  CQRS, event-driven architecture with a genuine same-transaction outbox, Spring-Security-shaped method
+  CQRS, event-driven architecture with a genuine same-transaction outbox on any database, sagas and webhooks, Spring-Security-shaped method
   security on any bean, both halves of OAuth2, and OpenTelemetry-shaped tracing — wired the moment you
   install a package, with your own beans always winning.</em>
 </p>
@@ -158,7 +158,7 @@ LaraFly is not a fork of Laravel and does not hide it — every package layers c
 `Illuminate\Container`, Eloquent, the HTTP kernel, and the queue/cache/scheduler, so everything you already
 know about Laravel keeps working underneath.
 
-Four capabilities in that list are recent enough — and far enough from what teams assume a PHP framework
+Five capabilities in that list are recent enough — and far enough from what teams assume a PHP framework
 will have — that they are worth naming outright:
 
 - **Both halves of OAuth2, as two packages you install.**
@@ -193,6 +193,14 @@ will have — that they are worth naming outright:
   [flagd](https://flagd.dev) definitions in-process on OpenFeature with the same semantics and percentage buckets
   as PyFly. Gate a bean method or route with `#[FeatureFlag]` and a view with `@featureflag`; change flags at runtime
   from the admin dashboard, `/actuator/flags` or `php artisan firefly:flags`, with an audit trail.
+- **Work that spans systems.** [`firefly/orchestration`](docs/modules/orchestration.md) runs sagas whose
+  completed steps are compensated newest first when a later one fails, TCC transactions that reserve with every
+  participant before confirming any, and durable workflows that wait for signals and timers across processes —
+  every step checkpointed (memory, cache or a portable database store), stale executions recovered, failures
+  dead-lettered. [`firefly/webhooks`](docs/modules/webhooks.md) verifies Stripe, GitHub, Twilio or HMAC
+  signatures, refuses replays and duplicates and publishes the rest to the event bus;
+  [`firefly/callbacks`](docs/modules/callbacks.md) sends the bus's events to subscribers as signed, retried POSTs
+  behind a circuit breaker per endpoint.
 
 ### Who is LaraFly for?
 
@@ -1169,7 +1177,7 @@ accurately:
 - **Read models / projections as a first-class concept.** The sample's `LedgerProjector` shows the pattern
   today via a plain `#[EventListener]`; a dedicated `firefly/eventsourcing`-style package for event
   sourcing/snapshots/projections is future work, as it is in PyFly.
-- **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES), the *larafly by example*
+- **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES, through a database outbox and a saga), the *larafly by example*
   [book](book/README.md) (18 chapters + appendices, EN + ES, PDF + EPUB), and a
   [docs table of contents](docs/README.md) all shipped with the documentation-parity milestone.
   Deeper guides (more recipes, more diagrams) continue to grow from here.
