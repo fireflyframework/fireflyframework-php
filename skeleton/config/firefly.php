@@ -2559,6 +2559,8 @@ return [
     |   'queue'  — Laravel queue; both keys UNSET mean the application's own defaults.
     |   'kafka'  — Kafka through firefly/eda-kafka (needs ext-rdkafka); a listener container driven by
     |              `php artisan firefly:messaging:consume`, with the retry and dead-letter keys below.
+    |   'rabbitmq' — RabbitMQ through firefly/eda-rabbitmq, on the firefly.eda.rabbitmq.* connection; a
+    |              listener container consumed the same way, with the same retry and dead-letter keys.
     |
     */
 
@@ -2598,7 +2600,8 @@ return [
             /*
              | listener.dead-letter.enabled — what a listener container broker does with a delivery whose
              | attempts ran out. true: it is published to the listener's own deadLetterTopic, or to the
-             | broker's default route (Kafka: `<topic><dlt-suffix>`), with x-original-topic, x-exception,
+             | broker's default route (Kafka: `<topic><dlt-suffix>`; RabbitMQ: the queue is rejected without
+             | requeue and its dead-letter exchange moves it into `<queue>.dlq`), with x-original-topic, x-exception,
              | x-exception-message and x-delivery-attempts headers, and only then acknowledged. false: it is
              | logged and skipped — an explicit choice to lose it. A listener that names its own
              | deadLetterTopic is always dead-lettered there.
@@ -2627,6 +2630,26 @@ return [
             // 'brokers' => env('FIREFLY_MESSAGING_KAFKA_BROKERS', '127.0.0.1:9092'),
             'group-id' => env('FIREFLY_MESSAGING_KAFKA_GROUP_ID', 'firefly'),
             'dlt-suffix' => env('FIREFLY_MESSAGING_KAFKA_DLT_SUFFIX', '.DLT'),
+        ],
+
+        /*
+         | rabbitmq — read only when provider is 'rabbitmq'. The connection is the event bus's
+         | (firefly.eda.rabbitmq.host|port|user|password|vhost); nothing connects at boot. A topic is a
+         | routing key on one durable DIRECT exchange; each subscription consumes one durable queue (the
+         | listener's group, else `firefly.<topic>`) declared with this dead-letter exchange, so a rejected
+         | delivery lands in `<queue>.dlq`. Deliveries are acknowledged by hand after their listeners
+         | handled them, with a bounded prefetch.
+         |
+         | exchange — the exchange messages are published to and queues are bound on.
+         | dead-letter-exchange — '' means `<exchange>.dlx`.
+         | prefetch — unacknowledged deliveries the broker hands this worker at once.
+         |
+         | Default: exchange 'firefly.messages', dead-letter-exchange '' (= 'firefly.messages.dlx'), prefetch 10.
+        */
+        'rabbitmq' => [
+            'exchange' => env('FIREFLY_MESSAGING_RABBITMQ_EXCHANGE', 'firefly.messages'),
+            'dead-letter-exchange' => env('FIREFLY_MESSAGING_RABBITMQ_DEAD_LETTER_EXCHANGE', ''),
+            'prefetch' => env('FIREFLY_MESSAGING_RABBITMQ_PREFETCH', 10),
         ],
     ],
 
