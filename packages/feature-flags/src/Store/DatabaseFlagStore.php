@@ -60,6 +60,9 @@ final class DatabaseFlagStore implements CommitAwareFlagStore, FlagStore, Transa
             $flag = self::storedFlag($row);
             $flags[$flag->key] = $flag;
         }
+        // Byte order, like MemoryFlagStore: ORDER BY follows the column collation, which differs per server and locale
+        // (PostgreSQL under en_US.UTF-8 sorts 'a' before 'A'; MySQL's case-insensitive collations tie them).
+        ksort($flags, SORT_STRING);
 
         return $flags;
     }
