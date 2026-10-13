@@ -128,7 +128,7 @@ foreach (['pgsql', 'mysql', 'mariadb', 'sqlsrv'] as $lane) {
             $racerSaw = trim($racer->getOutput());
 
             // Exactly one side lost, and it was told so in the kernel's own vocabulary.
-            expect($parent instanceof DeadlockLoserDataAccessException xor str_ends_with($racerSaw, 'deadlock'))->toBeTrue('parent: '.($parent === null ? 'committed' : $parent::class)."; racer: {$racerSaw}")
+            expect($parent instanceof DeadlockLoserDataAccessException xor str_ends_with($racerSaw, 'deadlock'))->toBeTrue('parent: '.($parent === null ? 'committed' : $parent::class.' — '.$parent->getMessage().' — previous: '.($parent->getPrevious()?->getMessage() ?? 'none')).'; parent lock_timeout: '.json_encode($connection->selectOne('select @@lock_timeout as value')).'; racer: '.$racerSaw)
                 ->and($parent === null || $parent instanceof DeadlockLoserDataAccessException)->toBeTrue();
         } finally {
             $racer->stop();
