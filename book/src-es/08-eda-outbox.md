@@ -509,65 +509,59 @@ Con `provider=postgres` vinculado, tanto `OutboxPreCommitHook` (en-tx) *como* el
 
 El resultado: un evento de dominio se escribe en el outbox **exactamente una vez**, en-tx, de forma atómica junto con el agregado. El despacho post-confirmación genérico (no de eda) `#[AsEventListener]` con el que abrió este capítulo queda completamente intacto — esos listeners en proceso siguen disparándose exactamente como antes. Los cuatro beans están además protegidos por `#[ConditionalOnProperty('firefly.eda.provider', 'postgres')]`, así que instalar el paquete sin seleccionarlo como proveedor activo es totalmente inerte.
 
-### Reclamar filas: `PostgresEventConsumer`
+### Reclamar filas: `DatabaseEventConsumer`
 
-Una vez que una fila es `PENDING`, `PostgresEventConsumer` es la ruta de entrega en proceso terminal, siempre disponible — `php artisan firefly:eda:consume` lo conduce como un worker de larga duración:
+Una vez que una fila es `PENDING`, `DatabaseEventConsumer` (de `firefly/eda-database`) es la ruta de entrega en proceso terminal, siempre disponible — `php artisan firefly:eda:consume` lo conduce como un worker de larga duración, igual con `provider=database` que con `provider=postgres`:
+
+<!-- source: packages/eda-database/src/DatabaseEventConsumer.php -->
+```php
+class DatabaseEventConsumer implements EventConsumer
+{
+    // …
+    public function poll(int $timeoutMs): ?ReceivedEnvelope
+    {
+        $received = $this->claimOne();
+        if ($received !== null) {
+            return $received;
+        }
+
+        try {
+            ($this->awaitWork)($timeoutMs);
+        } catch (Throwable) {
+            // The wait is an optimization; the claim below delivers regardless.
+        }
+
+        return $this->claimOne();
+    }
+
+    public function ack(ReceivedEnvelope $received): void
+    {
+        ClaimableRows::owned($this->connection, OutboxRow::asInt($received->deliveryTag), $this->claimant)->update([
+            'status' => OutboxSchema::STATUS_PUBLISHED,
+            'processed_at' => $this->connection->raw('CURRENT_TIMESTAMP'),
+            'claimed_by' => null,
+            'claimed_until' => null,
+        ]);
+    }
+// …
+}
+```
+
+Una reclamación es un **arrendamiento**: `claimOne()` pide una fila a la `OutboxClaimStrategy` configurada, y la estrategia escribe `claimed_by` y `claimed_until` en ella y lo confirma *antes* de que corra el manejador. Cómo se elige la fila depende de lo que hable el servidor — `FOR UPDATE SKIP LOCKED` dentro de una transacción de reclamación corta en PostgreSQL, MySQL 8.0.1+ y MariaDB 10.6+, la pista de tabla `UPDLOCK, READPAST` en SQL Server, un `UPDATE … WHERE status = 'PENDING' AND claimed_until < now` condicional en todos los demás — pero toda estrategia termina con la fila arrendada a exactamente un consumidor. `ack()` y `nack()` solo liquidan una fila que este consumidor todavía tiene, así que un consumidor que sobrevivió a su arrendamiento no liquida nada. Fíjate en que **no hay ninguna llamada a `EventPublisher::publish()` en ningún lugar de esta clase**: lee y actualiza la tabla del outbox directamente, así que no hay un `INSERT` de vuelta. Un lanzamiento del manejador llama a `nack()`, que incrementa `attempts` y libera la fila para un reintento inmediato o, pasado `firefly.eda.database.max-attempts` (3 por defecto; `firefly.eda.postgres.max_attempts` es su alias), la marca `FAILED` in situ — una fila `status='FAILED'` *es* la carta muerta del outbox.
+
+Con `provider=postgres`, `PostgresEventConsumer` es esta clase más el despertar de Postgres — `LISTEN` al suscribirse, y una espera de `NOTIFY` en lugar de una pausa entre reclamaciones vacías:
 
 <!-- source: packages/eda-postgres/src/PostgresEventConsumer.php -->
 ```php
-final class PostgresEventConsumer implements EventConsumer
-{
-    // …
     public function subscribe(array $destinations): void
     {
         if ($this->connection->getDriverName() === 'pgsql') {
             $this->connection->getPdo()->exec('LISTEN '.$this->channel);
         }
     }
-    // …
-    public function poll(int $timeoutMs): ?ReceivedEnvelope
-    {
-        try {
-            ($this->awaitNotification)($timeoutMs);
-        } catch (\Throwable) {
-        // …
-        }
-
-        $pgsql = $this->connection->getDriverName() === 'pgsql';
-        $query = $this->connection->table(OutboxSchema::TABLE)
-            ->where('status', OutboxSchema::STATUS_PENDING)
-            ->orderBy('id');
-        if ($pgsql) {
-        // …
-        }
-        $row = $query->first();
-
-        if ($row === null) {
-            return null;
-        }
-
-        return new ReceivedEnvelope(new EventEnvelope(
-            OutboxRow::asString($row->event_type),
-            OutboxRow::asString($row->destination),
-            OutboxRow::asMap($row->payload),
-            OutboxRow::asStringMap($row->headers),
-        ), OutboxRow::asInt($row->id));
-    }
-
-    public function ack(ReceivedEnvelope $received): void
-    {
-        $this->connection->table(OutboxSchema::TABLE)
-            ->where('id', $received->deliveryTag)
-            ->where('status', OutboxSchema::STATUS_PENDING)
-    // …
-    }
-// …
-}
 ```
 
-`poll()` primero espera brevemente (de mejor esfuerzo, protegido contra cualquier fallo) un `NOTIFY`, y luego — sin importar si llegó uno — reclama la fila `PENDING` más antigua con `FOR UPDATE SKIP LOCKED` en pgsql (un `ORDER BY id` sencillo bajo sqlite, para las pruebas). Fíjate en que **no hay ninguna llamada a `EventPublisher::publish()` en ningún lugar de esta clase** — lee y actualiza la tabla del outbox directamente, así que no hay un `INSERT` de vuelta ni riesgo de que un consumidor realimente su propia salida a la tabla de la que acaba de leer. `ConsumerLoop` entrega el envoltorio reclamado al mismo `SubscriberRegistry` al que ya se suscribieron tus manejadores de `#[EventListener]`, exactamente igual que hacen los adaptadores en memoria y de cola; el guardián `WHERE status = 'PENDING'` de `ack()` hace que la confirmación sea idempotente, y un lanzamiento del manejador llama en cambio a `nack()`, que incrementa `attempts` y o bien reinicia la fila a `PENDING` (reintento) o, pasado `firefly.eda.postgres.max_attempts` (3 por defecto), la marca `FAILED` in situ — no hay una tabla de carta muerta separada para Postgres; una fila `status='FAILED'` *es* la carta muerta, consultable en la misma tabla `firefly_eda_outbox`.
-
-Esta es una ventana de estado `PENDING`→`PUBLISHED` **duradera**, no una marca de agua alta en memoria: un consumidor reiniciado retoma en la fila `PENDING` más antigua todavía pendiente y nunca reproduce una fila ya `PUBLISHED`. Un único worker consumidor da entrega en proceso exactamente-una-vez; ejecutar más de uno a la vez degrada a al-menos-una-vez (escribe tus listeners de forma idempotente si lo haces).
+Esta es una ventana de estado `PENDING`→`PUBLISHED` **duradera**, no una marca de agua alta en memoria: un consumidor reiniciado retoma en la fila reclamable más antigua y nunca reproduce una ya `PUBLISHED`. Pueden correr a la vez tantos workers consumidores como quieras, en cualquiera de las cinco bases de datos — cada fila se entrega una vez mientras su consumidor vive dentro de su arrendamiento (`firefly.eda.database.lease-seconds`, 300 por defecto); un consumidor que cae a mitad de un manejador deja su fila para reclamarla de nuevo cuando acaba el arrendamiento, así que a través de una caída la entrega es al-menos-una-vez y los listeners deberían seguir siendo idempotentes.
 
 !!! laravel "Paridad con Laravel"
     Laravel puro no tiene ningún patrón de outbox transaccional de primera parte en absoluto — el idioma que tendrías que construir a mano es una tabla `outbox` más un comando planificado que la sondea, sin ninguna ayuda del framework para mantener el `INSERT` dentro de la misma transacción que tu escritura de dominio. `firefly/eda-postgres` es exactamente ese idioma, pero con la atomicidad garantizada por construcción (`PreCommitEventHook` se ejecuta mientras la transacción sigue abierta) en vez de dejada a la disciplina del desarrollador.
@@ -585,7 +579,7 @@ Esta es una ventana de estado `PENDING`→`PUBLISHED` **duradera**, no una marca
 | `InMemoryEventBus` / `QueueEventBus` | Adaptadores `EventPublisher` síncrono frente a respaldado-por-cola (disparar-y-olvidar), puerto idéntico |
 | `DomainEventBridge` | El disparador post-confirmación que republica un `DomainEvent` confirmado como evento de integración — de mejor esfuerzo, no atómico |
 | `OutboxPreCommitHook` / `PostgresEventPublisher` | Escribe la fila del outbox **dentro** de la propia transacción abierta del agregado — genuinamente atómico |
-| `PostgresEventConsumer` | Reclama filas `PENDING` (`FOR UPDATE SKIP LOCKED` + `LISTEN`/`NOTIFY`), conduce directamente los manejadores de `#[EventListener]`, sin `INSERT` de vuelta |
+| `DatabaseEventConsumer` / `PostgresEventConsumer` | Arrienda filas `PENDING` (SKIP LOCKED, READPAST o un UPDATE condicional — cualquier número de workers), conduce directamente los manejadores de `#[EventListener]`, sin `INSERT` de vuelta; Postgres añade `LISTEN`/`NOTIFY` |
 
 ---
 

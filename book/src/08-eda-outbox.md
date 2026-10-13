@@ -509,65 +509,59 @@ With `provider=postgres` bound, both `OutboxPreCommitHook` (in-tx) *and* the ord
 
 The result: a domain event is written to the outbox **exactly once**, in-tx, atomically with the aggregate. The generic (non-eda) `#[AsEventListener]` after-commit dispatch this chapter opened with is completely untouched — those in-process listeners keep firing exactly as before. All four beans are additionally gated `#[ConditionalOnProperty('firefly.eda.provider', 'postgres')]`, so installing the package without selecting it as the active provider is fully inert.
 
-### Claiming rows: `PostgresEventConsumer`
+### Claiming rows: `DatabaseEventConsumer`
 
-Once a row is `PENDING`, `PostgresEventConsumer` is the always-available, terminal in-process delivery path — `php artisan firefly:eda:consume` drives it as a long-running worker:
+Once a row is `PENDING`, `DatabaseEventConsumer` (from `firefly/eda-database`) is the always-available, terminal in-process delivery path — `php artisan firefly:eda:consume` drives it as a long-running worker, under `provider=database` and `provider=postgres` alike:
+
+<!-- source: packages/eda-database/src/DatabaseEventConsumer.php -->
+```php
+class DatabaseEventConsumer implements EventConsumer
+{
+    // …
+    public function poll(int $timeoutMs): ?ReceivedEnvelope
+    {
+        $received = $this->claimOne();
+        if ($received !== null) {
+            return $received;
+        }
+
+        try {
+            ($this->awaitWork)($timeoutMs);
+        } catch (Throwable) {
+            // The wait is an optimization; the claim below delivers regardless.
+        }
+
+        return $this->claimOne();
+    }
+
+    public function ack(ReceivedEnvelope $received): void
+    {
+        ClaimableRows::owned($this->connection, OutboxRow::asInt($received->deliveryTag), $this->claimant)->update([
+            'status' => OutboxSchema::STATUS_PUBLISHED,
+            'processed_at' => $this->connection->raw('CURRENT_TIMESTAMP'),
+            'claimed_by' => null,
+            'claimed_until' => null,
+        ]);
+    }
+// …
+}
+```
+
+A claim is a **lease**: `claimOne()` asks the configured `OutboxClaimStrategy` for one row, and the strategy writes `claimed_by` and `claimed_until` on it and commits that *before* the handler runs. How the row is picked depends on what the server speaks — `FOR UPDATE SKIP LOCKED` inside a short claim transaction on PostgreSQL, MySQL 8.0.1+ and MariaDB 10.6+, the `UPDLOCK, READPAST` table hint on SQL Server, a conditional `UPDATE … WHERE status = 'PENDING' AND claimed_until < now` everywhere else — but every strategy ends with the row leased to exactly one consumer. `ack()` and `nack()` settle only a row this consumer still holds, so a consumer that outlived its lease settles nothing. Note there is **no `EventPublisher::publish()` call anywhere in this class**: it reads and updates the outbox table directly, so there is no re-`INSERT`. A handler throw calls `nack()`, which increments `attempts` and frees the row for an immediate retry or, past `firefly.eda.database.max-attempts` (default 3; `firefly.eda.postgres.max_attempts` is its alias), marks it `FAILED` in place — a `status='FAILED'` row *is* the outbox's dead letter.
+
+Under `provider=postgres`, `PostgresEventConsumer` is this class plus Postgres's wake-up — `LISTEN` on subscribe, and a `NOTIFY` wait instead of a sleep between empty claims:
 
 <!-- source: packages/eda-postgres/src/PostgresEventConsumer.php -->
 ```php
-final class PostgresEventConsumer implements EventConsumer
-{
-    // …
     public function subscribe(array $destinations): void
     {
         if ($this->connection->getDriverName() === 'pgsql') {
             $this->connection->getPdo()->exec('LISTEN '.$this->channel);
         }
     }
-    // …
-    public function poll(int $timeoutMs): ?ReceivedEnvelope
-    {
-        try {
-            ($this->awaitNotification)($timeoutMs);
-        } catch (\Throwable) {
-        // …
-        }
-
-        $pgsql = $this->connection->getDriverName() === 'pgsql';
-        $query = $this->connection->table(OutboxSchema::TABLE)
-            ->where('status', OutboxSchema::STATUS_PENDING)
-            ->orderBy('id');
-        if ($pgsql) {
-        // …
-        }
-        $row = $query->first();
-
-        if ($row === null) {
-            return null;
-        }
-
-        return new ReceivedEnvelope(new EventEnvelope(
-            OutboxRow::asString($row->event_type),
-            OutboxRow::asString($row->destination),
-            OutboxRow::asMap($row->payload),
-            OutboxRow::asStringMap($row->headers),
-        ), OutboxRow::asInt($row->id));
-    }
-
-    public function ack(ReceivedEnvelope $received): void
-    {
-        $this->connection->table(OutboxSchema::TABLE)
-            ->where('id', $received->deliveryTag)
-            ->where('status', OutboxSchema::STATUS_PENDING)
-    // …
-    }
-// …
-}
 ```
 
-`poll()` first waits briefly (best-effort, guarded against any failure) on a `NOTIFY`, then — regardless of whether one arrived — claims the oldest `PENDING` row with `FOR UPDATE SKIP LOCKED` on pgsql (a plain `ORDER BY id` under sqlite, for tests). Note there is **no `EventPublisher::publish()` call anywhere in this class** — it reads and updates the outbox table directly, so there is no re-`INSERT` and no risk of a consumer feeding its own output back into the table it just read from. `ConsumerLoop` delivers the claimed envelope to the same `SubscriberRegistry` your `#[EventListener]` handlers already subscribed to, exactly as the in-memory and queue adapters do; `ack()`'s `WHERE status = 'PENDING'` guard makes acknowledgement idempotent, and a handler throw instead calls `nack()`, which increments `attempts` and either resets the row to `PENDING` (retry) or, past `firefly.eda.postgres.max_attempts` (default 3), marks it `FAILED` in place — there is no separate dead-letter table for Postgres; a `status='FAILED'` row *is* the dead letter, queryable on the same `firefly_eda_outbox` table.
-
-This is a **durable** `PENDING`→`PUBLISHED` status window, not an in-memory high-water mark: a restarted consumer resumes at the oldest still-`PENDING` row and never replays a `PUBLISHED` one. A single consumer worker gives exactly-once in-process delivery; running more than one concurrently degrades to at-least-once (write your listeners idempotently if you do).
+This is a **durable** `PENDING`→`PUBLISHED` status window, not an in-memory high-water mark: a restarted consumer resumes at the oldest claimable row and never replays a `PUBLISHED` one. Any number of consumer workers may run at once, on any of the five databases — each row is delivered once while its consumer lives within its lease (`firefly.eda.database.lease-seconds`, 300 by default); a consumer that crashes mid-handler leaves its row to be claimed again when the lease ends, so across a crash delivery is at-least-once and listeners should still be idempotent.
 
 !!! laravel "Laravel parity"
     Plain Laravel has no first-party transactional-outbox pattern at all — the idiom you'd hand-roll is an `outbox` table plus a scheduled command that polls it, with no framework help keeping the `INSERT` inside the same transaction as your domain write. `firefly/eda-postgres` is exactly that idiom, but with the atomicity guaranteed by construction (`PreCommitEventHook` runs while the transaction is still open) rather than left to developer discipline.
@@ -585,7 +579,7 @@ This is a **durable** `PENDING`→`PUBLISHED` status window, not an in-memory hi
 | `InMemoryEventBus` / `QueueEventBus` | Synchronous vs. queue-backed (fire-and-forget) `EventPublisher` adapters, identical port |
 | `DomainEventBridge` | The after-commit trigger republishing a committed `DomainEvent` as an integration event — best-effort, non-atomic |
 | `OutboxPreCommitHook` / `PostgresEventPublisher` | Writes the outbox row **inside** the aggregate's own open transaction — genuinely atomic |
-| `PostgresEventConsumer` | Claims `PENDING` rows (`FOR UPDATE SKIP LOCKED` + `LISTEN`/`NOTIFY`), drives `#[EventListener]` handlers directly, no re-`INSERT` |
+| `DatabaseEventConsumer` / `PostgresEventConsumer` | Leases `PENDING` rows (SKIP LOCKED, READPAST or a conditional UPDATE — any number of workers), drives `#[EventListener]` handlers directly, no re-`INSERT`; Postgres adds `LISTEN`/`NOTIFY` |
 
 ---
 

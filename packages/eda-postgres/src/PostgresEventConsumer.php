@@ -4,49 +4,49 @@ declare(strict_types=1);
 
 namespace Firefly\Eda\Postgres;
 
-use Firefly\Eda\Consumer\EventConsumer;
-use Firefly\Eda\Consumer\ReceivedEnvelope;
-use Firefly\Eda\EventEnvelope;
-use Firefly\Eda\Postgres\Outbox\OutboxRow;
-use Firefly\Eda\Postgres\Outbox\OutboxSchema;
+use Closure;
+use Firefly\Eda\Database\DatabaseEventConsumer;
+use Firefly\Eda\Database\Outbox\Claim\OutboxClaimStrategy;
 use Firefly\Eda\Postgres\Pgsql\NotificationWaiter;
 use Illuminate\Database\Connection;
 
 /**
- * The TERMINAL in-process delivery path (B1): drives #[EventListener] handlers from committed outbox rows with NO
- * EventPublisher call, so there is no re-INSERT / self-reference. subscribe() issues LISTEN <channel>; poll() waits on
- * a NOTIFY (NotificationWaiter, pgsql only — the writer's in-tx pg_notify fires on commit) up to $timeoutMs, then
- * CLAIMS the oldest status='PENDING' row (FOR UPDATE SKIP LOCKED on pgsql; plain ORDER BY id on sqlite) and returns it
- * as an envelope (a poll fallback also catches rows missed while offline). ConsumerLoop delivers it to the
- * SubscriberRegistry and then ack()s -> the row is marked PUBLISHED/processed_at (guarded WHERE status='PENDING', so
- * idempotent); on a handler throw ConsumerLoop nack()s -> attempts+1, or FAILED/failed_at past max_attempts. This is a
- * DURABLE PENDING->PUBLISHED status window (M3), NOT an in-memory high-water mark: a restart resumes at the oldest
- * still-PENDING row and never replays PUBLISHED rows. SINGLE consumer worker gives exactly-once in-process delivery;
- * multi-worker degrades to at-least-once (idempotent handlers documented). Requires the concrete Illuminate\Database\
- * Connection because getPdo()/getDriverName() are not on ConnectionInterface (B2).
+ * firefly/eda-database's DatabaseEventConsumer — the same leased claim, the same guarded ack/nack, the same
+ * "no EventPublisher call" terminal path — with Postgres's low-latency wake-up: subscribe() issues `LISTEN <channel>`
+ * and the wait between empty claims is a NOTIFY wait (NotificationWaiter) instead of a sleep, so the in-transaction
+ * pg_notify PostgresEventPublisher fires on commit wakes the consumer the moment the row is visible. On any other
+ * driver (sqlite in tests) there is no LISTEN and no wait. The claim itself is chosen by capability like everywhere
+ * else — on pgsql that is SKIP LOCKED inside a short claim transaction, which is what makes several workers safe.
  */
-final class PostgresEventConsumer implements EventConsumer
+final class PostgresEventConsumer extends DatabaseEventConsumer
 {
-    /** @var \Closure(int): void */
-    private readonly \Closure $awaitNotification;
-
     /**
-     * @param  (\Closure(int): void)|null  $awaitNotification  Test seam: overrides the pgsql NOTIFY wait. Defaults to the
-     *                                                         real Postgres LISTEN/NOTIFY wait (a pure low-latency optimization — poll() always falls through to the
-     *                                                         durable PENDING-row claim, and guards this against ANY failure, so a deprecation-to-exception handler on the
-     *                                                         deprecated pgsqlGetNotify() path can never crash the poll loop).
+     * @param  (Closure(int): void)|null  $awaitNotification  overrides the pgsql NOTIFY wait (a test seam)
+     * @param  (Closure(): \DateTimeImmutable)|null  $clock
      */
     public function __construct(
-        private readonly Connection $connection,
+        Connection $connection,
         private readonly string $channel = 'firefly_eda_events',
-        private readonly int $maxAttempts = 3,
-        ?\Closure $awaitNotification = null,
+        int $maxAttempts = 3,
+        ?Closure $awaitNotification = null,
+        ?OutboxClaimStrategy $claim = null,
+        float $leaseSeconds = 300.0,
+        ?string $claimant = null,
+        ?Closure $clock = null,
     ) {
-        $this->awaitNotification = $awaitNotification ?? function (int $timeoutMs): void {
-            if ($this->connection->getDriverName() === 'pgsql') {
-                NotificationWaiter::wait($this->connection->getPdo(), $timeoutMs);
-            }
-        };
+        parent::__construct(
+            $connection,
+            $claim,
+            $maxAttempts,
+            $leaseSeconds,
+            claimant: $claimant,
+            awaitWork: $awaitNotification ?? static function (int $timeoutMs) use ($connection): void {
+                if ($connection->getDriverName() === 'pgsql') {
+                    NotificationWaiter::wait($connection->getPdo(), $timeoutMs);
+                }
+            },
+            clock: $clock,
+        );
     }
 
     public function subscribe(array $destinations): void
@@ -55,65 +55,4 @@ final class PostgresEventConsumer implements EventConsumer
             $this->connection->getPdo()->exec('LISTEN '.$this->channel);
         }
     }
-
-    public function start(): void {}
-
-    public function poll(int $timeoutMs): ?ReceivedEnvelope
-    {
-        try {
-            ($this->awaitNotification)($timeoutMs);
-        } catch (\Throwable) {
-            // NOTIFY is a low-latency optimization; on ANY failure (incl. a deprecation-to-exception handler on the
-            // deprecated pgsqlGetNotify path) fall through to the poll-fallback claim below, which delivers regardless.
-        }
-
-        $pgsql = $this->connection->getDriverName() === 'pgsql';
-        $query = $this->connection->table(OutboxSchema::TABLE)
-            ->where('status', OutboxSchema::STATUS_PENDING)
-            ->orderBy('id');
-        if ($pgsql) {
-            $query->lock('for update skip locked'); // claim (M4) — Laravel has no skipLocked() helper
-        }
-        $row = $query->first();
-
-        if ($row === null) {
-            return null;
-        }
-
-        return new ReceivedEnvelope(new EventEnvelope(
-            OutboxRow::asString($row->event_type),
-            OutboxRow::asString($row->destination),
-            OutboxRow::asMap($row->payload),
-            OutboxRow::asStringMap($row->headers),
-        ), OutboxRow::asInt($row->id));
-    }
-
-    public function ack(ReceivedEnvelope $received): void
-    {
-        $this->connection->table(OutboxSchema::TABLE)
-            ->where('id', $received->deliveryTag)
-            ->where('status', OutboxSchema::STATUS_PENDING)
-            ->update([
-                'status' => OutboxSchema::STATUS_PUBLISHED,
-                'processed_at' => $this->connection->raw('CURRENT_TIMESTAMP'),
-            ]);
-    }
-
-    public function nack(ReceivedEnvelope $received, bool $requeue = true): void
-    {
-        $row = $this->connection->table(OutboxSchema::TABLE)->where('id', $received->deliveryTag)->first();
-        if ($row === null) {
-            return;
-        }
-        $attempts = OutboxRow::asInt($row->attempts) + 1;
-        $failed = $attempts >= $this->maxAttempts;
-        $this->connection->table(OutboxSchema::TABLE)->where('id', $received->deliveryTag)->update([
-            'attempts' => $attempts,
-            'status' => $failed ? OutboxSchema::STATUS_FAILED : OutboxSchema::STATUS_PENDING,
-            'error_message' => 'in-process handler failed',
-            'failed_at' => $failed ? $this->connection->raw('CURRENT_TIMESTAMP') : null,
-        ]);
-    }
-
-    public function stop(): void {}
 }
