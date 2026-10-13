@@ -65,3 +65,42 @@ it('refuses to key what cannot be part of a stable key', function () {
     expect(QueryCacheKey::of($closure))->toBeNull()
         ->and(QueryCacheKey::of($nan))->toBeNull();
 });
+
+it('refuses to key a query whose state is private or protected, instead of colliding on its public view', function () {
+    $query = new class('a')
+    {
+        public function __construct(private string $account) {}
+
+        public function account(): string
+        {
+            return $this->account;
+        }
+    };
+    $protected = new class('a')
+    {
+        public function __construct(protected string $account) {}
+    };
+
+    expect(QueryCacheKey::of($query))->toBeNull()
+        ->and(QueryCacheKey::of(new ($query::class)('b')))->toBeNull()
+        ->and(QueryCacheKey::of($protected))->toBeNull();
+});
+
+it('refuses to key a public query that nests a value object with private state', function () {
+    $money = new class(100)
+    {
+        public function __construct(private int $cents) {}
+
+        public function cents(): int
+        {
+            return $this->cents;
+        }
+    };
+    $query = new class($money)
+    {
+        public function __construct(public object $amount) {}
+    };
+
+    expect(QueryCacheKey::of($query))->toBeNull()
+        ->and(QueryCacheKey::of(new ($query::class)(new ($money::class)(200))))->toBeNull();
+});

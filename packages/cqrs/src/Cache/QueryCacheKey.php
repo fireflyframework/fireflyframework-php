@@ -16,12 +16,15 @@ use UnitEnum;
  * The cache key of a query VALUE OBJECT: sha256 over the query class and a canonical form of its public
  * properties, so two equal queries share an entry and two different ones never do. Reflection-free: public
  * properties are read with get_object_vars() from outside the object's scope, the idiom EdaCommandEventPublisher
- * uses for event payloads.
+ * uses for event payloads. That read cannot see private or protected state, so an object that holds any — the query
+ * itself or a value object nested in it — is not keyable: comparing the (array) cast, which lists every initialized
+ * instance property, with the public view detects it, and the key is null. Keying such an object by its public
+ * view alone would give Q(private 'a') and Q(private 'b') one entry and serve one caller's result to another.
  *
  * The canonical form sorts associative keys (so property order never matters), keeps list order (so ['x','y'] and
  * ['y','x'] are different queries), writes enums by case, dates as an exact instant with offset, and walks nested
  * objects by their own public properties. Types are kept: 3 and '3' are different keys. Anything that cannot be
- * written stably answers null — the bus then runs the handler uncached.
+ * written stably (non-public state included) answers null — the bus then runs the handler uncached.
  *
  * fromProperties() builds the key a value object WOULD get from a property map: it is how #[InvalidatesQuery(with:
  * [...])] evicts one entry without constructing the query.
@@ -32,7 +35,13 @@ final class QueryCacheKey
 
     public static function of(object $query): ?string
     {
-        return self::fromProperties($query::class, self::publicProperties($query));
+        try {
+            $properties = self::publicProperties($query);
+        } catch (UnkeyableQueryValue) {
+            return null;
+        }
+
+        return self::fromProperties($query::class, $properties);
     }
 
     /**
@@ -53,12 +62,20 @@ final class QueryCacheKey
     }
 
     /**
+     * The object's public properties, or UnkeyableQueryValue when it also holds private or protected instance state
+     * (which get_object_vars() from this scope would silently leave out of the key).
+     *
      * @return array<string, mixed>
      */
     private static function publicProperties(object $object): array
     {
+        $public = get_object_vars($object);
+        if (count((array) $object) !== count($public)) {
+            throw new UnkeyableQueryValue;
+        }
+
         $properties = [];
-        foreach (get_object_vars($object) as $name => $value) {
+        foreach ($public as $name => $value) {
             $properties[(string) $name] = $value;
         }
 

@@ -55,6 +55,29 @@ it('refuses a TTL below one second on its own', function () {
     }
 });
 
+// Each `with` guard is isolated the same way: a directory holding only the event's placeholder file scans that one
+// event, and its query fixture autoloads from CacheScannerBadFixtures without being scanned itself.
+dataset('with map misconfigurations', [
+    'an unknown query property' => ['TypoWithEvent', 'maps [acount]'],
+    'an unmapped query property' => ['PartialWithEvent', 'leaves [page] unmapped'],
+    'a query with private state' => ['PrivateWithEvent', 'is not public'],
+    'a Cacheable query' => ['CacheableWithEvent', 'use a key template instead'],
+]);
+
+it('refuses a with map that does not name exactly the query\'s public properties', function (string $event, string $message) {
+    $dir = sys_get_temp_dir().'/firefly-cqrs-with-map-'.bin2hex(random_bytes(6));
+    mkdir($dir);
+    touch($dir.'/'.$event.'.php');
+
+    try {
+        expect(static fn (): array => (new HandlerScanner)->scan(['Firefly\\Cqrs\\Tests\\CacheScannerBadFixtures\\' => $dir]))
+            ->toThrow(CqrsConfigurationException::class, $message);
+    } finally {
+        @unlink($dir.'/'.$event.'.php');
+        @rmdir($dir);
+    }
+})->with('with map misconfigurations');
+
 it('round-trips both sections through the compiled manifest file', function () {
     $result = (new HandlerScanner)->scan(['Firefly\\Cqrs\\Tests\\CacheScannerFixtures\\' => dirname(__DIR__).'/CacheScannerFixtures']);
     $path = sys_get_temp_dir().'/firefly-cqrs-cache-manifest-'.bin2hex(random_bytes(6)).'.php';

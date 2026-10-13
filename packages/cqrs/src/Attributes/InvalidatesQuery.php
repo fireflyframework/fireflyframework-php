@@ -11,7 +11,9 @@ use Attribute;
  *
  *   * neither $key nor $with — evict the query's whole group (every cached result of it);
  *   * $with: ['queryProperty' => 'eventProperty'] — evict the ONE entry whose derived key the query would get with
- *     those property values (the query's every public property must be mapped, with the same types);
+ *     those property values. The query's every public property must be mapped, with the same types; HandlerScanner
+ *     refuses a map that names an unknown property, leaves one out, or targets a Cacheable query or one holding
+ *     private or protected state (the types are the author's to keep: the event value is only known at runtime);
  *   * $key: 'statement:{account}' — evict the entry a Cacheable query's own cacheKey() returns, `{name}` resolved
  *     from the event's public properties or from the EDA payload (dotted paths reach into nested arrays).
  *

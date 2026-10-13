@@ -9,6 +9,7 @@ use Firefly\Cqrs\Attributes\CommandHandler;
 use Firefly\Cqrs\Attributes\InvalidatesQuery;
 use Firefly\Cqrs\Attributes\PublishDomainEvent;
 use Firefly\Cqrs\Attributes\QueryHandler;
+use Firefly\Cqrs\Cache\Cacheable;
 use Firefly\Cqrs\Cache\CachedQueryPolicy;
 use Firefly\Cqrs\Cache\InvalidationRule;
 use Firefly\Cqrs\Exception\CqrsConfigurationException;
@@ -26,7 +27,8 @@ use ReflectionNamedType;
  * (CqrsConfigurationException) on an unresolvable type or a missing/multi-param handle() — never silently skips.
  * It also compiles #[CachedQuery] off query classes into per-query policies and #[InvalidatesQuery] off event classes
  * into invalidation rules, refusing a rule with both a key template and a `with` map, a rule naming a class that does
- * not exist, and a TTL below one second.
+ * not exist, a `with` map that does not name exactly the query's public properties (or targets a Cacheable query or
+ * one with non-public state), and a TTL below one second.
  * Runs only at cache time; production loads the compiled HandlerManifest via require+map. Mirrors ScheduledScanner.
  */
 final class HandlerScanner
@@ -89,11 +91,52 @@ final class HandlerScanner
                 if ($rule->key !== null && $rule->with !== []) {
                     throw new CqrsConfigurationException("#[InvalidatesQuery({$rule->query}::class)] on [{$class}] declares both key and with; a rule evicts by one or the other.");
                 }
+                if ($rule->with !== []) {
+                    $this->assertWithMapsQuery($class, $rule->query, $rule->with);
+                }
                 $invalidations[] = new InvalidationRule($class, $rule->eventType ?? $reflection->getShortName(), $rule->query, $rule->key, $rule->with);
             }
         }
 
         return ['handlers' => $handlers, 'destinations' => $destinations, 'cachedQueries' => $cachedQueries, 'invalidations' => $invalidations];
+    }
+
+    /**
+     * A `with` map names the query properties QueryCacheKey derives the key from, so it must name exactly the query's
+     * public instance properties: an unknown name or an unmapped property derives a key no cached entry has, and the
+     * eviction silently misses. A query holding private or protected state is never keyed by value (QueryCacheKey
+     * answers null), and a Cacheable query is keyed by its own cacheKey(), so `with` can match neither.
+     *
+     * @param  class-string  $queryClass
+     * @param  array<string, string>  $with
+     */
+    private function assertWithMapsQuery(string $eventClass, string $queryClass, array $with): void
+    {
+        $where = "#[InvalidatesQuery({$queryClass}::class)] on [{$eventClass}]";
+        if (is_subclass_of($queryClass, Cacheable::class)) {
+            throw new CqrsConfigurationException("{$where} declares a with map, but the query is Cacheable and keyed by its own cacheKey(); use a key template instead.");
+        }
+
+        $public = [];
+        foreach ((new ReflectionClass($queryClass))->getProperties() as $property) {
+            if ($property->isStatic()) {
+                continue;
+            }
+            if (! $property->isPublic()) {
+                throw new CqrsConfigurationException("{$where} declares a with map, but [{$queryClass}::\${$property->getName()}] is not public; a query keyed by value holds only public state.");
+            }
+            $public[] = $property->getName();
+        }
+
+        $unknown = array_diff(array_keys($with), $public);
+        if ($unknown !== []) {
+            throw new CqrsConfigurationException("{$where} maps [".implode(', ', $unknown)."], which [{$queryClass}] does not declare as public properties.");
+        }
+
+        $unmapped = array_diff($public, array_keys($with));
+        if ($unmapped !== []) {
+            throw new CqrsConfigurationException("{$where} leaves [".implode(', ', $unmapped).'] unmapped; a with map names every public property of the query.');
+        }
     }
 
     /**
