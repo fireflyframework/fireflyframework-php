@@ -32,7 +32,9 @@ use Throwable;
  *
  * The phase is checkpointed as it starts and every participant result as it lands, so resume() picks up a
  * CONFIRMING or CANCELING transaction exactly where a crash left it — which is why confirm and cancel must be
- * idempotent.
+ * idempotent. A required failure is checkpointed together with the switch to CANCEL, and a resumed state that
+ * still holds one goes straight to CANCEL, so a resume never retries an exhausted participant or reports a
+ * transaction with a CONFIRM_FAILED participant as CONFIRMED.
  */
 final class TccExecutionOrchestrator
 {
@@ -45,6 +47,13 @@ final class TccExecutionOrchestrator
     public function orchestrate(TccDefinition $tcc, TccInputs $inputs, ExecutionContext $context): TccRunOutcome
     {
         $phase = $context->currentPhase() ?? TccPhase::Try;
+
+        // A state checkpointed before the switch to CANCEL was saved (or by an older engine) can still say TRY or
+        // CONFIRM while already holding a required failure; running that phase again would retry an exhausted
+        // participant or skip a CONFIRM_FAILED one and report CONFIRMED. Such a transaction is cancelling.
+        if ($phase !== TccPhase::Cancel && $this->recordedFailure($tcc, $context)[0] !== null) {
+            $phase = TccPhase::Cancel;
+        }
 
         if ($phase === TccPhase::Try) {
             $failure = $this->tryPhase($tcc, $inputs, $context);
@@ -103,11 +112,17 @@ final class TccExecutionOrchestrator
                 $this->support->events->onParticipantFailed($tcc->name, $context->correlationId, $participant->id, TccPhase::Try, $error);
                 $this->support->events->onStepFailed($tcc->name, $context->correlationId, $participant->id, $error, $context->attempts($participant->id));
                 $this->support->publish($this->support->lifecycle, OrchestrationEvent::stepFailed($tcc->name, $context->correlationId, ExecutionPattern::Tcc, $participant->id, $error, $this->support->now()));
-                $this->support->checkpoint($context, ExecutionStatus::Trying);
 
                 if ($participant->optional) {
+                    $this->support->checkpoint($context, ExecutionStatus::Trying);
+
                     continue;
                 }
+
+                // The failure checkpoint already records the switch to CANCEL, so a crash before cancelPhase()
+                // resumes into cancelling instead of trying the exhausted participant again.
+                $context->setCurrentPhase(TccPhase::Cancel);
+                $this->support->checkpoint($context, ExecutionStatus::Canceling);
 
                 $this->support->events->onPhaseFailed($tcc->name, $context->correlationId, TccPhase::Try, $error);
 
@@ -152,7 +167,10 @@ final class TccExecutionOrchestrator
                 $this->support->events->onParticipantFailed($tcc->name, $context->correlationId, $participant->id, TccPhase::Confirm, $error);
                 $this->support->events->onPhaseFailed($tcc->name, $context->correlationId, TccPhase::Confirm, $error);
                 $this->support->publish($this->support->lifecycle, OrchestrationEvent::stepFailed($tcc->name, $context->correlationId, ExecutionPattern::Tcc, $participant->id, $error, $this->support->now()));
-                $this->support->checkpoint($context, ExecutionStatus::Confirming);
+                // Saved as CANCEL already: a crash before cancelPhase() must resume into cancelling, not back
+                // into CONFIRM, which would skip this participant and report the transaction CONFIRMED.
+                $context->setCurrentPhase(TccPhase::Cancel);
+                $this->support->checkpoint($context, ExecutionStatus::Canceling);
 
                 return [$participant->id, $error];
             }
@@ -214,12 +232,19 @@ final class TccExecutionOrchestrator
         return new TccRunOutcome($status, $failedId, $failedPhase, $error);
     }
 
-    /** @return array{0: ?string, 1: ?TccPhase, 2: ?Throwable} the failure a resumed CANCELING transaction was cancelling for */
+    /**
+     * The required failure a resumed transaction is cancelling for: a CONFIRM_FAILED participant, or a FAILED or
+     * TIMED_OUT one that is not optional (an optional participant's try failure never cancels the transaction).
+     *
+     * @return array{0: ?string, 1: ?TccPhase, 2: ?Throwable}
+     */
     private function recordedFailure(TccDefinition $tcc, ExecutionContext $context): array
     {
         foreach ($tcc->ordered() as $participant) {
             $status = $context->stepStatus($participant->id);
-            if (in_array($status, [StepStatus::Failed, StepStatus::TimedOut, StepStatus::ConfirmFailed], true)) {
+            $required = $status === StepStatus::ConfirmFailed
+                || (! $participant->optional && in_array($status, [StepStatus::Failed, StepStatus::TimedOut], true));
+            if ($required) {
                 return [
                     $participant->id,
                     $status === StepStatus::ConfirmFailed ? TccPhase::Confirm : TccPhase::Try,
