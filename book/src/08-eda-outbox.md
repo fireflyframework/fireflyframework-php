@@ -417,9 +417,9 @@ final class OutboxPreCommitHook implements PreCommitEventHook
 
 ### The INSERT, and `pg_notify` in the same transaction
 
-<!-- source: packages/eda-postgres/src/PostgresEventPublisher.php -->
+<!-- source: packages/eda-database/src/DatabaseEventPublisher.php -->
 ```php
-final class PostgresEventPublisher implements EventPublisher
+class DatabaseEventPublisher implements EventPublisher, OutboxWriter
 {
     // …
     public function publish(string $destination, string $eventType, array $payload, array $headers = []): void
@@ -437,18 +437,30 @@ final class PostgresEventPublisher implements EventPublisher
                 'created_at' => $this->connection->raw('CURRENT_TIMESTAMP'),
             ]);
 
-            if ($this->emitNotify) {
-                // In-tx pg_notify: Postgres queues it and delivers on COMMIT, so the consumer's LISTEN wakes exactly
-                // …
-                $this->connection->statement('SELECT pg_notify(?, ?)', [$this->channel, (string) $id]);
-            }
+            $this->afterInsert($id);
         });
     }
 // …
 }
 ```
 
-Because `publish()` runs on **whatever connection it was constructed with**, and that connection is mid-transaction when `OutboxPreCommitHook` calls it, the `INSERT` enlists in the aggregate's own transaction: it commits when the aggregate commits, and it rolls back when the aggregate rolls back. When the driver is `pgsql`, the same closure also fires `SELECT pg_notify(?, ?)` — **inside the same transaction**. Postgres queues a `NOTIFY` raised inside a transaction and only actually delivers it once that transaction commits, so a listening consumer wakes with low latency at exactly the moment the row becomes visible to other connections — and never wakes for a row that gets rolled back.
+<!-- source: packages/eda-postgres/src/PostgresEventPublisher.php -->
+```php
+final class PostgresEventPublisher extends DatabaseEventPublisher
+{
+    // …
+    protected function afterInsert(int $id): void
+    {
+        if ($this->emitNotify) {
+            // In-tx pg_notify: Postgres queues it and delivers on COMMIT, so the consumer's LISTEN wakes exactly when
+            // the PENDING row becomes visible. (sqlite and every other driver: emitNotify=false.)
+            $this->connection->statement('SELECT pg_notify(?, ?)', [$this->channel, (string) $id]);
+        }
+    }
+}
+```
+
+Because `publish()` runs on **whatever connection it was constructed with**, and that connection is mid-transaction when `OutboxPreCommitHook` calls it, the `INSERT` enlists in the aggregate's own transaction: it commits when the aggregate commits, and it rolls back when the aggregate rolls back. Under `firefly.eda.provider=postgres` the writer is `PostgresEventPublisher`, whose `afterInsert()` — called from the same closure — also fires `SELECT pg_notify(?, ?)` **inside the same transaction**; under `provider=database` there is no NOTIFY and the consumer polls. Postgres queues a `NOTIFY` raised inside a transaction and only actually delivers it once that transaction commits, so a listening consumer wakes with low latency at exactly the moment the row becomes visible to other connections — and never wakes for a row that gets rolled back.
 
 The whole of that body sits inside `EdaTracing::tracePublish()` — the single port all three broker publishers now route through, `eda-rabbitmq` and `eda-kafka` alongside this one. Because propagation means *writing* something on the envelope, the port hands the send closure the headers to carry and the adapter builds the row out of those, so the `traceparent` the producer span stamps is on the row that commits with the aggregate — this is the one adapter where the producer span and the durable record are genuinely atomic, rather than a span that ends the moment a socket accepted the message. With tracing off the bound `EdaTracing` is `NoOpEdaTracing`, which calls the closure with the caller's headers unchanged, so the path is byte-for-byte what it was; and `transaction_id` is still read from `x-correlation-id`, never from a traceparent, so the relay's idempotency key does not change just because a request happened to be traced.
 
