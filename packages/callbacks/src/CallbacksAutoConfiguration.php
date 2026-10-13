@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Firefly\Callbacks;
 
+use Firefly\Callbacks\Execution\DatabaseExecutionLog;
+use Firefly\Callbacks\Execution\ExecutionLog;
+use Firefly\Callbacks\Execution\InMemoryExecutionLog;
 use Firefly\Callbacks\Subscription\DatabaseSubscriptionRegistry;
 use Firefly\Callbacks\Subscription\InMemorySubscriptionRegistry;
 use Firefly\Callbacks\Subscription\SubscriptionRegistry;
@@ -42,6 +45,16 @@ final class CallbacksAutoConfiguration
         return $settings->registryStore === 'database'
             ? new DatabaseSubscriptionRegistry($this->connection($container, $settings->connection))
             : new InMemorySubscriptionRegistry($settings->subscriptions);
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.callbacks.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(ExecutionLog::class)]
+    public function executionLog(CallbacksSettings $settings, Container $container): ExecutionLog
+    {
+        return $settings->logStore === 'database'
+            ? new DatabaseExecutionLog($this->connection($container, $settings->connection))
+            : new InMemoryExecutionLog;
     }
 
     private function connection(Container $container, ?string $name): ConnectionInterface

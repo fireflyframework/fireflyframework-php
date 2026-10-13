@@ -41,6 +41,19 @@ return [
                     1 => 'Illuminate\\Container\\Container',
                 ],
             ],
+            2 => [
+                'method' => 'executionLog',
+                'returns' => 'Firefly\\Callbacks\\Execution\\ExecutionLog',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Callbacks\\CallbacksSettings',
+                    1 => 'Illuminate\\Container\\Container',
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [
