@@ -46,6 +46,9 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 - **`RabbitMqRoundTripTest` failed against a real broker when `FIREFLY_RABBITMQ_DSN` was a URL**, which the old
   parser read as one key and silently replaced with `127.0.0.1:5672`.
 - **The lumen sample's Postgres round trip called `firefly:eda:consume` without registering it.**
+- **The CQRS/EDA bridge figure still credited only the Postgres adapter with same-transaction atomicity.** Its
+  caption now names the database outbox (`provider=database` or `postgres`), and its adapter row draws the
+  `database` provider; a test derives both providers from their outbox auto-configurations.
 
 ### Deprecated
 
