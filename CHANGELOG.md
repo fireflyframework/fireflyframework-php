@@ -112,6 +112,22 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
   endpoint; partner callbacks through `firefly/callbacks`; `GetBalance` as a `#[CachedQuery]` evicted per wallet by
   `#[InvalidatesQuery]` on `FundsDeposited`/`FundsWithdrawn`; and the portable outbox, proven on PostgreSQL, MySQL,
   MariaDB, SQL Server and SQLite by `OutboxDatabaseRoundTripTest`.
+- **Book: Chapter 9B, in English and Spanish.** *Event Sourcing: Storing What Happened* walks Lumen's event-sourced
+  loans — `#[EventType]` events, an `EventSourcedAggregateRoot` replayed from history and from snapshots, the 409 a
+  stale writer gets, one transaction with the wallet, a checkpointed `loan_book` projection run, listed and rebuilt by
+  the projection commands, an upcaster for a renamed field, publication through the outbox in the append's own
+  transaction, and the payout saga on `firefly.orchestration.persistence.provider=event-sourced` — slotted after
+  Chapter 9A without renumbering. The preface, Chapter 9A, Appendix A and the glossary (checkpoint, event sourcing,
+  event store, snapshot, upcaster) follow. The book now has nineteen chapters.
+- **Tutorial Step 14, in English and Spanish.** The greeting app records every greeting as a `greeting.said` event
+  in the database event store and projects the counts into a `greeting_counts` read model at
+  `POST`/`GET /journal/{name}`; the step's files are quoted from `tests/Fixtures/Tutorial`, which
+  `tests/TutorialGreetingJournalTest.php` boots through the real web and eventsourcing pipeline. "What's Next" is now
+  Step 15.
+- **`samples/lumen` exercises W3.** An event-sourced `Loan` with `GrantLoan`/`RepayLoan` handlers that move the money
+  through the wallet in the same transaction, `LoanRepository`, `LoanBookProjection`, `LoanRepaidV1Upcaster` and the
+  payout saga on the event-sourced orchestration store, proven on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite
+  by `LoanLedgerRoundTripTest` and `EventSourcedPayoutRoundTripTest`.
 
 ### Changed
 
