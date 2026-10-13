@@ -391,9 +391,9 @@ final class OrchestrationAutoConfiguration
     #[Bean]
     #[Lazy]
     #[ConditionalOnMissingBean(RecoveryService::class)]
-    public function recoveryService(OrchestrationSettings $settings, ExecutionPersistenceProvider $persistence, SagaEngine $sagas, TccEngine $tccs, WorkflowEngine $workflows, Clock $clock, Container $app): RecoveryService
+    public function recoveryService(OrchestrationSettings $settings, ExecutionPersistenceProvider $persistence, SagaEngine $sagas, TccEngine $tccs, WorkflowEngine $workflows, ExecutionLock $lock, Clock $clock, Container $app): RecoveryService
     {
-        return new RecoveryService($persistence, $sagas, $tccs, $workflows, $settings->recovery, $settings->persistence, $clock, self::logger($app), $settings->backpressure->batchSize);
+        return new RecoveryService($persistence, $sagas, $tccs, $workflows, $lock, $settings->recovery, $settings->persistence, $clock, self::logger($app), $settings->backpressure->batchSize);
     }
 
     private static function cacheStore(Container $app, ?string $store): CacheRepository

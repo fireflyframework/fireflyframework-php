@@ -6,6 +6,7 @@ namespace Firefly\Orchestration\Recovery;
 
 use DateTimeImmutable;
 use Firefly\Orchestration\Core\Clock;
+use Firefly\Orchestration\Core\ExecutionLock;
 use Firefly\Orchestration\Core\ExecutionPattern;
 use Firefly\Orchestration\Persistence\ExecutionPersistenceProvider;
 use Firefly\Orchestration\Persistence\ExecutionState;
@@ -31,6 +32,19 @@ use Throwable;
  * execution behind them forever; the sweep asks for the next rows instead, as WorkflowEngine::resumeDue() does,
  * looking at no more than ten batches' worth of rows in one sweep.
  * WAITING and SUSPENDED workflows are idle by design and never stale.
+ *
+ * Rows are selected without a lock, so each one is checked again under its execution lock before anything is
+ * done to it: it must still be the row the sweep selected — same status, same last checkpoint. A long step
+ * leaves its row looking stale while its process is alive and holds the lock; the sweep waits for that lock,
+ * and by the time it has it the run may have finished COMPLETED or CONFIRMED, or checkpointed again. Such a row
+ * is reported `skipped` (no longer stale), never resumed and never compensated — the engines' compensate()
+ * accepts a COMPLETED or CONFIRMED execution on purpose, as the manual undo API, and without this check the
+ * sweep would undo a business transaction that succeeded. The engine calls run inside that same lock
+ * (ExecutionLock is re-entrant), so nothing can checkpoint the row between the check and the recovery.
+ *
+ * What no check can tell apart is a live process whose execution lock EXPIRED (`lock.ttl`) and that has not
+ * checkpointed for `recovery.stale-threshold`: from the store it looks exactly like a dead one. Keep every
+ * step shorter than `lock.ttl`, and `stale-threshold` well above both.
  */
 final class RecoveryService
 {
@@ -42,6 +56,7 @@ final class RecoveryService
         private readonly SagaEngine $sagas,
         private readonly TccEngine $tccs,
         private readonly WorkflowEngine $workflows,
+        private readonly ExecutionLock $lock,
         private readonly RecoverySettings $settings,
         private readonly PersistenceSettings $persistenceSettings,
         private readonly Clock $clock,
@@ -70,6 +85,7 @@ final class RecoveryService
         $resumed = [];
         $compensated = [];
         $errors = [];
+        $skipped = [];
 
         $before = $this->staleBefore();
         $seen = [];
@@ -85,19 +101,28 @@ final class RecoveryService
                 }
                 $seen[$id] = true;
                 $fresh++;
-                $stale[] = $id;
 
                 try {
-                    if ($this->settings->action === RecoverySettings::RESUME) {
-                        $this->resume($state);
-                        $resumed[] = $id;
-                    } elseif ($this->settings->action === RecoverySettings::COMPENSATE) {
-                        $this->compensate($state);
-                        $compensated[] = $id;
-                    } else {
+                    if ($this->settings->action === RecoverySettings::REPORT) {
+                        $stale[] = $id;
                         $this->logger->warning("Orchestration recovery found {$state->pattern->value} [{$state->executionName}] ({$id}) stale in {$state->status->value} since ".ExecutionState::instant($state->updatedAt).'; firefly.orchestration.recovery.action is report, so it is left as it is.', ['correlationId' => $id]);
+                    } elseif ($this->recoverIfUnchanged($state)) {
+                        $stale[] = $id;
+                        if ($this->settings->action === RecoverySettings::RESUME) {
+                            $resumed[] = $id;
+                        } else {
+                            $compensated[] = $id;
+                        }
+                    } else {
+                        // Not an error and not stale: its process is alive and moved it on. It is not counted
+                        // against the batch, and findStale() no longer returns it.
+                        $skipped[] = $id;
+                        $this->logger->info("Orchestration recovery left [{$id}] alone: it changed after the sweep selected it as stale, so the process running it is still alive.", ['correlationId' => $id]);
+
+                        continue;
                     }
                 } catch (Throwable $error) {
+                    $stale[] = $id;
                     $failed = true;
                     $errors[$id] = $error->getMessage();
                     $this->logger->error("Orchestration recovery of [{$id}] failed: {$error->getMessage()}", ['correlationId' => $id, 'exception' => $error]);
@@ -109,12 +134,39 @@ final class RecoveryService
             }
         } while ($failed && $fresh > 0 && count($seen) < $this->batchSize * self::MAX_BATCHES);
 
-        return new RecoveryReport($stale, $resumed, $compensated, $errors, $this->cleanup());
+        return new RecoveryReport($stale, $resumed, $compensated, $errors, $this->cleanup(), $skipped);
     }
 
     private function staleBefore(): DateTimeImmutable
     {
         return $this->clock->now()->modify(sprintf('-%d milliseconds', (int) round($this->settings->staleThreshold * 1000)));
+    }
+
+    /**
+     * Recovers $selected under its execution lock, unless the row changed since the sweep selected it.
+     *
+     * @return bool false when the row is no longer the stale one the sweep saw (it was left alone)
+     */
+    private function recoverIfUnchanged(ExecutionState $selected): bool
+    {
+        return $this->lock->synchronized($selected->correlationId, function () use ($selected): bool {
+            $current = $this->persistence->findById($selected->correlationId);
+            if ($current === null
+                || $current->pattern !== $selected->pattern
+                || $current->status !== $selected->status
+                || ! $current->status->isRecoverable()
+                || ExecutionState::instant($current->updatedAt) !== ExecutionState::instant($selected->updatedAt)) {
+                return false;
+            }
+
+            if ($this->settings->action === RecoverySettings::RESUME) {
+                $this->resume($current);
+            } else {
+                $this->compensate($current);
+            }
+
+            return true;
+        });
     }
 
     private function resume(ExecutionState $state): void

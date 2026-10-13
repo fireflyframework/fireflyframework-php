@@ -180,7 +180,7 @@ final class TestEngines
         $this->orchestrator = new Orchestrator($this->sagas, $this->tccs, $this->workflows, $this->persistence);
         $this->retrier = new DeadLetterRetrier($this->support->deadLetters, $this->orchestrator);
         $this->recovery = new RecoveryService(
-            $this->persistence, $this->sagas, $this->tccs, $this->workflows,
+            $this->persistence, $this->sagas, $this->tccs, $this->workflows, $this->support->lock,
             $this->settings->recovery, $this->settings->persistence, $this->clock, $this->logger, $this->settings->backpressure->batchSize,
         );
     }

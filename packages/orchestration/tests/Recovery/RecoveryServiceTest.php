@@ -5,7 +5,11 @@ declare(strict_types=1);
 use Firefly\Orchestration\Core\ExecutionPattern;
 use Firefly\Orchestration\Core\ExecutionStatus;
 use Firefly\Orchestration\Core\StepStatus;
+use Firefly\Orchestration\Persistence\ExecutionState;
+use Firefly\Orchestration\Saga\Builder\SagaBuilder;
+use Firefly\Orchestration\Tcc\Builder\TccBuilder;
 use Firefly\Orchestration\Tests\Support\ExecutionPersistenceContract;
+use Firefly\Orchestration\Tests\Support\RacingExecutionPersistence;
 use Firefly\Orchestration\Tests\Support\TestEngines;
 use Firefly\Orchestration\Workflow\Builder\WorkflowBuilder;
 use Firefly\Orchestration\Workflow\Engine\WorkflowEngine;
@@ -150,5 +154,84 @@ it('does nothing while recovery is disabled', function (): void {
     $engines = TestEngines::create(['recovery' => ['enabled' => false]]);
     $engines->persistence->save(ExecutionPersistenceContract::state('old', ExecutionPattern::Saga, ExecutionStatus::Completed, '2026-01-01T09:00:00+00:00'));
 
-    expect($engines->recovery->recover()->toArray())->toBe(['stale' => [], 'resumed' => [], 'compensated' => [], 'errors' => [], 'cleaned' => 0]);
+    expect($engines->recovery->recover()->toArray())->toBe(['stale' => [], 'resumed' => [], 'compensated' => [], 'errors' => [], 'cleaned' => 0, 'skipped' => []]);
+});
+
+it('leaves alone an execution that finished while the sweep waited for its lock, instead of undoing it', function (ExecutionPattern $pattern, ExecutionStatus $running, ExecutionStatus $finished): void {
+    $persistence = new RacingExecutionPersistence;
+    $engines = TestEngines::create(['recovery' => ['action' => 'compensate', 'stale-threshold' => '1m']], $persistence);
+    $undone = [];
+    $engines->sagaRegistry->register(SagaBuilder::saga('order')
+        ->step('reserve')->handler(static fn (): string => 'h')->compensation(static function () use (&$undone): void {
+            $undone[] = 'release';
+        })->add()
+        ->build());
+    $engines->tccRegistry->register(TccBuilder::tcc('order')->retry(false)
+        ->participant('reserve')->order(1)
+        ->tryWith(static fn (): string => 'h')
+        ->confirmWith(static function (): void {})
+        ->cancelWith(static function () use (&$undone): void {
+            $undone[] = 'cancel';
+        })
+        ->add()
+        ->build());
+    $selected = ExecutionPersistenceContract::state('x-1', $pattern, $running, '2026-10-12T09:00:00+00:00');
+    $persistence->save($selected);
+    // The live run finishes between findStale() and the sweep's reload under the execution lock.
+    $persistence->changeOnNextFind(ExecutionPersistenceContract::state('x-1', $pattern, $finished, '2026-10-12T10:00:00+00:00', [
+        'stepStatuses' => ['reserve' => $pattern === ExecutionPattern::Tcc ? 'CONFIRMED' : 'DONE'],
+    ]));
+
+    $report = $engines->recovery->recover();
+
+    expect($report->skipped)->toBe(['x-1'])
+        ->and($report->stale)->toBe([])
+        ->and($report->compensated)->toBe([])
+        ->and($report->errors)->toBe([])
+        ->and($undone)->toBe([])
+        ->and($persistence->findById('x-1')?->status)->toBe($finished);
+})->with([
+    'saga' => [ExecutionPattern::Saga, ExecutionStatus::Running, ExecutionStatus::Completed],
+    'tcc' => [ExecutionPattern::Tcc, ExecutionStatus::Confirming, ExecutionStatus::Confirmed],
+]);
+
+it('leaves alone a workflow that checkpointed again while the sweep waited for its lock, instead of driving it twice', function (string $action): void {
+    $persistence = new RacingExecutionPersistence;
+    $engines = TestEngines::create(['recovery' => ['action' => $action, 'stale-threshold' => '1m']], $persistence);
+    $log = [];
+    compensatingWorkflow($engines, $log);
+    $row = static fn (array $statuses): array => [
+        'executionName' => 'w', 'stepStatuses' => $statuses, 'stepResults' => ['a' => 'a'], 'completionOrder' => ['a'],
+    ];
+    $persistence->save(ExecutionPersistenceContract::state('w-1', ExecutionPattern::Workflow, ExecutionStatus::Running, '2026-10-12T09:00:00+00:00', $row(['a' => 'DONE', 'b' => 'RUNNING'])));
+    // Still RUNNING, but with a fresh checkpoint: the process driving it is alive.
+    $persistence->changeOnNextFind(ExecutionPersistenceContract::state('w-1', ExecutionPattern::Workflow, ExecutionStatus::Running, '2026-10-12T09:59:30+00:00', $row(['a' => 'DONE', 'b' => 'DONE', 'c' => 'RUNNING'])));
+
+    $report = $engines->recovery->recover();
+    $state = $persistence->findById('w-1');
+
+    expect($report->skipped)->toBe(['w-1'])
+        ->and($report->stale)->toBe([])
+        ->and($report->resumed)->toBe([])
+        ->and($report->compensated)->toBe([])
+        ->and($log)->toBe([])
+        ->and($state?->status)->toBe(ExecutionStatus::Running)
+        ->and($state === null ? null : ExecutionState::instant($state->updatedAt))->toBe(ExecutionState::instant(new DateTimeImmutable('2026-10-12T09:59:30+00:00')));
+})->with(['resume', 'compensate']);
+
+it('still recovers a stale execution the sweep finds unchanged under its lock', function (): void {
+    $persistence = new RacingExecutionPersistence;
+    $engines = TestEngines::create(['recovery' => ['action' => 'compensate', 'stale-threshold' => '1m']], $persistence);
+    $log = [];
+    compensatingWorkflow($engines, $log);
+    $persistence->save(ExecutionPersistenceContract::state('w-1', ExecutionPattern::Workflow, ExecutionStatus::Running, '2026-10-12T09:00:00+00:00', [
+        'executionName' => 'w', 'stepStatuses' => ['a' => 'DONE', 'b' => 'RUNNING'], 'stepResults' => ['a' => 'a'], 'completionOrder' => ['a'],
+    ]));
+
+    $report = $engines->recovery->recover();
+
+    expect($report->compensated)->toBe(['w-1'])
+        ->and($report->skipped)->toBe([])
+        ->and($log)->toBe(['undo a'])
+        ->and($persistence->findById('w-1')?->status)->toBe(ExecutionStatus::Cancelled);
 });

@@ -2639,7 +2639,10 @@ return [
          | The recovery sweep finds executions a crashed process left RUNNING, COMPENSATING, TRYING,
          | CONFIRMING, CANCELING or PENDING for longer than `stale-threshold`, and `action`s them: report (log
          | only), resume (continue from the last checkpoint — make your steps idempotent) or compensate (undo
-         | what completed). WAITING and SUSPENDED workflows are idle by design and never touched.
+         | what completed). WAITING and SUSPENDED workflows are idle by design and never touched. Each row
+         | is checked again under its execution lock, and one that finished or checkpointed since the sweep
+         | selected it is skipped. A live process whose `lock.ttl` expired and that has not checkpointed for
+         | `stale-threshold` looks dead, so keep every step shorter than `lock.ttl` and this well above it.
          | Defaults: enabled true, 1h, report.
         */
         'recovery' => [
