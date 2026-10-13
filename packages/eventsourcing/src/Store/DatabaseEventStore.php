@@ -40,6 +40,9 @@ use Throwable;
  * data's PersistenceExceptionTranslator, built here with translation always ON, because conflict detection must
  * not depend on firefly.data.exception-translation.enabled.
  *
+ * On SQLite the append first touches the head row, so it holds the database write lock before the head check (see
+ * lockSqliteForWrite()): two processes appending to one file wait for each other instead of failing.
+ *
  * READS: a stream load and the head check are plain reads. They must never skip a committed row, and on SQL Server
  * they wait for an uncommitted append of the same aggregate, which is the right answer. Global reads go through
  * READPAST on SQL Server.
@@ -98,6 +101,7 @@ final class DatabaseEventStore implements EventStore
         try {
             /** @var list<StoredEvent> $stored */
             $stored = $this->connection->transaction(function () use ($aggregateId, $aggregateType, $prepared, $expectedVersion): array {
+                $this->lockSqliteForWrite();
                 $base = $this->checkHead($aggregateId, $aggregateType, $expectedVersion);
                 $recordedAt = $this->now();
                 $rows = [];
@@ -208,6 +212,25 @@ final class DatabaseEventStore implements EventStore
         } catch (Throwable) {
             return false;
         }
+    }
+
+    /**
+     * On SQLite, makes the append's first statement a write, so it holds the database write lock before it reads
+     * the head. PDO begins a DEFERRED transaction (PHP 8.3 cannot ask for IMMEDIATE), and in WAL mode the head read
+     * would pin a snapshot: when another process commits before the INSERT, SQLite refuses the upgrade at once with
+     * SQLITE_BUSY, which no busy timeout waits out. Taking the lock first turns that into a wait. SQLite has one
+     * writer per database, so touching the head row adds no contention there; servers skip it, because on them it
+     * would serialize every append.
+     */
+    private function lockSqliteForWrite(): void
+    {
+        if ($this->connection->getDriverName() !== 'sqlite') {
+            return;
+        }
+
+        $this->connection->table(EventSourcingSchema::HEAD)
+            ->where('name', EventSourcingSchema::GLOBAL_STREAM)
+            ->update(['updated_at' => EventSourcingSchema::instant(new DateTimeImmutable)]);
     }
 
     /** The version a new event goes after, or a refusal; see the class docblock. */

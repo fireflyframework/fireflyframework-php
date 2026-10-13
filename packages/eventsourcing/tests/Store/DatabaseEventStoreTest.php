@@ -10,7 +10,11 @@ use Firefly\EventSourcing\Store\EventStore;
 use Firefly\EventSourcing\Tests\Support\EventSourcingDatabase;
 use Firefly\EventSourcing\Tests\Support\EventStoreContract;
 use Firefly\EventSourcing\Upcasting\UpcasterChain;
+use Firefly\Kernel\Exception\Infrastructure\CannotAcquireLockException;
 use Firefly\Kernel\Exception\Infrastructure\DuplicateKeyException;
+use Firefly\Testing\Integration\IntegrationDsn;
+use Illuminate\Database\Capsule\Manager;
+use Illuminate\Database\Connection;
 
 foreach (EventStoreContract::cases() as $case => $assert) {
     it("SQLite database event store {$case}", function () use ($assert): void {
@@ -57,4 +61,49 @@ it('keeps every eventsourcing table across a second create and keeps the global 
     expect($connection->table(EventSourcingSchema::HEAD)->pluck('position', 'name')->all())->toBe(['global' => 0])
         ->and($connection->getSchemaBuilder()->hasTable(EventSourcingSchema::SNAPSHOTS))->toBeTrue()
         ->and($connection->getSchemaBuilder()->hasTable(EventSourcingSchema::CHECKPOINTS))->toBeTrue();
+});
+
+it('takes the SQLite write lock before it reads the head, so a writer committing in between cannot fail the append', function (): void {
+    $path = IntegrationDsn::sqlitePath('eventsourcing-write-lock');
+    if (is_file($path)) {
+        unlink($path);
+    }
+    $connect = static function (string $name, int $busyTimeoutMs) use ($path): Connection {
+        $capsule = new Manager;
+        $capsule->addConnection(['busy_timeout' => $busyTimeoutMs] + IntegrationDsn::sqlite($path), $name);
+
+        return $capsule->getConnection($name);
+    };
+    $connection = EventSourcingDatabase::fresh($connect('es-lock-a', 10000));
+    $other = $connect('es-lock-b', 1);
+    $intruder = null;
+
+    // The clock runs inside the append's transaction, after the head check: the moment a second process would
+    // commit its own append. A deferred BEGIN followed by a read would have pinned a WAL snapshot there, and the
+    // INSERT would then fail at once with SQLITE_BUSY (the busy timeout cannot help a stale snapshot). Holding
+    // the write lock from the first statement makes the other writer wait instead.
+    $store = new DatabaseEventStore($connection, clock: static function () use ($other, &$intruder): DateTimeImmutable {
+        if ($intruder === null) {
+            try {
+                (new DatabaseEventStore($other))->append('other-1', 'order', [EventStoreContract::event()], 0);
+                $intruder = 'committed';
+            } catch (Throwable $refused) {
+                $intruder = $refused::class;
+            }
+        }
+
+        return new DateTimeImmutable;
+    });
+
+    try {
+        $store->append('order-1', 'order', [EventStoreContract::event()], 0);
+
+        expect($store->version('order-1'))->toBe(1)
+            ->and($intruder)->toBe(CannotAcquireLockException::class)
+            ->and($store->version('other-1'))->toBe(0);
+    } finally {
+        $connection->disconnect();
+        $other->disconnect();
+        unlink($path);
+    }
 });
