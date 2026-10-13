@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Firefly\Cqrs\Query;
 
 use Firefly\Cqrs\Cache\Cacheable;
+use Firefly\Cqrs\Cache\GroupedQueryCache;
 use Firefly\Cqrs\Cache\QueryCache;
+use Firefly\Cqrs\Cache\QueryCacheKey;
+use Firefly\Cqrs\Cache\QueryCachePolicies;
 use Firefly\Cqrs\Correlation\CorrelationContext;
 use Firefly\Cqrs\Exception\QueryProcessingException;
 use Firefly\Cqrs\Handler\HandlerRegistry;
@@ -19,8 +22,12 @@ use Throwable;
 /**
  * The synchronous in-process query mediator. ask() runs: correlate -> validate -> authorize -> cache-get (a Cacheable
  * query yielding a non-null key is looked up; a non-null hit short-circuits straight to metrics + return) -> resolve
- * the single registered handler and invoke it -> cache-put -> metrics. The QueryCache default is NoOpQueryCache
- * (always-miss), so caching is an inert seam until firefly/cache lands. Any handler/stage throwable is metrics-recorded
+ * the single registered handler and invoke it -> cache-put -> metrics. The key is the query's own cacheKey() when it
+ * is Cacheable, else the key QueryCacheKey derives from the value object when the query carries #[CachedQuery], else
+ * there is no caching. A GroupedQueryCache is addressed by the query's group and its policy TTL (falling back to
+ * firefly.cqrs.query.cache_ttl); a plain QueryCache keeps receiving get()/put() with the flat key, so an
+ * application's own cache keeps working unchanged. The default is still NoOpQueryCache —
+ * firefly.cqrs.query.cache.provider=cache binds CacheQueryCache. Any handler/stage throwable is metrics-recorded
  * and re-thrown WRAPPED in a category-preserving QueryProcessingException (unless already one). Correlation is begun
  * and restored in finally, exactly like the command bus. The whole validate → authorize → cache-get → resolve →
  * invoke → cache-put sequence runs inside the CqrsTracing seam (an INTERNAL span when observability is on), so a
@@ -40,6 +47,7 @@ final class DefaultQueryBus implements QueryBus
         private readonly QueryCache $cache,
         private readonly ?int $cacheTtl = null,
         ?CqrsTracing $tracing = null,
+        private readonly ?QueryCachePolicies $policies = null,
     ) {
         $this->tracing = $tracing ?? new NoOpCqrsTracing;
     }
@@ -54,10 +62,19 @@ final class DefaultQueryBus implements QueryBus
                 $this->validator->validate($query);
                 $this->authorizer->authorize($query);
 
-                $key = $query instanceof Cacheable ? $query->cacheKey() : null;
+                $policy = $this->policies?->policyFor($query::class);
+                $key = match (true) {
+                    $query instanceof Cacheable => $query->cacheKey(),
+                    $policy !== null => QueryCacheKey::of($query),
+                    default => null,
+                };
+                $group = $policy !== null ? $policy->group : '';
+                $ttl = $policy->ttl ?? $this->cacheTtl;
 
                 if ($key !== null) {
-                    $cached = $this->cache->get($key);
+                    $cached = $this->cache instanceof GroupedQueryCache
+                        ? $this->cache->lookup($group, $key)
+                        : $this->cache->get($key);
                     if ($cached !== null) {
                         return $cached;
                     }
@@ -67,7 +84,11 @@ final class DefaultQueryBus implements QueryBus
                 $result = $handler($query);
 
                 if ($key !== null) {
-                    $this->cache->put($key, $result, $this->cacheTtl);
+                    if ($this->cache instanceof GroupedQueryCache) {
+                        $this->cache->store($group, $key, $result, $ttl);
+                    } else {
+                        $this->cache->put($key, $result, $ttl);
+                    }
                 }
 
                 return $result;

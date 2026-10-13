@@ -103,6 +103,8 @@ return [
                 'order' => 0,
                 'lazy' => false,
                 'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Illuminate\\Container\\Container',
                 ],
             ],
             8 => [
@@ -168,6 +170,7 @@ return [
                     5 => 'Firefly\\Cqrs\\Cache\\QueryCache',
                     6 => 'Firefly\\Config\\Config',
                     7 => 'Firefly\\Cqrs\\Tracing\\CqrsTracing',
+                    8 => 'Firefly\\Cqrs\\Handler\\HandlerManifest',
                 ],
             ],
         ],

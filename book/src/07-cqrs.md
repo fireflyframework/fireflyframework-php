@@ -328,10 +328,19 @@ final class DefaultQueryBus implements QueryBus
                 $this->validator->validate($query);
                 $this->authorizer->authorize($query);
 
-                $key = $query instanceof Cacheable ? $query->cacheKey() : null;
+                $policy = $this->policies?->policyFor($query::class);
+                $key = match (true) {
+                    $query instanceof Cacheable => $query->cacheKey(),
+                    $policy !== null => QueryCacheKey::of($query),
+                    default => null,
+                };
+                $group = $policy !== null ? $policy->group : '';
+                $ttl = $policy->ttl ?? $this->cacheTtl;
 
                 if ($key !== null) {
-                    $cached = $this->cache->get($key);
+                    $cached = $this->cache instanceof GroupedQueryCache
+                        ? $this->cache->lookup($group, $key)
+                        : $this->cache->get($key);
                     if ($cached !== null) {
                         return $cached;
                     }
@@ -341,7 +350,11 @@ final class DefaultQueryBus implements QueryBus
                 $result = $handler($query);
 
                 if ($key !== null) {
-                    $this->cache->put($key, $result, $this->cacheTtl);
+                    if ($this->cache instanceof GroupedQueryCache) {
+                        $this->cache->store($group, $key, $result, $ttl);
+                    } else {
+                        $this->cache->put($key, $result, $ttl);
+                    }
                 }
             // …
             $this->metrics->recordQuerySuccess($query, microtime(true) - $startedAt);
@@ -366,7 +379,7 @@ Every collaborator except `HandlerRegistry` itself defaults to a **no-op**, so t
 | Authorization | `AllowAllAuthorizer` — allow everything | `firefly/security`'s `SecurityCommandAuthorizer`/`SecurityQueryAuthorizer` (Chapter 10) |
 | Correlation | Always on — a uuid4 id per dispatch, restored after | Nothing to enable; stamped into `x-correlation-id` when a domain event reaches the eda bus (Chapter 8) |
 | Metrics | `NoOpCqrsMetrics` | `firefly/observability` (a later chapter) |
-| Query cache | `NoOpQueryCache` — always a miss | A future `firefly/cache` adapter |
+| Query cache | `NoOpQueryCache` — always a miss | `firefly.cqrs.query.cache.provider=cache` (`CacheQueryCache` on a Laravel cache store) for `Cacheable` and `#[CachedQuery]` queries |
 
 Neither bus opens a transaction, and neither bus drains domain events. `#[Transactional]` on `OpenWalletHandler::handle()` above is doing that work entirely on its own, through the generated proxy Chapter 9 explains in full — the bus is completely oblivious to it, and would behave identically if `handle()` were a plain, unproxied method that happened to call `DB::beginTransaction()` by hand.
 
