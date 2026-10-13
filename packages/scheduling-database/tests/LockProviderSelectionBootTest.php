@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Firefly\Context\Boot\ApplicationContext;
 use Firefly\Context\Boot\FireflyKernel;
 use Firefly\Scheduling\Database\DatabaseLeaseLock;
+use Firefly\Scheduling\Database\MySqlNamedLock;
 use Firefly\Scheduling\Database\SchedulingDatabaseAutoConfiguration;
 use Firefly\Scheduling\Database\SchedulingDatabaseServiceProvider;
 use Firefly\Scheduling\Lock\CacheLock;
@@ -93,6 +94,7 @@ it('resolves exactly the lock the provider names', function (?string $provider, 
         ->and(lockSelectionBeans($app))->toBe([$bean]);
 })->with([
     'database' => ['database', DatabaseLeaseLock::class, SchedulingDatabaseAutoConfiguration::class.'::databaseLeaseLock'],
+    'mysql' => ['mysql', MySqlNamedLock::class, SchedulingDatabaseAutoConfiguration::class.'::mySqlNamedLock'],
     'postgres' => ['postgres', PgAdvisoryLock::class, PgAdvisoryLockAutoConfiguration::class.'::distributedLock'],
     'cache' => ['cache', CacheLock::class, SchedulingAutoConfiguration::class.'::distributedLock'],
     'none' => [null, NoneLock::class, SchedulingAutoConfiguration::class.'::distributedLock'],

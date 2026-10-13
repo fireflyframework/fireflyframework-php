@@ -29,6 +29,19 @@ return [
                     ],
                 ],
             ],
+            1 => [
+                'method' => 'mySqlNamedLock',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.scheduling.lock.provider',
+                            1 => 'mysql',
+                            2 => false,
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
 ];

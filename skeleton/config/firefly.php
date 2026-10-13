@@ -2232,6 +2232,7 @@ return [
     |   'cache'    — the app's atomic cache lock.
     |   'postgres' — Postgres advisory locks; requires firefly/scheduling-postgres.
     |   'database' — a lease table on any database connection; requires firefly/scheduling-database.
+    |   'mysql'    — MySQL/MariaDB GET_LOCK named locks; requires firefly/scheduling-database.
     |
     */
 
@@ -2247,6 +2248,17 @@ return [
              | Default: connection unset.
             */
             // 'database' => [
+            //     'connection' => 'mysql',
+            // ],
+
+            /*
+             | provider=mysql — GET_LOCK named locks, held for the connection's session and released when it
+             | closes; no table, no TTL (lock-ttl is ignored). `connection` must be a mysql or mariadb
+             | connection (UNSET, null or blank = the default connection).
+             |
+             | Default: connection unset.
+            */
+            // 'mysql' => [
             //     'connection' => 'mysql',
             // ],
         ],
