@@ -53,6 +53,48 @@ it('refuses a closure and names where it sat', function (): void {
     StateSerializer::normalize(['results' => ['charge' => static fn (): int => 1]], 'stepResults');
 })->throws(OrchestrationException::class, 'stepResults.results.charge');
 
+it('refuses a cyclic object graph and names where the cycle closed', function (): void {
+    $order = new stdClass;
+    $line = new stdClass;
+    $line->order = $order;
+    $order->lines = [$line];
+
+    StateSerializer::normalize(['reserve' => $order], 'stepResults');
+})->throws(OrchestrationException::class, 'stepResults.reserve.lines.0.order holds a cyclic reference');
+
+it('refuses an object that references itself with the unserializable code', function (): void {
+    $self = new stdClass;
+    $self->self = $self;
+
+    $error = null;
+    try {
+        StateSerializer::normalize($self);
+    } catch (OrchestrationException $caught) {
+        $error = $caught;
+    }
+
+    expect($error)->toBeInstanceOf(OrchestrationException::class)
+        ->and($error?->getMessage())->toContain('value.self holds a cyclic reference')
+        ->and($error?->errorCode())->toBe('ORCHESTRATION_UNSERIALIZABLE');
+});
+
+it('normalizes the same object reached through sibling branches as a shared reference', function (): void {
+    $customer = new stdClass;
+    $customer->id = 7;
+
+    expect(StateSerializer::normalize(['billing' => $customer, 'shipping' => $customer, 'again' => [$customer]]))
+        ->toBe(['billing' => ['id' => 7], 'shipping' => ['id' => 7], 'again' => [['id' => 7]]]);
+});
+
+it('refuses a payload nested deeper than a checkpoint can read back', function (): void {
+    $value = 'leaf';
+    for ($i = 0; $i < 600; $i++) {
+        $value = [$value];
+    }
+
+    StateSerializer::normalize($value);
+})->throws(OrchestrationException::class, 'nests deeper than 512 levels');
+
 it('round-trips an array payload through JSON keeping float zero fractions', function (): void {
     $payload = StateSerializer::encodeArray(['amount' => 10.0, 'name' => 'é']);
 
