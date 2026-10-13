@@ -1,15 +1,15 @@
 # Modules
 
-LaraFly publishes one `fireflyframework/larafly` library containing the **35 component directories** under
-`packages/*`, each with its own tests or metadata. The **38 guides** below explain their public surfaces.
+LaraFly publishes one `fireflyframework/larafly` library containing the **36 component directories** under
+`packages/*`, each with its own tests or metadata. The **39 guides** below explain their public surfaces.
 Several components carry more than one guide: `firefly/data` answers for *Data & Repositories*,
 *Relational Data* and *Transactions*. Laravel discovers the root library's providers, and configuration
 selects optional features. A bean you declare wins over the framework default.
 Two idioms deliver that outcome, and
-which one you are looking at matters the moment you go reading the source. **23 of the 35 packages** carry a
+which one you are looking at matters the moment you go reading the source. **23 of the 36 packages** carry a
 `#[Configuration]` class whose `#[Bean]` methods sit behind `#[ConditionalOnMissingBean]`, so a bean of yours
 makes the framework's back off silently — `packages/data/src/DataAutoConfiguration.php` is the model. The
-**other 12** have no such class to go looking for; `firefly/web`, the one nearly every reader installs, guards
+**other 13** have no such class to go looking for; `firefly/web`, the one nearly every reader installs, guards
 each binding in `WebServiceProvider::register()` with a `bound()` check instead, first-one-wins by hand.
 
 <div class="lf-cards" markdown>
@@ -43,7 +43,7 @@ each binding in `WebServiceProvider::register()` with a `bound()` check instead,
 
 <div class="lf-card" markdown>
 <span class="lf-card-title">Eventing &amp; Messaging</span>
-[EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [EDA Database Outbox](modules/eda-database.md) · [Messaging](modules/messaging.md) · [Webhooks](modules/webhooks.md) · [Callbacks](modules/callbacks.md) · [Orchestration](modules/orchestration.md)
+[EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [EDA Database Outbox](modules/eda-database.md) · [Messaging](modules/messaging.md) · [Webhooks](modules/webhooks.md) · [Callbacks](modules/callbacks.md) · [Orchestration](modules/orchestration.md) · [Event Sourcing](modules/eventsourcing.md)
 <span class="lf-card-note">One `EventPublisher` port with in-memory, queue, RabbitMQ, database (any SQL server), Postgres and Kafka adapters, a genuine same-transaction outbox safe with concurrent consumers on every database, and the lower-level raw-bytes broker layer beneath it. Signed inbound webhooks and outbound callbacks ride on the same bus.</span>
 </div>
 

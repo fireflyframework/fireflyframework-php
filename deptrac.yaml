@@ -122,6 +122,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/orchestration/src/.*
+    - name: EventSourcing
+      collectors:
+        - type: directory
+          value: packages/eventsourcing/src/.*
     - name: OpenApi
       collectors:
         - type: directory
@@ -608,6 +612,31 @@ deptrac:
       - Scheduling
       - Eda
       - Actuator
+
+    # EventSourcing is the event-store capability. It reads Config, carries Container/Context attributes and boot
+    # wiring, extends AutoConfigure's base and reuses Kernel exceptions. It builds its aggregates on Domain's
+    # AggregateRoot/DomainEvent (=> Domain) and translates a duplicate-key race through Data's
+    # PersistenceExceptionTranslator, choosing READPAST through Data's DatabaseCapabilities (=> Data). It
+    # serializes envelopes with Eda's Serializer and publishes through Eda's EventPublisher (=> Eda), recognising
+    # the outbox writer and its connection from EdaDatabase (=> EdaDatabase, OutboxWriter + DatabaseOutboxSettings
+    # only). It leases projections on Scheduling's DistributedLock (=> Scheduling), parses durations with
+    # Resilience's Duration (=> Resilience), supplies an Actuator HealthIndicator (=> Actuator) and supplies
+    # Orchestration's ExecutionPersistenceProvider port as `event-sourced` (=> Orchestration; Orchestration never
+    # depends on it). Cli depends on it (firefly:cache compiles its manifest); nothing else does.
+    EventSourcing:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Domain
+      - Data
+      - Eda
+      - EdaDatabase
+      - Scheduling
+      - Resilience
+      - Actuator
+      - Orchestration
 
     # OpenApi is a top-of-stack capability (like Web/Cqrs/Security/Actuator): it generates an OpenAPI 3.1
     # document from manifests that already exist, so it is nearly all READS. It reads Web's RouteManifest/

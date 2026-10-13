@@ -146,6 +146,7 @@ nav:
           - Webhooks: modules/webhooks.md
           - Callbacks: modules/callbacks.md
           - Orchestration: modules/orchestration.md
+          - Event Sourcing: modules/eventsourcing.md
       - CQRS:
           - CQRS (Command/Query): modules/cqrs.md
       - Security:
