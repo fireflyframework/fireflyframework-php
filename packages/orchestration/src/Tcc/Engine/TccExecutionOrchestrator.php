@@ -30,6 +30,14 @@ use Throwable;
  *    ending FAILED (some participants already confirmed — jafly parity).
  *  - CANCEL: every tried-but-unconfirmed participant in REVERSE order; a cancel failure ends FAILED.
  *
+ * "Tried" includes a participant that may have reserved without reporting it: one whose try TIMED_OUT (outside
+ * pcntl whole-second deadlines the time limiter only notices the overrun after the try body has returned, so
+ * the reservation exists — and each retry made another), and one left RUNNING by a crash in the middle of its
+ * try. Both are cancelled with a null try result, the TCC "empty rollback": a cancel method must accept a null
+ * try result and release whatever the participant holds for this transaction, or do nothing when it holds
+ * nothing. An optional participant whose try timed out is cancelled the same way after a successful CONFIRM,
+ * so a confirmed transaction does not keep its reservation either; the transaction stays CONFIRMED.
+ *
  * The phase is checkpointed as it starts and every participant result as it lands, so resume() picks up a
  * CONFIRMING or CANCELING transaction exactly where a crash left it — which is why confirm and cancel must be
  * idempotent. A required failure is checkpointed together with the switch to CANCEL, and a resumed state that
@@ -77,6 +85,8 @@ final class TccExecutionOrchestrator
             if ($failure !== null) {
                 return $this->cancelPhase($tcc, $context, $failure[0], TccPhase::Confirm, $failure[1], includeConfirmed: false);
             }
+
+            $this->releaseTimedOutOptionals($tcc, $context);
 
             return new TccRunOutcome(ExecutionStatus::Confirmed);
         }
@@ -217,25 +227,19 @@ final class TccExecutionOrchestrator
         $this->support->checkpoint($context, ExecutionStatus::Canceling);
         $started = hrtime(true);
         $cancelFailed = false;
+        // TIMED_OUT and RUNNING participants may hold a reservation they never reported (see the class
+        // docblock); they are cancelled with a null try result. A plain try failure (FAILED) reserved nothing.
         $cancelable = $includeConfirmed
-            ? [StepStatus::Done, StepStatus::Confirmed, StepStatus::ConfirmFailed, StepStatus::CancelFailed]
-            : [StepStatus::Done, StepStatus::ConfirmFailed, StepStatus::CancelFailed];
+            ? [StepStatus::Done, StepStatus::Confirmed, StepStatus::ConfirmFailed, StepStatus::CancelFailed, StepStatus::TimedOut, StepStatus::Running]
+            : [StepStatus::Done, StepStatus::ConfirmFailed, StepStatus::CancelFailed, StepStatus::TimedOut, StepStatus::Running];
 
         foreach (array_reverse($tcc->ordered()) as $participant) {
             if (! in_array($context->stepStatus($participant->id), $cancelable, true)) {
                 continue;
             }
 
-            $this->support->events->onParticipantStarted($tcc->name, $context->correlationId, $participant->id, TccPhase::Cancel);
-            try {
-                $this->invoker->invoke($tcc->name, $participant->id.':cancel', $participant->cancel->invocation, $this->options($participant, TccPhase::Cancel, $tcc), $context, $context->stepInput($participant->id), $context->tryResult($participant->id));
-                $context->setStepStatus($participant->id, StepStatus::Canceled);
-                $this->support->events->onParticipantSuccess($tcc->name, $context->correlationId, $participant->id, TccPhase::Cancel);
-            } catch (Throwable $cancelError) {
+            if (! $this->cancelOne($tcc, $participant, $context)) {
                 $cancelFailed = true;
-                $context->setStepStatus($participant->id, StepStatus::CancelFailed);
-                $context->putCompensationError($participant->id, $cancelError);
-                $this->support->events->onParticipantFailed($tcc->name, $context->correlationId, $participant->id, TccPhase::Cancel, $cancelError);
             }
             $this->support->checkpoint($context, ExecutionStatus::Canceling);
         }
@@ -252,14 +256,55 @@ final class TccExecutionOrchestrator
     }
 
     /**
+     * After a successful CONFIRM, cancels the optional participants whose try timed out: their try may have
+     * reserved after all (see the class docblock), and nothing else would ever release it. A failure here is
+     * recorded as CANCEL_FAILED — compensate() retries it with the rest — and does not undo the CONFIRMED
+     * outcome, which the confirmed participants already committed.
+     */
+    private function releaseTimedOutOptionals(TccDefinition $tcc, ExecutionContext $context): void
+    {
+        foreach (array_reverse($tcc->ordered()) as $participant) {
+            if (! $participant->optional || $context->stepStatus($participant->id) !== StepStatus::TimedOut) {
+                continue;
+            }
+
+            $this->cancelOne($tcc, $participant, $context);
+            $this->support->checkpoint($context, ExecutionStatus::Confirming);
+        }
+    }
+
+    /** Runs one participant's cancel with its try result (null when the try never reported one); false when it failed. */
+    private function cancelOne(TccDefinition $tcc, TccParticipantDefinition $participant, ExecutionContext $context): bool
+    {
+        $this->support->events->onParticipantStarted($tcc->name, $context->correlationId, $participant->id, TccPhase::Cancel);
+        try {
+            $this->invoker->invoke($tcc->name, $participant->id.':cancel', $participant->cancel->invocation, $this->options($participant, TccPhase::Cancel, $tcc), $context, $context->stepInput($participant->id), $context->tryResult($participant->id));
+        } catch (Throwable $cancelError) {
+            $context->setStepStatus($participant->id, StepStatus::CancelFailed);
+            $context->putCompensationError($participant->id, $cancelError);
+            $this->support->events->onParticipantFailed($tcc->name, $context->correlationId, $participant->id, TccPhase::Cancel, $cancelError);
+
+            return false;
+        }
+
+        $context->setStepStatus($participant->id, StepStatus::Canceled);
+        $this->support->events->onParticipantSuccess($tcc->name, $context->correlationId, $participant->id, TccPhase::Cancel);
+
+        return true;
+    }
+
+    /**
      * The required failure a resumed transaction is cancelling for: a CONFIRM_FAILED participant, or a FAILED or
      * TIMED_OUT one that is not optional (an optional participant's try failure never cancels the transaction).
      *
-     * The CONFIRM_FAILED participant is itself cancelled by the sweep, which overwrites its status with CANCELED
-     * or CANCEL_FAILED; a crash after that cancel must still resume into a FAILED transaction with its confirm
-     * error. Its step error survives the overwrite, and only a confirm failure leaves one on a participant the
-     * sweep can cancel (a try failure stays FAILED and is never cancelled), so that pair also reads as the
-     * confirm failure.
+     * The sweep overwrites the status of the participants it cancels with CANCELED or CANCEL_FAILED, the failed
+     * one included: a CONFIRM_FAILED participant, and a TIMED_OUT one (cancelled because its try may have
+     * reserved). A crash after that cancel must still resume with the original failure. The step error survives
+     * the overwrite (cancel errors are compensation errors), and the try result tells the two apart: a
+     * participant that reached CONFIRM has one, a try that timed out never stored one. So a cancelled
+     * participant with a step error and a try result is the confirm failure, and one with a step error and no
+     * try result is a timed-out try — a required failure only when the participant is not optional. A plain
+     * FAILED try is never cancelled and keeps its status.
      *
      * @return array{0: ?string, 1: ?TccPhase, 2: ?Throwable}
      */
@@ -267,10 +312,11 @@ final class TccExecutionOrchestrator
     {
         foreach ($tcc->ordered() as $participant) {
             $status = $context->stepStatus($participant->id);
-            $confirmFailed = $status === StepStatus::ConfirmFailed
-                || (in_array($status, [StepStatus::Canceled, StepStatus::CancelFailed], true) && $context->stepError($participant->id) !== null);
-            $required = $confirmFailed
-                || (! $participant->optional && in_array($status, [StepStatus::Failed, StepStatus::TimedOut], true));
+            $cancelledFailure = in_array($status, [StepStatus::Canceled, StepStatus::CancelFailed], true) && $context->stepError($participant->id) !== null;
+            $tried = array_key_exists($participant->id, $context->tryResults());
+            $confirmFailed = $status === StepStatus::ConfirmFailed || ($cancelledFailure && $tried);
+            $tryFailed = in_array($status, [StepStatus::Failed, StepStatus::TimedOut], true) || ($cancelledFailure && ! $tried);
+            $required = $confirmFailed || (! $participant->optional && $tryFailed);
             if ($required) {
                 return [
                     $participant->id,

@@ -176,3 +176,57 @@ it('ends FAILED and reports the participant whose cancel failed', function (): v
         ->and($engines->persistence->findById('t-3')?->compensationErrors)->toBe(['debit' => 'cancel debit failed'])
         ->and($engines->events->hooks())->toContain('onPhaseFailed');
 });
+
+/**
+ * debit (order 1) and credit (order 2); credit's try reserves, then overruns its 10 ms deadline — a sub-second
+ * deadline is only checked after the call returns, so every attempt has reserved by the time it times out.
+ *
+ * @param  list<string>  $log
+ */
+function orchestrationSlowCredit(array &$log, bool $optionalCredit = false, int $maxRetries = 1): TccDefinition
+{
+    $call = static function (string $name, string $id, bool $slow = false) use (&$log): Closure {
+        return static function (mixed $implicit) use ($name, $id, $slow, &$log): string {
+            $log[] = "{$name} {$id}".($name === 'cancel' ? ' ('.(is_string($implicit) ? $implicit : 'null').')' : '');
+            if ($slow) {
+                usleep(30_000);
+            }
+
+            return "{$id}-{$name}";
+        };
+    };
+
+    return TccBuilder::tcc('transfer')->retry(true, $maxRetries, 0)
+        ->participant('debit')->order(1)->tryWith($call('try', 'debit'))->confirmWith($call('confirm', 'debit'))->cancelWith($call('cancel', 'debit'))->add()
+        ->participant('credit')->order(2)->optional($optionalCredit)->tryWith($call('try', 'credit', slow: true), timeoutMs: 10)->confirmWith($call('confirm', 'credit'))->cancelWith($call('cancel', 'credit'))->add()
+        ->build();
+}
+
+it('cancels a required participant whose try timed out after reserving, with a null try result', function (): void {
+    $engines = TestEngines::create();
+    $log = [];
+
+    $result = $engines->tccs->execute(orchestrationSlowCredit($log), correlationId: 't-timeout');
+
+    expect($result->isCanceled())->toBeTrue()
+        ->and($result->failedParticipantId)->toBe('credit')
+        ->and($result->failedPhase)->toBe(TccPhase::Try)
+        // The first attempt and its retry both reserved; the cancel releases what credit holds, then debit's.
+        ->and($log)->toBe(['try debit', 'try credit', 'try credit', 'cancel credit (null)', 'cancel debit (debit-try)'])
+        ->and($result->participants['credit']->status)->toBe(StepStatus::Canceled)
+        ->and($result->participants['debit']->status)->toBe(StepStatus::Canceled)
+        ->and($engines->persistence->findById('t-timeout')?->status)->toBe(ExecutionStatus::Canceled);
+});
+
+it('cancels an optional participant whose try timed out once the others confirm, and stays CONFIRMED', function (): void {
+    $engines = TestEngines::create();
+    $log = [];
+
+    $result = $engines->tccs->execute(orchestrationSlowCredit($log, optionalCredit: true, maxRetries: 0), correlationId: 't-opt-timeout');
+
+    expect($result->isConfirmed())->toBeTrue()
+        ->and($log)->toBe(['try debit', 'try credit', 'confirm debit', 'cancel credit (null)'])
+        ->and($result->participants['debit']->status)->toBe(StepStatus::Confirmed)
+        ->and($result->participants['credit']->status)->toBe(StepStatus::Canceled)
+        ->and($engines->persistence->findById('t-opt-timeout')?->status)->toBe(ExecutionStatus::Confirmed);
+});

@@ -22,7 +22,8 @@ use Firefly\Orchestration\Tcc\Registry\TccRegistry;
 /**
  * Runs TCC transactions (jafly TccEngine): execute(), resume() from the checkpointed phase, compensate()
  * (cancel every tried participant, confirmed ones included — a composition or recovery undoing a CONFIRMED
- * transaction). Every entry point holds the execution lock; execute() passes back-pressure admission.
+ * transaction; "tried" covers a try that timed out or was left RUNNING by a crash, cancelled with a null try
+ * result). Every entry point holds the execution lock; execute() passes back-pressure admission.
  *
  * As with SagaEngine, the outcome is always a TccResult — a failed phase is cancelled and reported, never
  * thrown. What throws is the refusal to run at all: an unknown TCC, a disabled pattern, back-pressure, a

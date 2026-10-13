@@ -385,3 +385,72 @@ it('does not reopen a TCC that FAILED on a confirm failure', function (): void {
     expect($engines->tccs->execute('transfer', correlationId: 't-18')->status)->toBe(ExecutionStatus::Failed)
         ->and(fn () => $engines->tccs->compensate('t-18'))->toThrow(InvalidExecutionStateException::class, 'already FAILED');
 });
+
+it('cancels a participant left RUNNING by a crash mid-try when a TRYING TCC is compensated', function (): void {
+    $engines = TestEngines::create();
+    $log = [];
+    $phase = static function (string $name, string $id) use (&$log): Closure {
+        return static function (mixed $implicit) use ($name, $id, &$log): string {
+            $log[] = "{$name} {$id} (".(is_string($implicit) ? $implicit : 'null').')';
+
+            return $id;
+        };
+    };
+    $engines->tccRegistry->register(TccBuilder::tcc('transfer')
+        ->participant('debit')->order(1)->tryWith($phase('try', 'debit'))->confirmWith($phase('confirm', 'debit'))->cancelWith($phase('cancel', 'debit'))->add()
+        ->participant('credit')->order(2)->tryWith($phase('try', 'credit'))->confirmWith($phase('confirm', 'credit'))->cancelWith($phase('cancel', 'credit'))->add()
+        ->participant('notify')->order(3)->tryWith($phase('try', 'notify'))->confirmWith($phase('confirm', 'notify'))->cancelWith($phase('cancel', 'notify'))->add()
+        ->build());
+    // The process died while credit's try was running: it may have reserved, notify was never reached.
+    $engines->persistence->save(ExecutionState::fromArray([
+        'correlationId' => 't-20', 'executionName' => 'transfer', 'pattern' => 'TCC', 'status' => 'TRYING',
+        'startedAt' => '2026-10-12T09:00:00.000000+00:00', 'updatedAt' => '2026-10-12T09:00:01.000000+00:00',
+        'currentPhase' => 'TRY',
+        'stepStatuses' => ['debit' => 'DONE', 'credit' => 'RUNNING'],
+        'stepInputs' => ['debit' => 'acc-1', 'credit' => 'acc-2'],
+        'tryResults' => ['debit' => 'debit-hold'],
+        'completionOrder' => ['debit'],
+    ]));
+
+    $result = $engines->tccs->compensate('t-20');
+
+    expect($result->isCanceled())->toBeTrue()
+        ->and($log)->toBe(['cancel credit (null)', 'cancel debit (debit-hold)'])
+        ->and($result->participants['credit']->status)->toBe(StepStatus::Canceled)
+        ->and($result->participants['notify']->status)->toBe(StepStatus::Pending);
+});
+
+it('resumes a cancel whose timed-out required participant was already cancelled as CANCELED with its try error', function (): void {
+    $engines = TestEngines::create();
+    $log = [];
+    $phase = static function (string $name, string $id) use (&$log): Closure {
+        return static function () use ($name, $id, &$log): string {
+            $log[] = "{$name} {$id}";
+
+            return $id;
+        };
+    };
+    $engines->tccRegistry->register(TccBuilder::tcc('transfer')
+        ->participant('debit')->order(1)->tryWith($phase('try', 'debit'))->confirmWith($phase('confirm', 'debit'))->cancelWith($phase('cancel', 'debit'))->add()
+        ->participant('credit')->order(2)->tryWith($phase('try', 'credit'))->confirmWith($phase('confirm', 'credit'))->cancelWith($phase('cancel', 'credit'))->add()
+        ->build());
+    // credit's try timed out and the sweep already cancelled it (no try result: it never reported one); the
+    // crash came before debit's cancel. The resume must report the try failure, not a confirm failure.
+    $engines->persistence->save(ExecutionState::fromArray([
+        'correlationId' => 't-21', 'executionName' => 'transfer', 'pattern' => 'TCC', 'status' => 'CANCELING',
+        'startedAt' => '2026-10-12T09:00:00.000000+00:00', 'updatedAt' => '2026-10-12T09:00:01.000000+00:00',
+        'currentPhase' => 'CANCEL',
+        'stepStatuses' => ['debit' => 'DONE', 'credit' => 'CANCELED'],
+        'stepErrors' => ['credit' => 'credit try timed out'],
+        'tryResults' => ['debit' => 'debit'],
+        'completionOrder' => ['debit'],
+    ]));
+
+    $result = $engines->tccs->resume('t-21');
+
+    expect($result->status)->toBe(ExecutionStatus::Canceled)
+        ->and($result->failedParticipantId)->toBe('credit')
+        ->and($result->failedPhase)->toBe(TccPhase::Try)
+        ->and($result->error?->getMessage())->toBe('credit try timed out')
+        ->and($log)->toBe(['cancel debit']);
+});
