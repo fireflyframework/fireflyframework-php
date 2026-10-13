@@ -112,6 +112,23 @@ it('answers an overdrawing payout with the withdraw\'s own 409, before the bank 
     expect($this->app()->make(SimulatedBankGateway::class)->calls)->toBe([]);
 })->group('lumen');
 
+it('answers a payout from someone else\'s wallet with the withdraw\'s own 403, before the bank is called', function () {
+    /** @var LumenOrchestrationTestCase $this */
+    /** @var string $id */
+    $id = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-elsewhere', 'currency' => 'EUR'])->json('wallet_id');
+    $this->postJson("/api/v1/wallets/{$id}/deposit", ['amount_minor' => 50000]);
+
+    // owner-rest (signed in by beforeEach) holds ROLE_WALLET_OWNER but does not own this wallet: the saga's debit is
+    // a Withdraw, refused at the bus by hasPermission(#command, 'debit'), so the payout never reaches the bank.
+    $this->postJson("/api/v1/wallets/{$id}/payouts", ['iban' => 'ES9121000418450200051332', 'amount_minor' => 20000])
+        ->assertStatus(403)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('code', 'ACCESS_DENIED');
+
+    expect($this->app()->make(SimulatedBankGateway::class)->calls)->toBe([]);
+    $this->getJson("/api/v1/wallets/{$id}/balance")->assertJson(['balance_minor' => 50000]);
+})->group('lumen');
+
 it('validates the payout body before the saga starts', function () {
     /** @var LumenOrchestrationTestCase $this */
     /** @var string $id */

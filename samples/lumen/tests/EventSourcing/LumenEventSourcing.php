@@ -84,7 +84,15 @@ trait LumenEventSourcing
         ));
     }
 
-    /** Opens a EUR wallet holding $balanceMinor and returns its id. */
+    /** A borrower: WALLET_OWNER may repay a loan only from a wallet whose owner_id is $name. */
+    public function signInWalletOwner(string $name = 'owner-loans'): void
+    {
+        SecurityContextHolder::setContext(new SecurityContext(
+            Authentication::authenticated($name, $name, [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+        ));
+    }
+
+    /** Opens a EUR wallet owned by `owner-loans`, holding $balanceMinor, and returns its id. */
     public function openWallet(int $balanceMinor = 0): string
     {
         $id = $this->commands()->send(new OpenWallet('owner-loans', Currency::EUR));

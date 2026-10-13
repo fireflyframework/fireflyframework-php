@@ -17,7 +17,8 @@ use Lumen\Infrastructure\WalletRepository;
  * Handles RepayLoan: replays the loan, records the repayment (and the settlement when it clears the balance), appends
  * it, then withdraws the amount from the wallet — answering what is still outstanding. The append comes first on
  * purpose: when the wallet cannot pay, Wallet::withdraw() throws AFTER the events were appended, and the one
- * #[Transactional] boundary rolls them back with everything else. Guarded like Withdraw. #[Lazy] and not final for
+ * #[Transactional] boundary rolls them back with everything else. Guarded like Withdraw: an ADMIN, or the owner of the
+ * loan's wallet (WalletPermissionEvaluator reads the wallet from the loan). #[Lazy] and not final for
  * GrantLoanHandler's reasons.
  */
 #[CommandHandler]
@@ -29,7 +30,7 @@ class RepayLoanHandler
         private readonly LoanRepository $loans,
     ) {}
 
-    #[PreAuthorize("hasRole('ADMIN') or hasRole('WALLET_OWNER')")]
+    #[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command, 'debit'))")]
     #[Transactional]
     public function handle(RepayLoan $command): int
     {

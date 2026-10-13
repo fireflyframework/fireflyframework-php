@@ -109,3 +109,40 @@ it('enforces #[PreAuthorize] on withdraw: denies without the owner role, allows 
 
     expect($queries->ask(new GetBalance($walletId)))->toBe(4000);
 })->group('lumen');
+
+it('refuses a withdraw from a WALLET_OWNER who does not own that wallet, and lets an ADMIN through', function () {
+    /** @var LumenTestCase $this */
+    /** @var CommandBus $commands */
+    $commands = $this->fireflyContext()->get(CommandBus::class);
+    /** @var QueryBus $queries */
+    $queries = $this->fireflyContext()->get(QueryBus::class);
+
+    /** @var string $walletId */
+    $walletId = $commands->send(new OpenWallet('owner-D', Currency::EUR));
+    $commands->send(new Deposit($walletId, 5000));
+
+    // The role alone is not enough: hasPermission(#command, 'debit') asks WalletPermissionEvaluator, which grants
+    // the debit only to the wallet's owner. 'owner-E' owns some other wallet and holds the same role.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('owner-E', 'owner-E', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
+
+    $denied = null;
+    try {
+        $commands->send(new Withdraw($walletId, 1000));
+    } catch (CommandProcessingException $e) {
+        $denied = $e;
+    }
+
+    expect($denied?->getPrevious())->toBeInstanceOf(AuthorizationException::class);
+    expect($queries->ask(new GetBalance($walletId)))->toBe(5000);
+
+    // An ADMIN may debit any wallet: the first alternative of the rule, no ownership asked.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('teller', 'teller', [new SimpleGrantedAuthority('ROLE_ADMIN')])
+    ));
+
+    $commands->send(new Withdraw($walletId, 1000));
+
+    expect($queries->ask(new GetBalance($walletId)))->toBe(4000);
+})->group('lumen');
