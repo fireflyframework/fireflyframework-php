@@ -1,0 +1,270 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Firefly\Orchestration\Saga\Compensation;
+
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
+use Firefly\Kernel\Exception\Infrastructure\CircuitBreakerOpenException;
+use Firefly\Orchestration\Core\CompensationPolicy;
+use Firefly\Orchestration\Core\EngineSupport;
+use Firefly\Orchestration\Core\Exception\CompensationException;
+use Firefly\Orchestration\Core\ExecutionContext;
+use Firefly\Orchestration\Core\ExecutionStatus;
+use Firefly\Orchestration\Core\StepInvoker;
+use Firefly\Orchestration\Core\StepOptions;
+use Firefly\Orchestration\Core\StepStatus;
+use Firefly\Orchestration\Saga\Registry\SagaDefinition;
+use Firefly\Resilience\CircuitBreaker;
+use Firefly\Resilience\ResilienceRegistry;
+use Firefly\Resilience\Store\ResilienceStore;
+use Throwable;
+
+/**
+ * Undoes the completed steps of a failed saga (jafly SagaCompensator), by `firefly.orchestration.saga.
+ * compensation-policy`. Only steps that are DONE are compensated — a step that failed did nothing to undo,
+ * and a step already COMPENSATED (a resumed compensation) is not undone twice. Every compensation receives
+ * the step RESULT as its implicit argument and is checkpointed, so a crash during compensation resumes it.
+ *
+ *  - STRICT_SEQUENTIAL: reverse completion order, one attempt each, failures to the error handler.
+ *  - GROUPED_PARALLEL: reverse layer order, declaration order inside a layer (sequential: spec decision D2).
+ *  - RETRY_WITH_BACKOFF: reverse completion order with the step's compensation retry/backoff/timeout.
+ *  - CIRCUIT_BREAKER: reverse completion order through a firefly/resilience breaker per saga; a failed
+ *    `compensationCritical` step, or an open breaker, stops the sweep and leaves the rest DONE (logged) for
+ *    recovery or an operator.
+ *  - BEST_EFFORT: reverse completion order, every compensation attempted, FAIL_SAGA ignored.
+ *
+ * The error handler's RETRY answer re-runs the compensation after the step's compensation backoff; a handler
+ * that keeps answering RETRY is cut off after MAX_HANDLER_RETRIES and treated as CONTINUE.
+ */
+final class SagaCompensator
+{
+    public const int MAX_HANDLER_RETRIES = 25;
+
+    public function __construct(
+        private readonly StepInvoker $invoker,
+        private readonly EngineSupport $support,
+        private readonly CompensationPolicy $policy,
+        private readonly CompensationErrorHandler $handler,
+        private readonly ?ResilienceRegistry $resilience = null,
+        private readonly ?ResilienceStore $store = null,
+    ) {}
+
+    public function policy(): CompensationPolicy
+    {
+        return $this->policy;
+    }
+
+    public function compensate(SagaDefinition $saga, ExecutionContext $context): void
+    {
+        $completed = array_values(array_filter(
+            $context->completionOrder(),
+            static fn (string $stepId): bool => isset($saga->steps[$stepId]) && $context->stepStatus($stepId) === StepStatus::Done,
+        ));
+        if ($completed === []) {
+            return;
+        }
+
+        $this->support->events->onCompensationStarted($saga->name, $context->correlationId);
+        $reversed = array_reverse($completed);
+
+        match ($this->policy) {
+            CompensationPolicy::StrictSequential => $this->sequentially($saga, $context, $reversed, withRetry: false, honourFailSaga: true),
+            CompensationPolicy::RetryWithBackoff => $this->sequentially($saga, $context, $reversed, withRetry: true, honourFailSaga: true),
+            CompensationPolicy::BestEffort => $this->sequentially($saga, $context, $reversed, withRetry: false, honourFailSaga: false),
+            CompensationPolicy::GroupedParallel => $this->sequentially($saga, $context, $this->byLayer($saga, $completed), withRetry: false, honourFailSaga: true),
+            CompensationPolicy::CircuitBreaker => $this->throughBreaker($saga, $context, $reversed),
+        };
+    }
+
+    /**
+     * @param  list<string>  $order
+     */
+    private function sequentially(SagaDefinition $saga, ExecutionContext $context, array $order, bool $withRetry, bool $honourFailSaga): void
+    {
+        foreach ($order as $stepId) {
+            $step = $saga->steps[$stepId];
+            if ($step->compensation === null) {
+                continue;
+            }
+
+            $options = $withRetry ? $step->compensationOptions() : new StepOptions(timeoutMs: $step->compensationOptions()->timeoutMs);
+            $error = $this->attempt($saga, $context, $stepId, $options, null);
+            if ($error !== null) {
+                $this->onFailure($saga, $context, $stepId, $error, $honourFailSaga);
+            }
+        }
+    }
+
+    /**
+     * @param  list<string>  $reversed
+     */
+    private function throughBreaker(SagaDefinition $saga, ExecutionContext $context, array $reversed): void
+    {
+        $breaker = $this->breaker($saga->name);
+        $left = [];
+        $open = false;
+
+        foreach ($reversed as $stepId) {
+            $step = $saga->steps[$stepId];
+            if ($step->compensation === null) {
+                continue;
+            }
+            if ($open) {
+                $left[] = $stepId;
+
+                continue;
+            }
+
+            try {
+                $error = $this->attempt($saga, $context, $stepId, new StepOptions(timeoutMs: $step->compensationOptions()->timeoutMs), $breaker);
+            } catch (CircuitBreakerOpenException) {
+                $open = true;
+                $left[] = $stepId;
+
+                continue;
+            }
+
+            if ($error === null) {
+                continue;
+            }
+            if ($step->compensationCritical || ($breaker !== null && $breaker->state() === 'open')) {
+                $open = true;
+
+                continue;
+            }
+
+            $this->onFailure($saga, $context, $stepId, $error, honourFailSaga: true);
+        }
+
+        if ($left !== []) {
+            $this->support->logger->warning("Saga [{$saga->name}] opened its compensation circuit and left [".implode(', ', $left).'] uncompensated; they stay DONE for recovery or an operator.', [
+                'correlationId' => $context->correlationId,
+            ]);
+        }
+    }
+
+    /** Runs one compensation; returns its error, or null when it succeeded. Throws only when `$breaker` refused admission. */
+    private function attempt(SagaDefinition $saga, ExecutionContext $context, string $stepId, StepOptions $options, ?CircuitBreaker $breaker): ?Throwable
+    {
+        $step = $saga->steps[$stepId];
+        $compensation = $step->compensation;
+        if ($compensation === null) {
+            return null;
+        }
+
+        // Only OUR breaker refusing admission stops the sweep: a compensation that itself calls a downstream
+        // service behind an open breaker failed like any other compensation and goes to the error handler.
+        $ran = false;
+        $run = function () use ($saga, $stepId, $compensation, $options, $context, &$ran): mixed {
+            $ran = true;
+
+            return $this->invoker->invoke($saga->name, $stepId.':compensate', $compensation, $options, $context, $context->stepInput($stepId), $context->result($stepId));
+        };
+
+        try {
+            $result = $breaker === null ? $run() : $breaker->call($run);
+        } catch (Throwable $error) {
+            if ($error instanceof CircuitBreakerOpenException && $breaker !== null && ! $ran) {
+                throw $error;
+            }
+
+            $context->putCompensationError($stepId, $error);
+            $context->setStepStatus($stepId, StepStatus::CompensationFailed);
+            $this->support->events->onStepCompensationFailed($saga->name, $context->correlationId, $stepId, $error);
+            $this->support->checkpoint($context, ExecutionStatus::Compensating);
+
+            return $error;
+        }
+
+        $context->putCompensationResult($stepId, $result);
+        $this->markCompensated($saga, $context, $stepId);
+
+        return null;
+    }
+
+    private function onFailure(SagaDefinition $saga, ExecutionContext $context, string $stepId, Throwable $error, bool $honourFailSaga): void
+    {
+        $step = $saga->steps[$stepId];
+
+        for ($attempt = 0; $attempt < self::MAX_HANDLER_RETRIES; $attempt++) {
+            $decision = $this->handler->handle($saga->name, $stepId, $error, $attempt);
+
+            if ($decision === CompensationErrorResult::Continue || $decision === CompensationErrorResult::SkipStep) {
+                return;
+            }
+
+            if ($decision === CompensationErrorResult::MarkCompensated) {
+                $this->markCompensated($saga, $context, $stepId);
+
+                return;
+            }
+
+            if ($decision === CompensationErrorResult::FailSaga) {
+                if ($honourFailSaga) {
+                    throw new CompensationException("Saga [{$saga->name}] stopped compensating at step [{$stepId}]: {$error->getMessage()}", $error);
+                }
+
+                return;
+            }
+
+            $backoff = $step->compensationOptions()->backoffMs;
+            if ($backoff > 0) {
+                usleep($backoff * 1000);
+            }
+
+            $retryError = $this->attempt($saga, $context, $stepId, new StepOptions(timeoutMs: $step->compensationOptions()->timeoutMs), null);
+            if ($retryError === null) {
+                return;
+            }
+            $error = $retryError;
+        }
+
+        $this->support->logger->warning("Saga [{$saga->name}] stopped retrying the compensation of step [{$stepId}] after ".self::MAX_HANDLER_RETRIES.' handler retries.', [
+            'correlationId' => $context->correlationId,
+        ]);
+    }
+
+    private function markCompensated(SagaDefinition $saga, ExecutionContext $context, string $stepId): void
+    {
+        $context->setStepStatus($stepId, StepStatus::Compensated);
+        $this->support->events->onStepCompensated($saga->name, $context->correlationId, $stepId);
+        $this->support->checkpoint($context, ExecutionStatus::Compensating);
+    }
+
+    /**
+     * @param  list<string>  $completed
+     * @return list<string>
+     */
+    private function byLayer(SagaDefinition $saga, array $completed): array
+    {
+        $order = [];
+        foreach (array_reverse($saga->layers) as $layer) {
+            foreach ($layer as $stepId) {
+                if (in_array($stepId, $completed, true)) {
+                    $order[] = $stepId;
+                }
+            }
+        }
+
+        return $order;
+    }
+
+    private function breaker(string $sagaName): ?CircuitBreaker
+    {
+        if ($this->resilience !== null) {
+            try {
+                return $this->resilience->circuitBreaker('orchestration-compensation-'.$sagaName);
+            } catch (ConfigurationException) {
+                // Not configured under firefly.resilience.circuit-breaker: fall through to the default breaker.
+            }
+        }
+
+        return $this->store === null ? null : new CircuitBreaker(
+            key: 'firefly:orchestration:compensation:'.$sagaName,
+            store: $this->store,
+            failureThreshold: 5,
+            waitDurationInOpen: 30.0,
+        );
+    }
+}
