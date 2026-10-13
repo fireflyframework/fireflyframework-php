@@ -12,6 +12,7 @@ use Firefly\Domain\DomainEvent;
 use Firefly\EventSourcing\Exception\EventSerializationException;
 use Firefly\EventSourcing\Exception\UnknownEventTypeException;
 use Throwable;
+use UnitEnum;
 
 /**
  * DomainEvent <-> stored event, without reflection.
@@ -25,9 +26,13 @@ use Throwable;
  * coerced by the parameter type the scanner compiled:
  *
  *  - JSON returns 12.0 as 12, so a float parameter takes an int;
- *  - a backed enum takes its value, a date its ISO string;
+ *  - a backed enum takes its value, a pure enum its case name, a date its ISO string;
  *  - `eventId` and `occurredAt` come from the envelope, so a reloaded event keeps its identity when its
  *    constructor forwards them (the documented pattern).
+ *
+ * canBuild() names the parameter types coerce() can rebuild. The scanner refuses a convention-mapped event with a
+ * parameter outside that set, so a type PayloadNormalizer writes but this mapper cannot read (a JsonSerializable
+ * value object, say) fails the scan instead of leaving a stream that cannot be replayed.
  */
 final class EventMapper
 {
@@ -90,6 +95,19 @@ final class EventMapper
         }
     }
 
+    /**
+     * Whether coerce() can rebuild a constructor parameter of this compiled type from its stored JSON value: no
+     * declared type, a union (compiled as null), mixed, the JSON scalars, array, a date, or an enum.
+     */
+    public static function canBuild(?string $type): bool
+    {
+        return match (true) {
+            $type === null, in_array($type, ['mixed', 'int', 'float', 'string', 'bool', 'array'], true) => true,
+            $type === DateTime::class, $type === DateTimeInterface::class => true,
+            default => is_a($type, DateTimeImmutable::class, true) || is_a($type, UnitEnum::class, true),
+        };
+    }
+
     private static function coerce(EventParameter $parameter, mixed $value, string $path): mixed
     {
         $type = $parameter->type;
@@ -110,8 +128,10 @@ final class EventMapper
             $type === 'bool' => is_bool($value) ? $value : throw EventSerializationException::at($path, 'is not a bool.'),
             $type === 'array' => is_array($value) ? $value : throw EventSerializationException::at($path, 'is not an array.'),
             $type === DateTime::class => is_string($value) ? new DateTime($value) : throw EventSerializationException::at($path, 'is not a date string.'),
-            $type === DateTimeInterface::class || is_a($type, DateTimeImmutable::class, true) => is_string($value) ? new DateTimeImmutable($value) : throw EventSerializationException::at($path, 'is not a date string.'),
+            $type === DateTimeInterface::class => is_string($value) ? new DateTimeImmutable($value) : throw EventSerializationException::at($path, 'is not a date string.'),
+            is_a($type, DateTimeImmutable::class, true) => is_string($value) ? new $type($value) : throw EventSerializationException::at($path, 'is not a date string.'),
             is_a($type, BackedEnum::class, true) => self::enum($type, $value, $path),
+            is_a($type, UnitEnum::class, true) => self::pureEnum($type, $value, $path),
             default => throw EventSerializationException::at($path, "has the type {$type}, which the convention mapper cannot build; implement SerializableEvent on the event."),
         };
     }
@@ -124,5 +144,23 @@ final class EventMapper
         }
 
         return $type::tryFrom($value) ?? throw EventSerializationException::at($path, "is not a {$type} case.");
+    }
+
+    /**
+     * A pure enum is stored as its case name (PayloadNormalizer), so it is read back by that name.
+     *
+     * @param  class-string<UnitEnum>  $type
+     */
+    private static function pureEnum(string $type, mixed $value, string $path): UnitEnum
+    {
+        if (is_string($value)) {
+            foreach ($type::cases() as $case) {
+                if ($case->name === $value) {
+                    return $case;
+                }
+            }
+        }
+
+        throw EventSerializationException::at($path, "is not a {$type} case name.");
     }
 }

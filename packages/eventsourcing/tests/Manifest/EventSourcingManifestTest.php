@@ -65,3 +65,10 @@ it('refuses a convention-mapped event whose constructor parameters and public pr
     'a parameter with no public property' => ['InvalidFixtures/UnstoredParameter', 'InvalidFixtures\\UnstoredParameter', 'the constructor parameter(s) $id have no public property of the same name'],
     'a public property no parameter takes' => ['InvalidFixtures/UnreadProperty', 'InvalidFixtures\\UnreadProperty', 'the public property(ies) $qty are not constructor parameters'],
 ]);
+
+it('refuses a convention-mapped constructor parameter whose type the mapper cannot rebuild, naming it and pointing to SerializableEvent', function (): void {
+    $scan = fn () => (new EventSourcingScanner)->scan(eventFixtures('InvalidFixtures/UnbuildableType', 'InvalidFixtures\\UnbuildableType'));
+
+    expect($scan)->toThrow(ConfigurationException::class, 'the constructor parameter(s) $price (Firefly\\EventSourcing\\Tests\\InvalidFixtures\\UnbuildableType\\Money) have a type the convention mapper cannot rebuild')
+        ->and($scan)->toThrow(ConfigurationException::class, 'implement Firefly\\EventSourcing\\Event\\SerializableEvent');
+});

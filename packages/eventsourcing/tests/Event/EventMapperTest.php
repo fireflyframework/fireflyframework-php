@@ -13,6 +13,8 @@ use Firefly\EventSourcing\Tests\Fixtures\Events\OrderChannel;
 use Firefly\EventSourcing\Tests\Fixtures\Events\OrderPaid;
 use Firefly\EventSourcing\Tests\Fixtures\Events\OrderPlaced;
 use Firefly\EventSourcing\Tests\Fixtures\Events\Untyped;
+use Firefly\EventSourcing\Tests\Fixtures\Moods\Mood;
+use Firefly\EventSourcing\Tests\Fixtures\Moods\MoodChanged;
 
 function eventMapper(): EventMapper
 {
@@ -48,4 +50,16 @@ it('refuses an unregistered class, a stored version without its upcaster, and a 
     expect(fn () => eventMapper()->toNewEvent(new Untyped))->toThrow(UnknownEventTypeException::class, Untyped::class)
         ->and(fn () => eventMapper()->toDomainEvent(storedAs('order.placed', 1, ['orderId' => 'o-1', 'total' => 1])))->toThrow(UnknownEventTypeException::class, 'version 1 after upcasting')
         ->and(fn () => eventMapper()->toDomainEvent(storedAs('order.placed', 2, ['orderId' => 'o-1'])))->toThrow(EventSerializationException::class, 'order.placed.total');
+});
+
+it('round-trips a pure enum through its case name, and refuses a stored name that is not a case', function (): void {
+    $mapper = new EventMapper(new EventTypeRegistry((new EventSourcingScanner)->scan(['Firefly\\EventSourcing\\Tests\\Fixtures\\Moods\\' => dirname(__DIR__).'/Fixtures/Moods'])->eventTypes()));
+    $new = $mapper->toNewEvent(new MoodChanged(Mood::Happy, Mood::Grumpy));
+    $stored = storedAs('mood.changed', 1, $new->payload);
+    $event = $mapper->toDomainEvent($stored);
+
+    expect($new->payload)->toBe(['mood' => 'Happy', 'previous' => 'Grumpy'])
+        ->and($event)->toEqual(new MoodChanged(Mood::Happy, Mood::Grumpy, 'evt-1', $stored->occurredAt))
+        ->and($mapper->toDomainEvent(storedAs('mood.changed', 1, ['mood' => 'Grumpy', 'previous' => null])))->toEqual(new MoodChanged(Mood::Grumpy, null, 'evt-1', $stored->occurredAt))
+        ->and(fn () => $mapper->toDomainEvent(storedAs('mood.changed', 1, ['mood' => 'Sleepy'])))->toThrow(EventSerializationException::class, 'mood.changed.mood');
 });

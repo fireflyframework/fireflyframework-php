@@ -6,6 +6,7 @@ namespace Firefly\EventSourcing\Scanner;
 
 use Firefly\Domain\DomainEvent;
 use Firefly\EventSourcing\Event\Attributes\EventType;
+use Firefly\EventSourcing\Event\EventMapper;
 use Firefly\EventSourcing\Event\EventParameter;
 use Firefly\EventSourcing\Event\EventTypeDescriptor;
 use Firefly\EventSourcing\Event\EventTypeRegistry;
@@ -29,8 +30,10 @@ use SplFileInfo;
  * The convention mapper WRITES an event's public properties and READS it back through its constructor, so a
  * convention-mapped class must have the two match by name (eventId and occurredAt aside, which travel in the
  * envelope). A constructor parameter with no public property of its name would be missing from every stored payload,
- * and a public property no constructor parameter takes would be stored and then silently dropped on reload. Either
- * refuses the scan here, rather than surfacing as an unreadable stream at replay time.
+ * and a public property no constructor parameter takes would be stored and then silently dropped on reload. A
+ * constructor parameter whose type EventMapper cannot rebuild from JSON (EventMapper::canBuild(), for example a
+ * JsonSerializable value object, which is written but never read back) is refused too. Each refuses the scan here,
+ * rather than surfacing as an unreadable stream at replay time.
  */
 final class EventSourcingScanner
 {
@@ -61,6 +64,7 @@ final class EventSourcingScanner
                     $name = $declared instanceof ReflectionNamedType ? $declared->getName() : null;
                     $parameters[] = new EventParameter($parameter->getName(), $name === 'self' || $name === 'static' ? $class : $name, $declared === null || $declared->allowsNull(), $parameter->isOptional());
                 }
+                $this->assertBuildable($class, $parameters);
             }
 
             /** @var class-string<DomainEvent> $class */
@@ -106,6 +110,26 @@ final class EventSourcingScanner
         }
 
         throw new ConfigurationException("#[EventType] on {$reflection->getName()}: ".implode('; ', $problems).'. The convention mapper stores public properties and rebuilds the event through its constructor, so the two must match by name; rename them, or implement Firefly\\EventSourcing\\Event\\SerializableEvent to map the payload yourself.');
+    }
+
+    /**
+     * Every convention-mapped constructor parameter must have a type EventMapper can rebuild from its stored value.
+     *
+     * @param  list<EventParameter>  $parameters
+     */
+    private function assertBuildable(string $class, array $parameters): void
+    {
+        $unbuildable = [];
+        foreach ($parameters as $parameter) {
+            if (! in_array($parameter->name, ['eventId', 'occurredAt'], true) && ! EventMapper::canBuild($parameter->type)) {
+                $unbuildable[] = '$'.$parameter->name.' ('.$parameter->type.')';
+            }
+        }
+        if ($unbuildable === []) {
+            return;
+        }
+
+        throw new ConfigurationException("#[EventType] on {$class}: the constructor parameter(s) ".implode(', ', $unbuildable).' have a type the convention mapper cannot rebuild from the stored payload, so the event could be appended but never read back. It builds int, float, string, bool, array, mixed, untyped and union parameters, dates and enums; implement Firefly\\EventSourcing\\Event\\SerializableEvent to map the other types yourself.');
     }
 
     /**
