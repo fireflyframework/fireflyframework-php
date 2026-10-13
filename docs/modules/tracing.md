@@ -73,6 +73,7 @@ case-insensitively, list or string values) and `inject(SpanContext): array<strin
 | Outbound HTTP | `HttpClientTracingMiddleware`, a Guzzle middleware `HttpClientTracingPass` installs on the `Http` factory at boot (`Http::globalMiddleware()`) | `CLIENT`, named by the method; `http.request.method`, `url.scheme`, `server.address`, `server.port`, `url.path` (never `url.full` — the query string is where tokens live), `http.response.status_code`; `ERROR` at ≥ 400 or on a rejection | `traceparent`/`tracestate` set on the PSR-7 request; works under `Http::fake()` (global middleware is outermost) |
 | CQRS | `CqrsTracing` seam in `firefly/cqrs` (`NoOpCqrsTracing` default), filled by `TracerCqrsTracing` | `INTERNAL`, named by the message's short class; `firefly.cqrs.kind`, `firefly.cqrs.message` | nothing to carry — in-process; the span nests under whatever is current |
 | EDA | `EdaTracing` seam in `firefly/eda` (`NoOpEdaTracing` default), filled by `TracerEdaTracing`; called by `InMemoryEventBus`, `QueueEventBus` (publish and the worker-side `deliver()`), `SubscriberRegistrySink` (every broker consumer), the three broker publishers — `RabbitMqEventPublisher`, `KafkaEventPublisher` and `PostgresEventPublisher` (both its writers: the bean and the in-tx `OutboxPreCommitHook`) — and `OutboxRelay`, which wraps its forward in `traceConsume()` so the relay hop continues the row's trace instead of rooting a new one | `PRODUCER` `publish <destination>` / `CONSUMER` `process <destination>`; `messaging.system=firefly-eda`, `messaging.destination.name`, `messaging.operation.type`, `messaging.message.id`, `firefly.eda.event_type` | `traceparent`/`tracestate` in the envelope headers, beside `x-correlation-id`; `firefly.eda.tracing.brokers.enabled=false` keeps the in-process spans while the three broker publishers stamp nothing on the transport (see [EDA](eda.md#config-keys)) |
+| Orchestration | `OrchestrationTracing` seam in `firefly/orchestration` (`NoOpOrchestrationTracing` default), filled by `TracerOrchestrationTracing` | `INTERNAL` `<pattern> <name>` per execution and `<name>.<step>` per step; `firefly.orchestration.pattern`, `firefly.orchestration.name`, `firefly.orchestration.step`, `firefly.orchestration.correlation_id` | nothing to carry — in-process; also needs `firefly.orchestration.tracing.enabled` |
 
 **The id a person quotes is the trace id.** `firefly/web` reads the ids `TracingFilter` publishes above
 (`Firefly\Web\Trace\TraceContext`, which owns the two attribute/`Context` keys the filter's own constants
@@ -144,6 +145,7 @@ and the NoOp stays: every instrumentation site costs a few method calls and publ
 | `http-client.enabled` | `true` | CLIENT spans + `traceparent` on the `Http` client. |
 | `cqrs.enabled` | `true` | INTERNAL spans on the command/query buses. |
 | `eda.enabled` | `true` | PRODUCER/CONSUMER spans and `traceparent` in envelopes. |
+| `orchestration.enabled` | `true` | INTERNAL spans around saga, TCC and workflow executions and their steps. |
 
 ## Testing
 

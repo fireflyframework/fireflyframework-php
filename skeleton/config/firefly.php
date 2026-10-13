@@ -2005,6 +2005,16 @@ return [
             'eda' => [
                 'enabled' => true,
             ],
+
+            /*
+             | INTERNAL spans around every saga, TCC and workflow execution (`saga checkout`) and each of
+             | their steps (`checkout.charge`). Also needs firefly.orchestration.tracing.enabled.
+             |
+             | Default: true.
+            */
+            'orchestration' => [
+                'enabled' => true,
+            ],
         ],
     ],
 
@@ -2881,6 +2891,171 @@ return [
         // 'http' => ['timeout' => '10s', 'require-https' => true, 'allowed-hosts' => ['example.com']],
         // 'circuit-breaker' => ['enabled' => true, 'failure-threshold' => 5, 'wait-duration-in-open' => '30s'],
         // 'signature' => ['header' => 'X-Firefly-Signature', 'timestamp-header' => 'X-Firefly-Timestamp'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Orchestration — firefly/orchestration
+    |--------------------------------------------------------------------------
+    |
+    | Sagas, TCC transactions and durable workflows discovered from #[Saga], #[Tcc] and #[Workflow] classes
+    | (compiled by php artisan firefly:cache, validated at boot). Steps of one topology layer run one after
+    | another — PHP is synchronous — so what an application can rely on is the LAYER guarantee: every
+    | dependency finished before a dependent starts. Durations: '250ms', '30s', '5m', '1h', 'P7D' or seconds.
+    | See docs/modules/orchestration.md.
+    |
+    */
+
+    'orchestration' => [
+
+        /*
+         | Each pattern can be switched off; a disabled pattern registers nothing and answers every start with
+         | a 503 (PatternDisabledException). `default-timeout` is the saga-wide deadline ('0' = none);
+         | `compensation-policy` is strict-sequential, grouped-parallel (layer by layer, sequential inside a
+         | layer), retry-with-backoff, circuit-breaker (a firefly/resilience breaker per saga, configured under
+         | firefly.resilience.circuit-breaker.orchestration-compensation-<saga>) or best-effort.
+         | `compensation-error-handler` is default, fail-fast, log-and-continue, retry, robust, or the class
+         | name of your own CompensationErrorHandler bean. The TCC `default-timeout` applies to a phase that
+         | sets no timeoutMs. The TCC `composition.compensation-policy` decides how a failed TCC composition
+         | cancels its confirmed members: strict-sequential and best-effort (reverse completion order, every
+         | member attempted), grouped-parallel (layer by layer in reverse), retry-with-backoff (a failed
+         | member is compensated again through firefly.resilience.retry.orchestration-tcc-composition-
+         | <composition>, else 3 attempts from 100ms) or circuit-breaker (stops once firefly.resilience.
+         | circuit-breaker.orchestration-tcc-composition-<composition> opens, else 5 failures; the members
+         | left are reported as compensation failures). Defaults: enabled true, strict-sequential, 5m,
+         | default, 30s, composition enabled true and strict-sequential.
+        */
+        'saga' => [
+            'enabled' => env('FIREFLY_ORCHESTRATION_SAGA_ENABLED', true),
+            'compensation-policy' => env('FIREFLY_ORCHESTRATION_SAGA_COMPENSATION_POLICY', 'strict-sequential'),
+            'default-timeout' => env('FIREFLY_ORCHESTRATION_SAGA_DEFAULT_TIMEOUT', '5m'),
+            'compensation-error-handler' => env('FIREFLY_ORCHESTRATION_SAGA_COMPENSATION_ERROR_HANDLER', 'default'),
+        ],
+        'tcc' => [
+            'enabled' => env('FIREFLY_ORCHESTRATION_TCC_ENABLED', true),
+            'default-timeout' => env('FIREFLY_ORCHESTRATION_TCC_DEFAULT_TIMEOUT', '30s'),
+            // 'composition' => ['enabled' => true, 'compensation-policy' => 'strict-sequential'],
+        ],
+
+        /*
+         | Workflows triggered ASYNC are persisted PENDING and run by a RunWorkflowJob on this queue
+         | (null = the default connection / queue); they need `cache` or `database` persistence, because the
+         | worker is another process (the `sync` connection runs the job inside the start instead). A job
+         | delivered twice is harmless: the second delivery finds the execution no longer PENDING. The `tick` is a scheduled task (firefly:schedule lists it) that resumes
+         | WAITING workflows whose timers or deadlines are due, under the DistributedLock; without a scheduler
+         | run php artisan firefly:orchestration:tick from cron. Defaults: enabled true, tick every 1m.
+         | A due workflow the tick cannot drive (its definition is not deployed, a handler throws outside a
+         | step) is backed off from 1m, doubling; after `max-resume-attempts` ticks in a row (default 5, about
+         | 15 minutes, at least 1) it is parked FAILED and dead-lettered. Database faults are never counted.
+        */
+        'workflow' => [
+            'enabled' => env('FIREFLY_ORCHESTRATION_WORKFLOW_ENABLED', true),
+            'queue' => [
+                'connection' => env('FIREFLY_ORCHESTRATION_WORKFLOW_QUEUE_CONNECTION'),
+                'name' => env('FIREFLY_ORCHESTRATION_WORKFLOW_QUEUE'),
+            ],
+            'tick' => [
+                'enabled' => env('FIREFLY_ORCHESTRATION_TICK_ENABLED', true),
+                'interval' => env('FIREFLY_ORCHESTRATION_TICK_INTERVAL', '1m'),
+            ],
+            'max-resume-attempts' => (int) env('FIREFLY_ORCHESTRATION_WORKFLOW_MAX_RESUME_ATTEMPTS', 5),
+        ],
+
+        /*
+         | Where execution checkpoints live: `memory` (this process only — the default), `cache` (the Laravel
+         | cache store `cache-store` names, null = the default store; `key-prefix`, optional `key-ttl`) or
+         | `database` (three portable tables on `connection`, null = the default; run the migration,
+         | --tag=firefly-orchestration-migrations to publish it). Terminal executions older than
+         | `retention-period` are deleted by the recovery sweep, which runs every `cleanup-interval`.
+         | Defaults: memory, orchestration:, forever, P7D, 1h.
+        */
+        'persistence' => [
+            'provider' => env('FIREFLY_ORCHESTRATION_PERSISTENCE', 'memory'),
+            'connection' => env('FIREFLY_ORCHESTRATION_DB_CONNECTION'),
+            'cache-store' => env('FIREFLY_ORCHESTRATION_CACHE_STORE'),
+            'key-prefix' => 'orchestration:',
+            'key-ttl' => null,
+            'retention-period' => env('FIREFLY_ORCHESTRATION_RETENTION', 'P7D'),
+            'cleanup-interval' => '1h',
+        ],
+
+        /*
+         | The recovery sweep finds executions a crashed process left RUNNING, COMPENSATING, TRYING,
+         | CONFIRMING, CANCELING or PENDING for longer than `stale-threshold`, and `action`s them: report (log
+         | only), resume (continue from the last checkpoint — make your steps idempotent) or compensate (undo
+         | what completed). WAITING and SUSPENDED workflows are idle by design and never touched. Each row
+         | is checked again under its execution lock, and one that finished or checkpointed since the sweep
+         | selected it is skipped. A live process whose `lock.ttl` expired and that has not checkpointed for
+         | `stale-threshold` looks dead, so keep every step shorter than `lock.ttl` and this well above it.
+         | Defaults: enabled true, 1h, report.
+        */
+        'recovery' => [
+            'enabled' => env('FIREFLY_ORCHESTRATION_RECOVERY_ENABLED', true),
+            'stale-threshold' => env('FIREFLY_ORCHESTRATION_STALE_THRESHOLD', '1h'),
+            'action' => env('FIREFLY_ORCHESTRATION_RECOVERY_ACTION', 'report'),
+        ],
+
+        // Failed executions, one entry per failed step: `memory` or `database`. php artisan firefly:orchestration:dlq lists
+        // them, firefly:orchestration:dlq:retry <id> starts the same definition again with the same input.
+        'dlq' => [
+            'enabled' => true,
+            'store' => env('FIREFLY_ORCHESTRATION_DLQ_STORE', 'memory'),
+        ],
+
+        // Lifecycle events (EXECUTION_STARTED/COMPLETED, STEP_COMPLETED/FAILED) through firefly/eda, on `default-topic`
+        // ('' = orchestration). #[StepEvent], #[TccEvent] and outputEventType publish whatever this says.
+        'events' => [
+            'enabled' => env('FIREFLY_ORCHESTRATION_EVENTS_ENABLED', false),
+            'default-topic' => env('FIREFLY_ORCHESTRATION_EVENTS_TOPIC', ''),
+        ],
+
+        // Start the definition whose triggerEventType matches an EDA event, with the event payload as input and its
+        // headers (plus eventId and eventType) as headers. Delivery is at least once, so the execution's correlation id
+        // is derived from the event id: a redelivered event finds its execution already there and is acknowledged as a
+        // no-op instead of starting it again.
+        'event-gateway' => ['enabled' => true],
+
+        // The REST surface (start, list, show, signal, suspend/resume/cancel, query, DLQ). Off by default; protect `path`
+        // with your firefly.security URL rules before switching it on.
+        'rest' => [
+            'enabled' => env('FIREFLY_ORCHESTRATION_REST_ENABLED', false),
+            'path' => '/orchestration',
+        ],
+
+        // The `orchestration` health component, the metrics hook and the step/execution spans.
+        'health' => ['enabled' => true],
+        'metrics' => ['enabled' => true],
+        'tracing' => ['enabled' => true],
+
+        // Topology validation at boot (cycles, unknown dependsOn, missing compensations, bad conditions). Warnings — a
+        // compensationCritical step without a compensation — refuse the boot too when `fail-on-warning` is true.
+        'validation' => [
+            'enabled' => true,
+            'fail-on-warning' => false,
+        ],
+
+        // The per-execution lock over firefly.scheduling.lock.provider: held at most `ttl`, waited for at most `wait`.
+        'lock' => [
+            'ttl' => '5m',
+            'wait' => '5s',
+        ],
+
+        /*
+         | Back-pressure where it means something in a synchronous process: `max-in-flight` (0 = unlimited)
+         | refuses new starts with a 503 while that many executions are open; `strategy: circuit-breaker` sheds
+         | starts once `failure-threshold` executions in a row ended FAILED, for `recovery-timeout`, then
+         | admits `half-open-max-calls` probes; `batch-size` caps one tick or recovery sweep.
+        */
+        'backpressure' => [
+            'strategy' => 'none',
+            'batch-size' => 10,
+            'max-in-flight' => 0,
+            'circuit-breaker' => [
+                'failure-threshold' => 5,
+                'recovery-timeout' => '30s',
+                'half-open-max-calls' => 3,
+            ],
+        ],
     ],
 
 ];

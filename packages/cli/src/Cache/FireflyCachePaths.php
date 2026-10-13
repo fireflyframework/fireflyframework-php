@@ -29,6 +29,8 @@ final class FireflyCachePaths
 
     public const string SCHEDULED = 'scheduled.php';
 
+    public const string ORCHESTRATION = 'orchestration.php';
+
     public const string SECURITY_METHODS = 'security-methods.php';
 
     public const string TRANSACTIONAL = 'transactional.php';

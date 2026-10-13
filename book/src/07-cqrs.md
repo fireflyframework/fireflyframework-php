@@ -469,11 +469,11 @@ The outer type tells you *which bus operation* failed; the inner type — reache
 
 `HandlerScanner` is the **sole** reflection site in `packages/cqrs/src` (the same grep-enforced invariant Chapter 6 described for `firefly/domain`). It walks the app's PSR-4 roots once, resolves every `#[CommandHandler]`/`#[QueryHandler]` (running exactly the `messageType()` inference you just read) into a `HandlerDescriptor`, and hands the whole list to `HandlerManifestCompiler`, which `var_export()`s it to a plain PHP array file — the same zero-reflection technique Chapter 2 introduced for the component manifest and Chapter 3 for `#[ConfigProperties]`.
 
-You never run `HandlerScanner` yourself. It is one of the **twelve** scanner/compiler pairs `php artisan firefly:cache` orchestrates in one pass, alongside the component/context, route, config-properties, and (Chapter 9's) transactional scanners:
+You never run `HandlerScanner` yourself. It is one of the **thirteen** scanner/compiler pairs `php artisan firefly:cache` orchestrates in one pass, alongside the component/context, route, config-properties, and (Chapter 9's) transactional scanners:
 
 ```bash
 $ php artisan firefly:cache
-firefly:cache — wrote 14 manifest(s) + 1 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
+firefly:cache — wrote 15 manifest(s) + 1 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
 ```
 
 The compiled file lands at `bootstrap/cache/firefly/handlers.php`; `FireflyCacheServiceProvider` binds it straight onto the `HandlerManifest` container entry — unconditionally overriding the **empty** default `CqrsWiringProvider` binds when no cache exists yet (the same `#[ConditionalOnMissingBean]`-style backing-off pattern Chapter 2 showed you for beans, applied here to a whole compiled manifest). `CqrsHandlerWiringPass` then walks that manifest at boot and populates the `HandlerRegistry` you met above with one invoker per descriptor — each invoker resolving its handler bean **fresh from the container on every dispatch**, never cached at wiring time, so a `#[Transactional]` handler like `OpenWalletHandler` is always observed through its generated proxy (Chapter 9), never through the bare, unproxied class.
@@ -492,7 +492,7 @@ Get this wrong in an application — add a handler, forget to re-run `firefly:ca
 | The bounded pipeline | correlate → validate → authorize → (cache-get, query only) → resolve + invoke → (cache-put, query only) → metrics |
 | `CommandProcessingException` / `QueryProcessingException` | Category-preserving wrappers; the original fault is always reachable via `getPrevious()` |
 | `HandlerRegistry` | One command/query class maps to exactly one handler — a duplicate registration fails loud at wiring time |
-| `HandlerScanner` → `HandlerManifest` | The sole reflection site; compiled by `firefly:cache` (one of twelve scanner/compiler pairs) into a zero-reflection manifest |
+| `HandlerScanner` → `HandlerManifest` | The sole reflection site; compiled by `firefly:cache` (one of thirteen scanner/compiler pairs) into a zero-reflection manifest |
 
 ---
 

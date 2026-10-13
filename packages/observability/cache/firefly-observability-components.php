@@ -230,6 +230,30 @@ return [
                     0 => 'Firefly\\Observability\\Tracing\\Tracer',
                 ],
             ],
+            10 => [
+                'method' => 'orchestrationMetrics',
+                'returns' => 'Firefly\\Orchestration\\Event\\OrchestrationMetrics',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Observability\\Metrics\\MetricsRecorder',
+                ],
+            ],
+            11 => [
+                'method' => 'orchestrationTracing',
+                'returns' => 'Firefly\\Orchestration\\Event\\OrchestrationTracing',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Observability\\Tracing\\Tracer',
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [

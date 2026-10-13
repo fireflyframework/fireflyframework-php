@@ -1569,13 +1569,13 @@ it('pins every firefly:cache figure to the artifacts ManifestCacheWriter really 
     // one phrasing of a claim is a guard on that phrasing, not on the claim, so all three are matched here.
     $figures = fireflyCacheFigures();
 
-    // Fourteen artifacts out of twelve scanner/compiler calls: the component+context compiler emits two, and
+    // Fifteen artifacts out of thirteen scanner/compiler calls: the component+context compiler emits two, and
     // writeProxies() appends the proxies.php classmap. If this fails, the documents below are right and this
     // expectation is the thing to re-derive — but read ManifestCacheWriter first.
-    expect($figures)->toBe(['artifacts' => 14, 'pairs' => 12]);
+    expect($figures)->toBe(['artifacts' => 15, 'pairs' => 13]);
 
-    // A STEP is not a pair: writeManifests() makes twelve scanner-then-compiler calls and writeProxies() is
-    // the thirteenth step, which is why the chapter's own body says "twelve `scan()`-then-`write()` calls ...
+    // A STEP is not a pair: writeManifests() makes thirteen scanner-then-compiler calls and writeProxies() is
+    // the fourteenth step, which is why the chapter's own body says "thirteen `scan()`-then-`write()` calls ...
     // plus one more step". Derived as pairs + 1 rather than typed, so adding a capability moves the pair
     // count, the step count and the sentences that quote either of them together.
     $steps = $figures['pairs'] + 1;

@@ -245,7 +245,7 @@ required to land on a document that exists; `navigation.indexes` is required to 
 section really has an `index.md`/`README.md` for it to bind, because the feature is inert otherwise and the
 first explanation of the tab row was wrong in precisely that way; the package and guide counts quoted in
 prose — on `README.md`, `docs/README.md`, `docs/index.md` and `docs/modules.md` — are compared against
-`glob()` over `packages/*` and `docs/modules/*.md` rather than proof-read, so a thirty-third guide fails the
+`glob()` over `packages/*` and `docs/modules/*.md` rather than proof-read, so a thirty-ninth guide fails the
 build instead of turning four sentences into lies no diff touched; and the two wiring idioms
 `docs/modules.md` names are held to the split the packages really have, exemplar files included.
 

@@ -46,6 +46,7 @@ final class CapabilityCatalog
             new Capability('feature-flags', 'firefly/feature-flags', 'Feature flags on OpenFeature: flagd documents, targeting and percentage rollouts, a writable store, admin and actuator controls'),
             new Capability('webhooks', 'firefly/webhooks', 'Inbound webhooks: an endpoint per provider, HMAC/Stripe/GitHub/Twilio signatures, a replay window and idempotency, published to the event bus', requires: ['eda']),
             new Capability('callbacks', 'firefly/callbacks', 'Outbound callbacks: subscriptions, HMAC-signed deliveries driven by events, retries with back-off, a circuit breaker per endpoint and a replayable execution log', requires: ['eda', 'resilience']),
+            new Capability('orchestration', 'firefly/orchestration', 'Sagas, TCC and durable workflows: compensation policies, signals and timers, recovery, a dead-letter queue, EDA triggers', requires: ['eda', 'scheduling', 'resilience', 'actuator']),
 
             new Capability('eda-kafka', 'firefly/eda-kafka', 'Kafka publisher/consumer over ext-rdkafka', requires: ['eda'], adapter: true),
             new Capability('eda-rabbitmq', 'firefly/eda-rabbitmq', 'RabbitMQ publisher/consumer over php-amqplib', requires: ['eda'], adapter: true),

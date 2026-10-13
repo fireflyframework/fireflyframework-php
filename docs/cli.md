@@ -21,10 +21,10 @@ php artisan firefly:cache
 ```
 
 The zero-reflection payoff: it runs every settled package's existing scanner → compiler pair over
-`config('firefly.scan.paths')` (a PSR-4 map, e.g. `'App\\' => app_path()`) and writes fourteen compiled
+`config('firefly.scan.paths')` (a PSR-4 map, e.g. `'App\\' => app_path()`) and writes fifteen compiled
 artifacts — every manifest below, unconditionally, whether or not the application has anything to put in it —
 plus one generated proxy class per planned bean, into `bootstrap/cache/firefly/`. It prints what it wrote:
-`firefly:cache — wrote 14 manifest(s) + N proxy(ies) to <dir>`.
+`firefly:cache — wrote 15 manifest(s) + N proxy(ies) to <dir>`.
 
 ```
 bootstrap/cache/firefly/
@@ -38,6 +38,7 @@ bootstrap/cache/firefly/
 ├── event-listeners.php    # #[EventListener] manifest
 ├── message-listeners.php  # #[MessageListener] manifest
 ├── scheduled.php          # #[Scheduled] manifest
+├── orchestration.php      # #[Saga]/#[Tcc]/#[Workflow] definitions and their schedules
 ├── security-methods.php   # #[PreAuthorize]/#[Secured]/#[RolesAllowed] manifest
 ├── transactional.php      # #[Transactional] method manifest
 ├── proxy-plan.php         # the compiled ProxyPlan: which beans get a proxy, and the advice each method runs
@@ -111,7 +112,7 @@ php artisan firefly:cache
 ```
 
 ```
-firefly:cache — wrote 14 manifest(s) + 3 proxy(ies) to bootstrap/cache/firefly
+firefly:cache — wrote 15 manifest(s) + 3 proxy(ies) to bootstrap/cache/firefly
 firefly:cache — skipped 1 stale manifest entry naming a class that no longer exists: App\Security\ControlPlaneJwksProvider
 ```
 
@@ -333,6 +334,12 @@ command is part of that capability rather than of the console.
 | `firefly:messaging:dead-letters:replay` | `firefly/messaging` | Republishes dead-lettered messages (`firefly.messaging.dead-letter.store=database`) through the bound `MessageBrokerPort` to their original topic. `--id=*`, `--topic=`, `--limit=100`, `--dry-run`, `--keep`; exit 1 when any entry failed. Registered only under that `database` store. |
 | `firefly:messaging:consume` | `firefly/messaging` | Runs the Kafka or RabbitMQ listener container (`firefly.messaging.provider=kafka\|rabbitmq`, bound by `firefly/eda-kafka` / `firefly/eda-rabbitmq`), delivering the `#[MessageListener]` topics until stopped. `--max-messages=`, `--time-limit=`, `--poll-timeout=1000` (block ms per poll), `--sleep=0` (idle ms between empty polls). Errors out on the `memory` and `queue` providers, which have no consumer loop. See [Messaging](modules/messaging.md#listener-container-brokers-and-fireflymessagingconsume). |
 | `firefly:outbox:relay` | `firefly/eda-database` | **Optional.** Forwards committed `firefly_eda_outbox` rows to the downstream broker named by `firefly.eda.database.relay.downstream-provider` (alias `firefly.eda.postgres.relay.downstream_provider`) (claim → publish → mark `PUBLISHED`/`FAILED`); any number of relay processes may run — each batch is leased. `--max-messages=`, `--time-limit=`, `--sleep=1` (seconds between empty batches), `--batch-size=50`. In-process delivery is `firefly:eda:consume`'s job, not this command's, so an app that only needs `#[EventListener]` handlers never runs it; an unset or misconfigured `downstream-provider` fails loudly before a single row is claimed. See [EDA Database Outbox](modules/eda-database.md). |
+| `firefly:orchestration:list` | `firefly/orchestration` | Lists persisted saga, TCC and workflow executions. `--pattern=saga\|tcc\|workflow`, `--status=` (e.g. `failed`, `waiting`), `--name=` (the saga/TCC name or workflow id), `--limit=50`. See [Orchestration](modules/orchestration.md). |
+| `firefly:orchestration:show` | `firefly/orchestration` | Shows one persisted execution by correlation id: its status, steps and report. |
+| `firefly:orchestration:signal` | `firefly/orchestration` | Delivers a signal to a durable workflow: `{id} {signal}`, with `--payload=` as JSON. |
+| `firefly:orchestration:dlq` | `firefly/orchestration` | Lists orchestration dead letters. `--name=`, `--limit=50`. |
+| `firefly:orchestration:dlq:retry` | `firefly/orchestration` | Retries one orchestration dead letter by id; the execution restarts from scratch. |
+| `firefly:orchestration:tick` | `firefly/orchestration` | Resumes due workflows (signals, timers) and runs the recovery sweep; `--no-recovery` only resumes. The same work runs as a `#[Scheduled]` task under the `DistributedLock` port. |
 | `firefly:flags` | `firefly/feature-flags` | Runs the `flags` management operations in-process: `list`, `show {key}`, `evaluate {key}` (`--context=<json>`, `--targeting-key=`), and the writes `enable`, `disable`, `default-variant {key} {variant}`, `put {key} --file=<definition.json>`, `delete {key}` (each with `--expected-version=`). `--json` prints the management JSON, including `{error,message}` on a refusal. Writes need `firefly.feature-flags.management.writes` and a flag store; the actor is the principal, else `cli:<os-user>`. An accepted write with pending local refresh exits successfully and asks the operator to check visibility again. |
 | `firefly:webhooks:prune` | `firefly/webhooks` | Deletes expired idempotency receipts from the database receipt store. Errors out when `firefly.webhooks.enabled` is false. See [Webhooks](modules/webhooks.md#idempotency). |
 | `firefly:callbacks:list` | `firefly/callbacks` | Lists callback subscriptions, or with `--executions` the most recent deliveries (`--status=pending\|delivered\|failed`, `--subscription=`, `--limit=20`). See [Callbacks](modules/callbacks.md#the-execution-log-and-the-commands). |

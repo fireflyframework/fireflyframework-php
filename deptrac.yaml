@@ -118,6 +118,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/callbacks/src/.*
+    - name: Orchestration
+      collectors:
+        - type: directory
+          value: packages/orchestration/src/.*
     - name: OpenApi
       collectors:
         - type: directory
@@ -492,6 +496,9 @@ deptrac:
     #
     # The => FeatureFlags edge is one class (src/FeatureFlags): MeterRegistryFeatureFlagMetrics backs the
     # FeatureFlagMetrics port with feature_flag_evaluations_total{flag, variant, reason} — the CqrsMetrics seam.
+    #
+    # The => Orchestration edge is one folder (src/Orchestration): the meter-registry OrchestrationMetrics and
+    # the Tracer-backed OrchestrationTracing — the same seam direction as Cqrs, Eda and FeatureFlags.
     Observability:
       - Kernel
       - Container
@@ -505,6 +512,7 @@ deptrac:
       - Resilience
       - Data
       - FeatureFlags
+      - Orchestration
 
     # Admin is the browser front-end for Actuator: it renders the SAME ActuatorEndpoint beans the JSON surface
     # serves, resolved in-process from Actuator's registry rather than fetched over HTTP (=> Actuator), mounts
@@ -581,6 +589,26 @@ deptrac:
       - Eda
       - Resilience
 
+    # Orchestration is the saga / TCC / durable-workflow capability. It reads Config, carries Container/Context
+    # attributes and boot passes, extends AutoConfigure's base, reuses Kernel exceptions, builds its step
+    # retries, timeouts and the CIRCUIT_BREAKER compensation policy on Resilience (Retry, TimeLimiter,
+    # CircuitBreaker, Duration), serializes writers through Scheduling's DistributedLock and contributes its tick
+    # to Scheduling's manifest (Cadence, ScheduledDescriptor), publishes lifecycle and step events and listens
+    # for trigger events through Eda's EventPublisher, and supplies an Actuator endpoint and HealthIndicator.
+    # NO Web edge (its REST routes mount on the Illuminate router, the FlagdSyncRouteRegistrar precedent) and NO
+    # Data edge (state is written through illuminate/database). Cli (firefly:cache compiles its manifest) and
+    # Observability (the metrics and tracing adapters) depend on it; it depends on neither.
+    Orchestration:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Resilience
+      - Scheduling
+      - Eda
+      - Actuator
+
     # OpenApi is a top-of-stack capability (like Web/Cqrs/Security/Actuator): it generates an OpenAPI 3.1
     # document from manifests that already exist, so it is nearly all READS. It reads Web's RouteManifest/
     # RouteDescriptor (paths, verbs, statuses, binding plans) and Validation's ConstraintManifest + Rule
@@ -631,7 +659,7 @@ deptrac:
       - Observability
       - FeatureFlags
 
-    # Cli is the top-of-stack developer-experience package: firefly:cache drives each of the 12
+    # Cli is the top-of-stack developer-experience package: firefly:cache drives each of the 13
     # compile-producing packages' scanner/compiler pair directly (D4 DIRECT DEPENDENCY). UNLIKE Testing
     # (whose composer.json genuinely requires the full runtime family, so it legitimately lists all 18
     # layers), firefly/cli's composer.json requires exactly the packages ManifestCacheWriter/CacheCommand/
@@ -644,6 +672,8 @@ deptrac:
     # FeatureFlags is listed for the same reason: ManifestCacheWriter's planner names FeatureFlagAdviceSource, so
     # firefly:cache compiles #[FeatureFlag] into the same proxy plan; packages/cli/composer.json requires it
     # accordingly.
+    # Orchestration is listed for the same reason: ManifestCacheWriter compiles #[Saga]/#[Tcc]/#[Workflow] through
+    # OrchestrationScanner into orchestration.php, and packages/cli/composer.json requires it accordingly.
     # It is depended on by NONE. It does NOT depend on Testing (dev-only).
     Cli:
       - Kernel
@@ -664,6 +694,7 @@ deptrac:
       - Observability
       - Resilience
       - FeatureFlags
+      - Orchestration
 
     # The bundled installer reads the framework version for its local skeleton repository.
     Installer:

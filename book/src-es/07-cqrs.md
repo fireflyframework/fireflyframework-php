@@ -469,11 +469,11 @@ El tipo exterior te dice *qué operación del bus* falló; el tipo interior — 
 
 `HandlerScanner` es el **único** punto de reflexión en `packages/cqrs/src` (la misma invariante forzada por grep que el Capítulo 6 describió para `firefly/domain`). Recorre una vez las raíces PSR-4 de la aplicación, resuelve cada `#[CommandHandler]`/`#[QueryHandler]` (ejecutando exactamente la inferencia de `messageType()` que acabas de leer) en un `HandlerDescriptor`, y entrega la lista completa a `HandlerManifestCompiler`, que la `var_export()`a en un archivo PHP de array plano — la misma técnica sin reflexión que el Capítulo 2 introdujo para el manifiesto de componentes y el Capítulo 3 para `#[ConfigProperties]`.
 
-Nunca ejecutas `HandlerScanner` tú mismo. Es uno de los **doce** pares escáner/compilador que `php artisan firefly:cache` orquesta en un solo paso, junto al de componentes/contexto, rutas, propiedades de configuración y (del Capítulo 9) el transaccional:
+Nunca ejecutas `HandlerScanner` tú mismo. Es uno de los **trece** pares escáner/compilador que `php artisan firefly:cache` orquesta en un solo paso, junto al de componentes/contexto, rutas, propiedades de configuración y (del Capítulo 9) el transaccional:
 
 ```bash
 $ php artisan firefly:cache
-firefly:cache — wrote 14 manifest(s) + 1 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
+firefly:cache — wrote 15 manifest(s) + 1 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
 ```
 
 El archivo compilado aterriza en `bootstrap/cache/firefly/handlers.php`; `FireflyCacheServiceProvider` lo vincula directamente sobre la entrada del contenedor `HandlerManifest` — sobrescribiendo incondicionalmente el `HandlerManifest` **vacío** por defecto que `CqrsWiringProvider` vincula cuando todavía no existe ninguna caché (el mismo patrón de retirada al estilo `#[ConditionalOnMissingBean]` que el Capítulo 2 te mostró para los beans, aplicado aquí a todo un manifiesto compilado). `CqrsHandlerWiringPass` recorre entonces ese manifiesto en el arranque y llena el `HandlerRegistry` que conociste arriba con un invocador por descriptor — cada invocador resuelve su bean manejador **de nuevo desde el contenedor en cada despacho**, nunca en caché en tiempo de cableado, así que un manejador `#[Transactional]` como `OpenWalletHandler` siempre se observa a través de su proxy generado (Capítulo 9), nunca a través de la clase desnuda, sin proxy.
@@ -492,7 +492,7 @@ Equivócate en esto en una aplicación — añade un manejador, olvida volver a 
 | La tubería acotada | correlacionar → validar → autorizar → (obtener de caché, solo consultas) → resolver e invocar → (guardar en caché, solo consultas) → métricas |
 | `CommandProcessingException` / `QueryProcessingException` | Envoltorios que preservan la categoría; el fallo original siempre es alcanzable vía `getPrevious()` |
 | `HandlerRegistry` | Una clase de comando/consulta se mapea a exactamente un manejador — un registro duplicado falla ruidosamente en tiempo de cableado |
-| `HandlerScanner` → `HandlerManifest` | El único punto de reflexión; compilado por `firefly:cache` (uno de doce pares escáner/compilador) en un manifiesto sin reflexión |
+| `HandlerScanner` → `HandlerManifest` | El único punto de reflexión; compilado por `firefly:cache` (uno de trece pares escáner/compilador) en un manifiesto sin reflexión |
 
 ---
 
