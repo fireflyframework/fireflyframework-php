@@ -22,3 +22,17 @@ it('refuses at lint time an expression that does not parse or names an unknown v
 it('wraps a runtime evaluation error', function (): void {
     (new ConditionEvaluator)->evaluate('input["a"]["b"] > 1', ['input' => ['a' => 3], 'results' => [], 'variables' => [], 'headers' => []]);
 })->throws(OrchestrationException::class, 'could not be evaluated');
+
+it('keeps the evaluation error for the log and publishes nothing of it', function (): void {
+    $failure = null;
+    try {
+        (new ConditionEvaluator)->evaluate('input["a"]["b"] > 1', ['input' => ['a' => 3], 'results' => [], 'variables' => [], 'headers' => []]);
+    } catch (OrchestrationException $caught) {
+        $failure = $caught;
+    }
+
+    expect($failure)->toBeInstanceOf(OrchestrationException::class)
+        ->and($failure?->getMessage())->toContain('could not be evaluated: ')
+        ->and($failure?->detail())->toBeNull()
+        ->and($failure?->getPrevious())->not->toBeNull();
+});

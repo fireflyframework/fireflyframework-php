@@ -91,7 +91,10 @@ final class EventMapper
         } catch (EventSerializationException $failure) {
             throw $failure;
         } catch (Throwable $failure) {
-            throw new EventSerializationException("The stored event [{$event->eventType}] could not be built as {$class}: {$failure->getMessage()}", 'EVENT_SERIALIZATION', 500, $failure);
+            // The message names the event class and quotes whatever the constructor threw — the log's line. A
+            // TypeError or an application assertion was never written for a client, so nothing is published.
+            throw (new EventSerializationException("The stored event [{$event->eventType}] could not be built as {$class}: {$failure->getMessage()}", 'EVENT_SERIALIZATION', 500, $failure))
+                ->withDetail(null);
         }
     }
 
