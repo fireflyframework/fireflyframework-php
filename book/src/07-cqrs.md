@@ -2,7 +2,7 @@
 
 # CQRS: Commands and Queries {.chtitle}
 
-By the end of this chapter you will know the shape of `firefly/cqrs`'s two buses (`CommandBus::send` / `QueryBus::ask`), how `#[CommandHandler]`/`#[QueryHandler]` register a handler as both a DI bean and a dispatch target — with the handled message type *inferred* from the handler's own `handle()` parameter — exactly what the bounded pipeline each bus runs looks like, how a handler's own exception surfaces to a caller wrapped in a `CommandProcessingException`/`QueryProcessingException`, and how `HandlerScanner` compiles handler discovery into a manifest `firefly:cache` writes right alongside the component and route manifests you already met in Chapters 2 and 4.
+By the end of this chapter you will know the shape of `firefly/cqrs`'s two buses (`CommandBus::send` / `QueryBus::ask`), how `#[CommandHandler]`/`#[QueryHandler]` register a handler as both a DI bean and a dispatch target — with the handled message type *inferred* from the handler's own `handle()` parameter — exactly what the bounded pipeline each bus runs looks like, how a handler's own exception surfaces to a caller wrapped in a `CommandProcessingException`/`QueryProcessingException`, how `#[CachedQuery]` puts a query's answer in a cache and `#[InvalidatesQuery]` takes it out again when the event that makes it stale commits, and how `HandlerScanner` compiles handler discovery into a manifest `firefly:cache` writes right alongside the component and route manifests you already met in Chapters 2 and 4.
 
 !!! note "New term: CQRS"
     **Command Query Responsibility Segregation** treats writes and reads as two distinct kinds of message with two distinct dispatch paths — a **command** is an intent to change the write model and returns at most an id or a count; a **query** is a pure read that never mutates anything. `firefly/cqrs` gives each its own bus, its own handler attribute, and its own pipeline, so the two are never accidentally mixed at a single call site.
@@ -191,9 +191,17 @@ declare(strict_types=1);
 
 namespace Lumen\Application\Query;
 
+use Firefly\Cqrs\Attributes\CachedQuery;
+
 /**
  * Query: read a wallet's current balance in minor units. GetBalanceHandler returns null for an unknown wallet.
+ *
+ * Cached for 60 seconds once firefly.cqrs.query.cache.provider=cache, keyed by its one public property: two
+ * GetBalance('w-1') share an entry, GetBalance('w-2') has its own. A null answer is never cached. FundsDeposited and
+ * FundsWithdrawn evict the entry of the wallet they changed, so the TTL only bounds staleness from writes that bypass
+ * the bus.
  */
+#[CachedQuery(ttl: 60)]
 final readonly class GetBalance
 {
     public function __construct(public string $walletId) {}
@@ -465,6 +473,84 @@ The outer type tells you *which bus operation* failed; the inner type — reache
 
 ---
 
+## Caching queries: `#[CachedQuery]` and `#[InvalidatesQuery]`
+
+The pipeline table above names a query-cache stage that misses by default. Setting `firefly.cqrs.query.cache.provider=cache` swaps `NoOpQueryCache` for `CacheQueryCache`, which keeps a query's answer on a Laravel cache store, and two attributes decide what is cached and what makes it stale. Lumen's balance read is the natural candidate — every wallet screen asks for it, and it changes only when money moves:
+
+<!-- source: samples/lumen/src/Application/Query/GetBalance.php -->
+```php
+#[CachedQuery(ttl: 60)]
+final readonly class GetBalance
+{
+    public function __construct(public string $walletId) {}
+}
+```
+
+The key is the query value itself. `CacheQueryCache` derives it from the query's class and its public properties, so two `GetBalance('w-1')` objects share one entry and `GetBalance('w-2')` gets its own. A `null` answer — an unknown wallet — is never stored; a query holding private or protected state cannot be keyed and simply runs uncached; and a cache that fails is logged and bypassed, because a cache may make a query faster but must never make it fail. `ttl: 60` bounds how long an entry lives, falling back to `firefly.cqrs.query.cache_ttl`; `group:` (by default the query class) names the set one eviction can clear at once.
+
+The other half belongs to the event. A cached balance is wrong the moment a deposit commits, and the event is the one thing that knows it, so the rule is written on the event class:
+
+<!-- source: samples/lumen/src/Domain/Event/FundsDeposited.php -->
+```php
+#[PublishDomainEvent('wallet.events')]
+#[InvalidatesQuery(GetBalance::class, with: ['walletId' => 'walletId'])]
+final readonly class FundsDeposited extends DomainEvent
+{
+    public function __construct(
+        public string $walletId,
+        public int $amountMinor,
+        public string $currency,
+        public int $balanceMinor,
+    ) {
+        parent::__construct();
+    }
+}
+```
+
+`with:` maps each public property of the query to a property of the event, so the eviction removes exactly one entry: the wallet that changed. `HandlerScanner` refuses a map that names an unknown property or leaves one out — at `firefly:cache` time, not in production, because a wrong map would derive a key no entry has and miss silently. The eviction runs when the event is dispatched after its transaction commits, so a rolled-back deposit evicts nothing, and it runs again, matched by event type, when the same event arrives over the event bus from another process. Leave `with:` out and the whole group goes; write `key: 'statement:{account}'` and a `Cacheable` query's own key template is evicted instead. `FundsWithdrawn` carries the same attribute.
+
+The sample proves the behavior that matters, with the cache switched on in `LumenQueryCacheTestCase` (`cache.default=array`, `provider=cache`) and nowhere else:
+
+<!-- source: samples/lumen/tests/Application/QueryCacheTest.php -->
+```php
+    expect($queries->ask(new GetBalance($id)))->toBe(1000);
+
+    // Changed behind the bus's back: the cached answer does not see it.
+    DB::table('wallets')->where('id', $id)->update(['balance_minor' => 5000]);
+    expect($queries->ask(new GetBalance($id)))->toBe(1000);
+
+    // A committed deposit raises FundsDeposited, whose #[InvalidatesQuery] evicts exactly this wallet's balance.
+    $commands->send(new Deposit($id, 500));
+    expect($queries->ask(new GetBalance($id)))->toBe(5500);
+```
+
+The second answer is the cached one — the row changed under it and it did not notice, which is the whole point of a cache and the whole risk of one. The deposit evicts the entry, and the next read is the database's again: 5000 plus 500. The same file proves that a deposit into wallet A leaves wallet B's cached balance alone, and that a withdrawal evicts like a deposit does.
+
+Groups are evicted by **generations**, not cache tags, so eviction works on every store, `file` and `database` included: an evicted entry becomes unreachable at once and expires on its TTL, which is why setting one is worth it. The reference configuration ships the block commented out:
+
+<!-- source: skeleton/config/firefly.php -->
+```php
+// 'query' => [
+//     'cache_ttl' => 60,
+//     'cache' => [
+//         'provider' => env('FIREFLY_CQRS_QUERY_CACHE', 'none'),
+//         'store' => env('FIREFLY_CQRS_QUERY_CACHE_STORE', ''),
+//         'prefix' => 'firefly:cqrs:',
+//         'invalidation' => [
+//             'ledger.closed' => [App\Ledger\LedgerTotals::class],
+//         ],
+//     ],
+// ],
+```
+
+!!! warning "The key is the value object"
+    A query whose answer depends on the tenant or the signed-in user must carry them as public properties. `GetBalance` is safe because the wallet id is the whole question; a `MyWallets` query with no `ownerId` property would hand every user the first user's list.
+
+!!! note "Why a domain event names a query"
+    `FundsDeposited` now imports `GetBalance`, an application-layer class, the same way it already carries `#[PublishDomainEvent]`. The framework puts the rule there on purpose — the event is what knows what it makes stale — and it buys the precise, one-wallet eviction. The alternative, `firefly.cqrs.query.cache.invalidation` (event type ⇒ query classes, for events this process has no class for), keeps the domain clean and evicts every wallet's balance on every deposit.
+
+---
+
 ## Compiled, not reflected: `HandlerScanner` → `HandlerManifest` → `firefly:cache`
 
 `HandlerScanner` is the **sole** reflection site in `packages/cqrs/src` (the same grep-enforced invariant Chapter 6 described for `firefly/domain`). It walks the app's PSR-4 roots once, resolves every `#[CommandHandler]`/`#[QueryHandler]` (running exactly the `messageType()` inference you just read) into a `HandlerDescriptor`, and hands the whole list to `HandlerManifestCompiler`, which `var_export()`s it to a plain PHP array file — the same zero-reflection technique Chapter 2 introduced for the component manifest and Chapter 3 for `#[ConfigProperties]`.
@@ -490,6 +576,7 @@ Get this wrong in an application — add a handler, forget to re-run `firefly:ca
 | `#[CommandHandler]` / `#[QueryHandler]` | Specialise `#[Component]` — one attribute registers the handler as a DI bean **and** a dispatch target |
 | Message-type inference | `HandlerScanner` reads the sole `handle()` parameter unless an explicit class-string is given |
 | The bounded pipeline | correlate → validate → authorize → (cache-get, query only) → resolve + invoke → (cache-put, query only) → metrics |
+| `#[CachedQuery]` / `#[InvalidatesQuery]` | Caches a query's answer by value on a Laravel store (`firefly.cqrs.query.cache.provider=cache`); the event that makes it stale evicts one entry (`with:`) or a group after it commits |
 | `CommandProcessingException` / `QueryProcessingException` | Category-preserving wrappers; the original fault is always reachable via `getPrevious()` |
 | `HandlerRegistry` | One command/query class maps to exactly one handler — a duplicate registration fails loud at wiring time |
 | `HandlerScanner` → `HandlerManifest` | The sole reflection site; compiled by `firefly:cache` (one of thirteen scanner/compiler pairs) into a zero-reflection manifest |
@@ -501,3 +588,4 @@ Get this wrong in an application — add a handler, forget to re-run `firefly:ca
 1. **Trigger `CommandHandlerNotFoundException`.** In a scratch copy of the project (not the shipped `samples/lumen` package), define a new command class with no `#[CommandHandler]` anywhere in the app, dispatch it through `CommandBus::send()`, and confirm you get a `CommandHandlerNotFoundException` wrapped in nothing (it is thrown directly by the registry, before the bus's own `catch` block would wrap a handler's fault).
 2. **Force an ambiguous `handle()`.** Give a `#[QueryHandler]` class a `handle()` method with two parameters (or a parameter typed `object`) and run `php artisan firefly:cache`. Confirm it fails loud with `CqrsConfigurationException` naming the exact class and method, rather than silently skipping the handler.
 3. **Read the compiled manifest.** After running `firefly:cache` in a project with `OpenWalletHandler` and `GetBalanceHandler` present, open `bootstrap/cache/firefly/handlers.php` and find both entries. Match each array's `kind` field (`'command'` or `'query'`) back to the `HandlerKind` enum this chapter described.
+4. **Break an eviction on purpose.** In a scratch copy of the project, delete the `#[InvalidatesQuery]` line from `FundsWithdrawn` and run `samples/lumen/tests/Application/QueryCacheTest.php`. Confirm that only the withdrawal test fails, with the old balance, then restore the line.

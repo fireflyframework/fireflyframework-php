@@ -23,6 +23,11 @@ LaraFly is **additive**: it layers a Spring-Boot-shaped application model on top
 | Testing | `RefreshDatabase`, `Event::fake()`, `Bus::fake()` — see Laravel's own primitives only | `FireflyTestCase`/`FireflyDatabaseTestCase`, recording doubles for Firefly's own ports, Firefly-flavored Pest expectations | 12 |
 | Scaffolding | `php artisan make:controller`/`make:model` | `php artisan make:firefly-controller`/`make:firefly-handler`/… — one generator per stereotype | 13 |
 | Boot performance | Laravel's own config/route caching (`config:cache`, `route:cache`) | `php artisan firefly:cache` — one command compiles every Firefly manifest **and** generates `#[Transactional]` proxies for a zero-reflection boot | 13 |
+| Query caching | `Cache::remember()` around the read, invalidated by hand | `#[CachedQuery]` on the query, `#[InvalidatesQuery]` on the event that makes it stale | 7 |
+| Inbound webhooks | A controller per provider with a hand-written signature check | `firefly/webhooks`: `POST /webhooks/{provider}`, verified, deduplicated, published to the event bus | 8A |
+| Outbound webhooks | A queued job per event calling `Http::post()` | `firefly/callbacks`: subscriptions, signed deliveries, retries, a breaker per endpoint, a replayable log | 8A |
+| Long-running processes | `Bus::chain()` / `Bus::batch()` — no undo for the jobs that succeeded | `firefly/orchestration`: sagas with compensation, TCC, durable workflows with checkpoints | 9A |
+| One node per scheduled task | `->onOneServer()` on a cache lock | `#[Scheduled(lock: …)]` over `firefly.scheduling.lock.provider` (`cache`, `database`, `mysql`, `postgres`) | 9A |
 
 ---
 

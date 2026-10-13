@@ -21,6 +21,7 @@
     "require": {
         "php": "^8.3",
         "firefly/actuator": "*@dev",
+        "firefly/callbacks": "*@dev",
         "firefly/config": "*@dev",
         "firefly/container": "*@dev",
         "firefly/context": "*@dev",
@@ -30,9 +31,13 @@
         "firefly/eda": "*@dev",
         "firefly/feature-flags": "*@dev",
         "firefly/kernel": "*@dev",
+        "firefly/orchestration": "*@dev",
+        "firefly/resilience": "*@dev",
+        "firefly/scheduling": "*@dev",
         "firefly/security": "*@dev",
         "firefly/validation": "*@dev",
         "firefly/web": "*@dev",
+        "firefly/webhooks": "*@dev",
         "fireflyframework/larafly": "*@dev",
         "illuminate/database": "^13.0",
         "illuminate/support": "^13.0"

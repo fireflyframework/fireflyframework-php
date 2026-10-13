@@ -77,6 +77,25 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
   pessimistic/optimistic repository locking are integration-tested on every server; `DatabaseCapabilities` (in
   `firefly/data`) reads SKIP LOCKED and READPAST support from the server version; the [database support
   matrix](docs/database-support.md) documents the result.
+- **Book: Chapters 8A and 9A, in English and Spanish.** *Webhooks and Callbacks* (Lumen tops wallets up from a
+  signed card-processor webhook and sends signed callbacks to a partner) and *Sagas, TCC and Durable Workflows*
+  (Lumen's payout saga against a bank port, compensating newest first, with database checkpoints, recovery, dead
+  letters, TCC, durable workflows and the scheduler's distributed lock), slotted after Chapters 8 and 9 without
+  renumbering. Chapter 7 gains the query cache, Chapter 8 the portable database outbox (claim strategies per
+  server, any number of consumers, the relay, `eda-postgres` as the LISTEN/NOTIFY optimization, durable dead
+  letters and replay, Kafka/RabbitMQ messaging), and Chapter 12 the integration lanes (`IntegrationDsn`,
+  `composer test:integration`, the CI matrix, SQL Server's lessons); the preface, Chapter 1, Appendix A and the
+  glossary follow. The book now has eighteen chapters.
+- **Tutorial Steps 12 and 13, in English and Spanish.** The greeting app moves its events onto the database outbox
+  and delivers them with `php artisan firefly:eda:consume`, then sells a greeting card through a compensating saga
+  at `POST /cards/{to}`; the saga's files are quoted from `tests/Fixtures/Tutorial/app`, which
+  `tests/TutorialGreetingCardSagaTest.php` boots through the real web and orchestration pipeline.
+- **`samples/lumen` exercises W1, W2 and W4.** A `payout` saga over a `BankGateway` port with a simulated bank and
+  `POST /api/v1/wallets/{id}/payouts` (201 when the bank confirms, 409 `PAYOUT_FAILED` when the saga compensated,
+  500 `PAYOUT_COMPENSATION_FAILED` when a refund itself failed); `CardTopUpListener` on a signed `firefly/webhooks`
+  endpoint; partner callbacks through `firefly/callbacks`; `GetBalance` as a `#[CachedQuery]` evicted per wallet by
+  `#[InvalidatesQuery]` on `FundsDeposited`/`FundsWithdrawn`; and the portable outbox, proven on PostgreSQL, MySQL,
+  MariaDB, SQL Server and SQLite by `OutboxDatabaseRoundTripTest`.
 
 ### Changed
 
@@ -106,6 +125,10 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 - **The CQRS/EDA bridge figure still credited only the Postgres adapter with same-transaction atomicity.** Its
   caption now names the database outbox (`provider=database` or `postgres`), and its adapter row draws the
   `database` provider; a test derives both providers from their outbox auto-configurations.
+- **The Lumen test harness dropped the query-cache policies.** `LumenTestCase` built `HandlerManifest` from the
+  scanner's handlers and destinations only, so a `#[CachedQuery]` in the sample would have run uncached and every
+  `#[InvalidatesQuery]` would have evicted nothing once the cache was on; it now passes the cached queries and the
+  invalidation rules too.
 
 ### Deprecated
 

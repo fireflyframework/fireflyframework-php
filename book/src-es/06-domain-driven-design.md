@@ -461,10 +461,17 @@ declare(strict_types=1);
 
 namespace Lumen\Domain\Event;
 
+use Firefly\Cqrs\Attributes\InvalidatesQuery;
 use Firefly\Cqrs\Attributes\PublishDomainEvent;
 use Firefly\Domain\DomainEvent;
+use Lumen\Application\Query\GetBalance;
 
+/**
+ * Raised by Wallet::deposit(). It also says what it makes stale: the cached GetBalance of the same wallet, matched
+ * property for property (`walletId` of the query = `walletId` of the event), evicted once the deposit commits.
+ */
 #[PublishDomainEvent('wallet.events')]
+#[InvalidatesQuery(GetBalance::class, with: ['walletId' => 'walletId'])]
 final readonly class FundsDeposited extends DomainEvent
 {
     public function __construct(
@@ -486,10 +493,16 @@ declare(strict_types=1);
 
 namespace Lumen\Domain\Event;
 
+use Firefly\Cqrs\Attributes\InvalidatesQuery;
 use Firefly\Cqrs\Attributes\PublishDomainEvent;
 use Firefly\Domain\DomainEvent;
+use Lumen\Application\Query\GetBalance;
 
+/**
+ * Raised by Wallet::withdraw(). Evicts the cached GetBalance of the same wallet once the withdrawal commits.
+ */
 #[PublishDomainEvent('wallet.events')]
+#[InvalidatesQuery(GetBalance::class, with: ['walletId' => 'walletId'])]
 final readonly class FundsWithdrawn extends DomainEvent
 {
     public function __construct(
@@ -503,7 +516,7 @@ final readonly class FundsWithdrawn extends DomainEvent
 }
 ```
 
-Un cuarto evento, `TransferCompleted`, no lo lanza el propio `Wallet` sino la capa de aplicación una vez que ambas piernas de una transferencia tienen éxito — `TransferHandler`, más adelante en este capítulo, muestra exactamente dónde. Cada uno lleva `#[PublishDomainEvent('wallet.events')]` — un atributo de `firefly/cqrs`, no de `firefly/domain`, que nombra el **destino** al que un evento se republica una vez que cruza al mundo de los eventos de integración; `firefly/domain` en sí no tiene ninguna opinión sobre destinos en absoluto, solo sobre lanzar y drenar.
+Un cuarto evento, `TransferCompleted`, no lo lanza el propio `Wallet` sino la capa de aplicación una vez que ambas piernas de una transferencia tienen éxito — `TransferHandler`, más adelante en este capítulo, muestra exactamente dónde. Cada uno lleva `#[PublishDomainEvent('wallet.events')]` — un atributo de `firefly/cqrs`, no de `firefly/domain`, que nombra el **destino** al que un evento se republica una vez que cruza al mundo de los eventos de integración; `firefly/domain` en sí no tiene ninguna opinión sobre destinos en absoluto, solo sobre lanzar y drenar. Los dos eventos de fondos llevan además `#[InvalidatesQuery(GetBalance::class, …)]`, un atributo de CQRS que explica el Capítulo 7: en cuanto cualquiera de los dos se confirma, retira de la caché el saldo de ese monedero.
 
 Fíjate en lo que cada evento lleva y no lleva. `FundsDeposited` y `FundsWithdrawn` llevan ambos el saldo **posterior a la operación** (`$balanceMinor`), no solo el importe que se movió — un suscriptor que actualiza un modelo de lectura nunca tiene que recargar el monedero para conocer su nuevo saldo; todo lo que necesita ya está en el hecho que recibió. Ese diseño rinde frutos directamente en `LedgerProjector`, más adelante en este capítulo.
 

@@ -23,6 +23,11 @@ LaraFly es **aditivo**: superpone un modelo de aplicación con forma de Spring B
 | Pruebas | `RefreshDatabase`, `Event::fake()`, `Bus::fake()` — solo ven las propias primitivas de Laravel | `FireflyTestCase`/`FireflyDatabaseTestCase`, dobles de grabación para los propios puertos de Firefly, expectativas de Pest con sabor a Firefly | 12 |
 | Andamiaje | `php artisan make:controller`/`make:model` | `php artisan make:firefly-controller`/`make:firefly-handler`/… — un generador por estereotipo | 13 |
 | Rendimiento de arranque | La propia caché de config/rutas de Laravel (`config:cache`, `route:cache`) | `php artisan firefly:cache` — un comando compila cada manifiesto de Firefly **y** genera proxies `#[Transactional]` para un arranque sin reflexión | 13 |
+| Caché de consultas | `Cache::remember()` alrededor de la lectura, invalidada a mano | `#[CachedQuery]` en la consulta, `#[InvalidatesQuery]` en el evento que la deja obsoleta | 7 |
+| Webhooks entrantes | Un controlador por proveedor con una comprobación de firma escrita a mano | `firefly/webhooks`: `POST /webhooks/{provider}`, verificado, deduplicado, publicado en el bus de eventos | 8A |
+| Webhooks salientes | Un job en cola por evento que llama a `Http::post()` | `firefly/callbacks`: suscripciones, entregas firmadas, reintentos, un breaker por endpoint, un registro reproducible | 8A |
+| Procesos de larga duración | `Bus::chain()` / `Bus::batch()` — sin deshacer los jobs que ya tuvieron éxito | `firefly/orchestration`: sagas con compensación, TCC, workflows duraderos con puntos de control | 9A |
+| Un nodo por tarea planificada | `->onOneServer()` sobre un cerrojo de caché | `#[Scheduled(lock: …)]` sobre `firefly.scheduling.lock.provider` (`cache`, `database`, `mysql`, `postgres`) | 9A |
 
 ---
 
