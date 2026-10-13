@@ -2,7 +2,7 @@
 
 # Testing LaraFly Applications {.chtitle}
 
-By the end of this chapter you will know `firefly/testing`'s two boot-harness families — `FireflyTestCase`/`FireflyDatabaseTestCase` for Testbench-style class tests, and `bootFireflyApp()`/`fireflyApplication()` for bare boots with no test framework glue at all — the eleven recording doubles that let a test assert on what a Firefly port actually saw (something Laravel's own `Event::fake()`/`Bus::fake()` cannot do, because they have never heard of Firefly's ports), the five Firefly-flavored Pest expectations, the `WebSliceTestCase`/`DataSliceTestCase` pair that boots only the beans a test needs, the Pest 4 browser suite that drives the **shipped skeleton** in the same process — same container, same SQLite database, no second server — and why `assertNoJavaScriptErrors()` is the assertion that earns it, the helpers that sign a test in (`actingAsAuthentication()` and the `actingAsPrincipal()`/`actingAsOidcUser()` pair built on it, the declarative `#[WithMockUser]`, and `withoutSecurity()` for the other direction), and — because this book only teaches what is actually shipped — a real, honest limitation `samples/lumen`'s own tests ran into and how they worked around it.
+By the end of this chapter you will know `firefly/testing`'s two boot-harness families — `FireflyTestCase`/`FireflyDatabaseTestCase` for Testbench-style class tests, and `bootFireflyApp()`/`fireflyApplication()` for bare boots with no test framework glue at all — the eleven recording doubles that let a test assert on what a Firefly port actually saw (something Laravel's own `Event::fake()`/`Bus::fake()` cannot do, because they have never heard of Firefly's ports), the five Firefly-flavored Pest expectations, the `WebSliceTestCase`/`DataSliceTestCase` pair that boots only the beans a test needs, the Pest 4 browser suite that drives the **shipped skeleton** in the same process — same container, same SQLite database, no second server — and why `assertNoJavaScriptErrors()` is the assertion that earns it, the helpers that sign a test in (`actingAsAuthentication()` and the `actingAsPrincipal()`/`actingAsOidcUser()` pair built on it, the declarative `#[WithMockUser]`, and `withoutSecurity()` for the other direction), how the same integration tests run in CI against real PostgreSQL, MySQL, MariaDB, SQL Server and SQLite servers (`IntegrationDsn`, `composer test:integration`, `docker-compose.integration.yml`), and — because this book only teaches what is actually shipped — a real, honest limitation `samples/lumen`'s own tests ran into and how they worked around it.
 
 !!! note "New term: slice test"
     A **slice test** boots only the narrow vertical of the framework a test actually exercises — the web pipeline over one controller, or the data pipeline over one repository — rather than the whole application. It is Spring Boot's `@WebMvcTest`/`@DataJpaTest` idea: faster boots, and a mis-wired slice fails immediately instead of quietly working by accident because some unrelated bean happened to be present too.
@@ -512,6 +512,133 @@ Feed the result straight into a `FireflyTestCase` subclass's `configOverrides()`
 
 ---
 
+## Real servers in CI: the integration lanes
+
+`RequiresDocker` answers one question — is there a Docker daemon? The work that made the outbox, the scheduling locks and the orchestration store portable needed a stronger answer: the same test, run against every real server the framework claims to support. That is what the **integration lanes** are, and every test in this repository whose SQL a sqlite `:memory:` test cannot exercise belongs to one. Each lane is named by an environment variable:
+
+| Variable | Backend | Lane |
+|---|---|---|
+| `FIREFLY_PG_DSN` | PostgreSQL 16 | `pgsql` |
+| `FIREFLY_MYSQL_DSN` | MySQL 8.4 | `mysql` |
+| `FIREFLY_MARIADB_DSN` | MariaDB 11 | `mariadb` |
+| `FIREFLY_SQLSRV_DSN` | SQL Server 2022 | `sqlsrv` |
+| *(none)* | a SQLite file in WAL mode | `sqlite` |
+| `FIREFLY_RABBITMQ_DSN`, `FIREFLY_KAFKA_BROKERS`, `FIREFLY_REDIS_URL` | the brokers | `brokers` |
+
+One helper reads them all. `Firefly\Testing\Integration\IntegrationDsn` accepts `host=…;port=…;dbname=…;user=…;password=…` or URL-form DSNs, treats a blank variable as unset, and says why a lane cannot run here — or nothing, when it can:
+
+<!-- source: packages/testing/src/Integration/IntegrationDsn.php -->
+```php
+/** Why $lane cannot run here, or null when it can. */
+public static function skipReason(string $lane): ?string
+{
+    $database = self::DATABASES[$lane] ?? throw new InvalidArgumentException(sprintf('Unknown integration lane [%s]; known: %s.', $lane, implode(', ', self::lanes())));
+
+    if (! extension_loaded($database['extension'])) {
+        return sprintf('requires ext-%s for the %s integration lane', $database['extension'], $lane);
+    }
+
+    if ($database['variable'] !== null && self::missing($database['variable'])) {
+        return sprintf('Set %s (host=…;port=…;dbname=…;user=…;password=…) to run the %s integration lane.', $database['variable'], $lane);
+    }
+
+    return null;
+}
+```
+
+A missing variable is a skip, never a failure, so a laptop with no servers still runs the group cleanly. `connectionConfig($lane)` turns a lane into a Laravel connection config, and `connect($lane)` opens a standalone connection — what a second process uses when a test races two consumers. Lumen's outbox round trip shows the shape a booted test takes: a trait reads the lane from the test's dataset, skips **before** the application boots when the lane cannot run, and makes that lane's database the default connection, so the repositories, the outbox and the consumer all use it:
+
+<!-- source: samples/lumen/tests/Integration/BootsLumenOnIntegrationServer.php -->
+```php
+    protected function setUp(): void
+    {
+        $reason = IntegrationDsn::skipReason($this->lane());
+        if ($reason !== null) {
+            $this->markTestSkipped($reason);
+        }
+
+        parent::setUp();
+    }
+
+    protected function resolveApplicationConfiguration($app): void
+    {
+        parent::resolveApplicationConfiguration($app);
+
+        $lane = $this->lane();
+        $overrides = $lane === 'sqlite' ? ['database' => IntegrationDsn::sqlitePath('lumen-outbox')] : [];
+
+        /** @var Repository $config */
+        $config = $app->make('config');
+        $config->set('database.connections.lumen-it', IntegrationDsn::connectionConfig($lane, $overrides));
+        $config->set('database.default', 'lumen-it');
+    }
+```
+
+One `it()` then becomes one test per lane with `->with(IntegrationDsn::lanes())`, and `->group('integration')` keeps all of them out of `composer test`. Locally, the repository's compose file starts the same servers CI uses:
+
+<!-- illustrative: a local run of one lane against the repository's compose services -->
+```bash
+docker compose -f docker-compose.integration.yml up -d        # PostgreSQL, MySQL, MariaDB and the brokers
+export FIREFLY_PG_DSN='host=127.0.0.1;port=5432;dbname=firefly;user=firefly;password=firefly'
+composer test:integration                                     # pest --group integration
+```
+
+SQL Server sits behind the compose file's `sqlsrv` profile, because its image is x86-64 only. In CI the `integration` job is a matrix over the four servers, each a `services:` container exporting only its own DSN, beside a `brokers` job for RabbitMQ, Kafka (with `ext-rdkafka`) and Redis:
+
+<!-- source: .github/workflows/ci.yml -->
+```yaml
+  integration:
+    name: Integration (${{ matrix.lane }})
+    runs-on: ubuntu-latest
+    # A lock wait that never times out must fail the lane, not hold a runner for six hours.
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: pgsql
+            image: postgres:16
+            # …
+          - lane: sqlsrv
+            image: mcr.microsoft.com/mssql/server:2022-latest
+            # …
+      - name: Pest (integration, ${{ matrix.lane }})
+        env:
+          FIREFLY_INTEGRATION_LANE: ${{ matrix.lane }}
+        run: |
+          export ${{ matrix.dsn-variable }}='${{ matrix.dsn }}'
+          composer test:integration
+```
+
+A lane must not go green by skipping everything, and skipping is exactly what a broken DSN export would do. So CI sets `FIREFLY_INTEGRATION_LANE`, and `tests/Integration/IntegrationLaneTest.php` then **fails** unless that lane's variables are set, its PHP extension is loaded and its server answers. On a laptop the variable is unset and that test skips like the rest.
+
+### What SQL Server teaches
+
+SQL Server is the lane that finds what the other four forgive, and three of its lessons are worth knowing before you write a test against it. The first: without `READ_COMMITTED_SNAPSHOT`, which is off by default, a plain `SELECT` from a second connection **waits** on a row this process inserted and has not committed — in a test, forever, because the writer is the test. To assert that a row is not visible yet, read past the locked rows:
+
+<!-- source: packages/eda-database/tests/Integration/DatabaseOutboxRoundTripIntegrationTest.php -->
+```php
+                // SQL Server without READ_COMMITTED_SNAPSHOT makes a plain read WAIT on the uncommitted row (here, forever:
+                // the writer is this process); READPAST reads what is committed, which is the claim being made.
+                $visible = $reader->table(OutboxSchema::TABLE);
+                expect(($reader->getDriverName() === 'sqlsrv' ? $visible->lock('with(readpast)') : $visible)->count())->toBe(0);
+```
+
+The second: a session `SET` made through a prepared statement does not stick. `pdo_sqlsrv` runs every prepared statement through `sp_prepexec`, and SQL Server restores a `SET` made inside it when the call returns — which is why `#[Transactional(timeout:)]` applies its `SET LOCK_TIMEOUT` with `unprepared()`, never `statement()`:
+
+<!-- source: packages/data/src/Transaction/Timeout/StatementTimeoutApplier.php -->
+```php
+            // unprepared(), never statement(): pdo_sqlsrv runs a prepared statement through sp_prepexec, and SQL Server
+            // restores a SET made inside it when that call returns, so the session would keep waiting forever.
+            /** @var literal-string $set an integer formatted by %d: nothing but digits reaches the batch */
+            $set = sprintf('set lock_timeout %d', $seconds * 1000);
+            $connection->unprepared($set);
+```
+
+The third: range scans and `MERGE` block on other workers' uncommitted rows, so anything that runs concurrently should update and insert by exact primary key — the outbox's `read-past` claim from Chapter 8 is the shape that works. And because a lock wait that never ends is the failure SQL Server produces instead of an error, the CI job's `timeout-minutes: 25` turns it into a failed lane rather than a runner held for six hours.
+
+---
+
 ## Proof from Lumen: how the sample dogfoods it all
 
 `samples/lumen` builds its own test base, `LumenTestCase`, on top of `FireflyDatabaseTestCase` — the pattern every chapter of this book has ultimately been resting on:
@@ -773,6 +900,7 @@ Chapter 13A exercises Lumen’s checked-in `WalletRollout` with `withFeatureFlag
 | `#[FireflyTest]` / `#[WebSlice]` / `#[DataSlice]` | Class-attribute analog of the same three shapes, for hand-written test classes |
 | `FixtureRegistry` / `AggregateSeeder` / `ListenerSpy` | Named fixtures; domain-event replay; a shared call-order spy |
 | `RequiresDocker` / `fireflyConfigFor()` | `@group integration` opt-in; skip-not-fail without Docker; testcontainer → config mapping |
+| `IntegrationDsn` / `composer test:integration` | One helper reads every lane's DSN and skips a lane that cannot run; CI runs the `integration` group per server plus a `brokers` job, and `IntegrationLaneTest` fails a lane that skipped everything |
 | The `browser` suite | Pest 4 + `pest-plugin-browser` serving the Testbench-booted **skeleton** in process — same container, same SQLite, no second server |
 | `phpunit.xml.dist`'s two suites | `tests/Browser` excluded from `unit`, so `composer check` stays Node-free; `composer test:browser` runs it alone |
 | `assertNoJavaScriptErrors()` | The assertion that earns the suite: a page that renders and throws in the console looks fine in a screenshot |
@@ -793,3 +921,4 @@ Chapter 13A exercises Lumen’s checked-in `WalletRollout` with `withFeatureFlag
 5. **Add a `RequiresDocker`-gated integration test.** Pick a repository backed by Eloquent, write an `@group integration` test against a real Postgres testcontainer using `fireflyConfigFor()`, and confirm `vendor/bin/pest` (no flags) skips it entirely while `vendor/bin/pest --group=integration` runs it for real.
 6. **Watch `$forwardTo` matter.** Bind a `RecordingAuthenticationEvents` with no `$forwardTo` from `defineFireflyEnvironment()`, register an `#[AsEventListener]` on `InteractiveAuthenticationSuccessEvent` that writes a row, and sign in: confirm the spy records the event and the listener never ran. Then re-bind it wrapping the framework's own publisher and confirm both happen. Finally move the `instance()` call to *after* boot and confirm the spy records nothing at all — the binding moment is the whole trick.
 7. **Reach past a gate two ways.** Take a controller test that gets a `401`, and make it pass twice: once with `#[WithMockUser(roles: ['ADMIN'])]` on the method, once with `withoutSecurity()`. Then put `#[WithMockUser]` on the class and a different one on a single method, and confirm which of the two the framework honours.
+8. **Run one lane yourself.** Start the compose services, export `FIREFLY_PG_DSN`, and run `composer test:integration -- samples/lumen/tests/Integration`. Confirm the `pgsql` and `sqlite` entries pass and every other lane reports the variable or the extension it is missing.
