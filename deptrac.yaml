@@ -106,6 +106,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/webhooks/src/.*
+    - name: Callbacks
+      collectors:
+        - type: directory
+          value: packages/callbacks/src/.*
     - name: OpenApi
       collectors:
         - type: directory
@@ -519,6 +523,20 @@ deptrac:
       - Context
       - AutoConfigure
       - Web
+      - Eda
+      - Resilience
+
+    # Callbacks is the outbound-webhook capability: a subscription registry and an execution log on memory or any
+    # database connection (illuminate, unlayered), deliveries over Laravel's HTTP client driven by Eda envelopes
+    # (=> Eda, through a BootPass subscription), and one circuit breaker per endpoint built from Resilience's
+    # CircuitBreaker over the bound ResilienceStore (=> Resilience). It reads Config, carries Container/Context
+    # attributes, extends AutoConfigure's base and reuses Kernel exceptions. NOTHING depends on it.
+    Callbacks:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
       - Eda
       - Resilience
 

@@ -58,6 +58,7 @@
             "Firefly\\Actuator\\Tests\\": "packages/actuator/tests/",
             "Firefly\\Admin\\Tests\\": "packages/admin/tests/",
             "Firefly\\AutoConfigure\\Tests\\": "packages/autoconfigure/tests/",
+            "Firefly\\Callbacks\\Tests\\": "packages/callbacks/tests/",
             "Firefly\\Cli\\Tests\\": "packages/cli/tests/",
             "Firefly\\Config\\Tests\\": "packages/config/tests/",
             "Firefly\\Container\\Tests\\": "packages/container/tests/",
@@ -124,6 +125,7 @@
         "firefly/actuator": "self.version",
         "firefly/admin": "self.version",
         "firefly/autoconfigure": "self.version",
+        "firefly/callbacks": "self.version",
         "firefly/cli": "self.version",
         "firefly/config": "self.version",
         "firefly/container": "self.version",
@@ -158,6 +160,7 @@
             "Firefly\\Actuator\\": "packages/actuator/src/",
             "Firefly\\Admin\\": "packages/admin/src/",
             "Firefly\\AutoConfigure\\": "packages/autoconfigure/src/",
+            "Firefly\\Callbacks\\": "packages/callbacks/src/",
             "Firefly\\Cli\\": "packages/cli/src/",
             "Firefly\\Config\\": "packages/config/src/",
             "Firefly\\Container\\": "packages/container/src/",
@@ -265,6 +268,8 @@
                 "Firefly\\FeatureFlags\\FeatureFlagsWiringProvider",
                 "Firefly\\Webhooks\\WebhooksServiceProvider",
                 "Firefly\\Webhooks\\WebhooksWiringProvider",
+                "Firefly\\Callbacks\\CallbacksServiceProvider",
+                "Firefly\\Callbacks\\CallbacksWiringProvider",
                 "Firefly\\Cli\\Boot\\FireflyCacheServiceProvider"
             ]
         }

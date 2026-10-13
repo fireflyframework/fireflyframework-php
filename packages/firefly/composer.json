@@ -25,6 +25,7 @@
         "firefly/actuator": "*@dev",
         "firefly/admin": "*@dev",
         "firefly/autoconfigure": "*@dev",
+        "firefly/callbacks": "*@dev",
         "firefly/cli": "*@dev",
         "firefly/config": "*@dev",
         "firefly/container": "*@dev",
