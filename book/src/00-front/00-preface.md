@@ -20,6 +20,8 @@ The journey starts gently. The **Quick Start** takes you from the bundled `firef
 
 Chapters 8A and 9A take Lumen past a single database: a card processor tops wallets up through a signed webhook, a partner hears about every movement of money through signed callbacks, and a payout to a bank runs as a saga that undoes itself, step by step, when the bank says no.
 
+Chapter 9B keeps a different kind of record: Lumen's loans are stored as the events that happened to them — granted, repaid, settled — rebuilt from that history and from snapshots, projected into a loan book, and published through the outbox in the same transaction as the wallet they move money through.
+
 Chapter 13A closes the production loop with feature flags: Lumen keeps a wallet view dark, targets a shared cohort, and tests the route and override lifecycle against the real framework.
 
 By the time you have worked through the full book, you will have a mental model for every layer of a production LaraFly service, and a real, tested application to show for it.

@@ -28,6 +28,7 @@ LaraFly es **aditivo**: superpone un modelo de aplicación con forma de Spring B
 | Webhooks salientes | Un job en cola por evento que llama a `Http::post()` | `firefly/callbacks`: suscripciones, entregas firmadas, reintentos, un breaker por endpoint, un registro reproducible | 8A |
 | Procesos de larga duración | `Bus::chain()` / `Bus::batch()` — sin deshacer los jobs que ya tuvieron éxito | `firefly/orchestration`: sagas con compensación, TCC, workflows duraderos con puntos de control | 9A |
 | Un nodo por tarea planificada | `->onOneServer()` sobre un cerrojo de caché | `#[Scheduled(lock: …)]` sobre `firefly.scheduling.lock.provider` (`cache`, `database`, `mysql`, `postgres`) | 9A |
+| Event sourcing | Sin almacén de eventos — Eloquent guarda la última fila; la historia es una tabla de auditoría mantenida a mano | `firefly/eventsourcing`: agregados con event sourcing sobre un almacén de eventos en base de datos, instantáneas, upcasters, proyecciones con punto de control, publicación por el outbox | 9B |
 
 ---
 

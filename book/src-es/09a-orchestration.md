@@ -177,7 +177,7 @@ Tres tipos de fallo, tres respuestas. Cuando una compensación no terminó — e
 
 ## Puntos de control, recuperación y la cola de cartas muertas
 
-Cada frontera de paso escribe un punto de control `ExecutionState` a través del puerto `ExecutionPersistenceProvider`. `memory` es el valor por defecto y no sobrevive a nada; `cache` usa cualquier store de caché de Laravel; `database` usa tres tablas portables, probadas en PostgreSQL, MySQL, MariaDB, SQL Server y SQLite. El harness de Lumen ejecuta la saga de pagos salientes sobre `database`, y por eso el test de arriba puede leer `firefly_orchestration_executions`:
+Cada frontera de paso escribe un punto de control `ExecutionState` a través del puerto `ExecutionPersistenceProvider`. `memory` es el valor por defecto y no sobrevive a nada; `cache` usa cualquier store de caché de Laravel; `database` usa tres tablas portables, probadas en PostgreSQL, MySQL, MariaDB, SQL Server y SQLite. Un cuarto, `event-sourced`, guarda cada ejecución como un flujo de eventos en el almacén de eventos (Capítulo 9B). El harness de Lumen ejecuta la saga de pagos salientes sobre `database`, y por eso el test de arriba puede leer `firefly_orchestration_executions`:
 
 <!-- source: skeleton/config/firefly.php -->
 ```php
@@ -380,7 +380,7 @@ Los pasos de una capa de la topología se ejecutan uno tras otro, en orden de de
 | `SagaEngine::execute()` / `SagaResult` | Ejecuta una saga en el proceso; `success`, `status`, `firstErrorStepId()`, `compensatedSteps()` |
 | TCC | Primero `#[TryMethod]` en todas partes, luego `#[ConfirmMethod]` en todas partes, o `#[CancelMethod]` para cada participante que lo intentó |
 | Workflow duradero | `#[WaitForSignal]` / `#[WaitForTimer]` lo aparcan en `WAITING`; una señal o el tic lo reanudan desde su punto de control |
-| `firefly.orchestration.persistence.provider` | Puntos de control en `memory`, `cache` o `database`; la recuperación informa, reanuda o compensa las ejecuciones obsoletas |
+| `firefly.orchestration.persistence.provider` | Puntos de control en `memory`, `cache`, `database` o `event-sourced`; la recuperación informa, reanuda o compensa las ejecuciones obsoletas |
 | Cola de cartas muertas | Una entrada por paso fallido; `firefly:orchestration:dlq` las enumera, `firefly:orchestration:dlq:retry` la arranca de nuevo |
 | `firefly.scheduling.lock.provider` | `none`, `cache`, `database`, `mysql` o `postgres` — mantiene un tic programado en un solo nodo |
 

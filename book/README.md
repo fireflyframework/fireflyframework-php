@@ -161,7 +161,10 @@ the reader's own code, which is the kind `php -l` checks. Both editions build to
 `book/dist/` as PDF + EPUB. Chapters 8A and 9A walk the code W1, W2 and W4
 added to Lumen — `CardTopUpListener`, the partner callbacks, `PayoutSaga` and
 `SimulatedBankGateway` — and every listing of that code is a `source:` excerpt
-of the file the sample's own tests run.
+of the file the sample's own tests run. Chapter 9B does the same for W3's event
+sourcing — `Loan`, `LoanRepository`, `LoanBookProjection` and
+`LoanRepaidV1Upcaster` are quoted from the sample, whose tests also run them on
+every integration lane.
 
 **The two editions are the same book, line for line.** Every chapter file has
 the same sections in the same order at the same line numbers, and every `php`

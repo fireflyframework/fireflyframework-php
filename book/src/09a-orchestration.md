@@ -177,7 +177,7 @@ Three kinds of failure, three answers. When a compensation did not finish — th
 
 ## Checkpoints, recovery and the dead-letter queue
 
-Every step boundary writes an `ExecutionState` checkpoint through the `ExecutionPersistenceProvider` port. `memory` is the default and survives nothing; `cache` uses any Laravel cache store; `database` uses three portable tables, proven on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite. Lumen's harness runs the payout saga on `database`, which is why the test above can read `firefly_orchestration_executions`:
+Every step boundary writes an `ExecutionState` checkpoint through the `ExecutionPersistenceProvider` port. `memory` is the default and survives nothing; `cache` uses any Laravel cache store; `database` uses three portable tables, proven on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite. A fourth, `event-sourced`, keeps every execution as an event stream in the event store (Chapter 9B). Lumen's harness runs the payout saga on `database`, which is why the test above can read `firefly_orchestration_executions`:
 
 <!-- source: skeleton/config/firefly.php -->
 ```php
@@ -380,7 +380,7 @@ Steps of one topology layer run one after another, in declaration order: a layer
 | `SagaEngine::execute()` / `SagaResult` | Runs a saga in process; `success`, `status`, `firstErrorStepId()`, `compensatedSteps()` |
 | TCC | `#[TryMethod]` everywhere first, then `#[ConfirmMethod]` everywhere, or `#[CancelMethod]` for every participant that tried |
 | Durable workflow | `#[WaitForSignal]` / `#[WaitForTimer]` park it `WAITING`; a signal or the tick resumes it from its checkpoint |
-| `firefly.orchestration.persistence.provider` | `memory`, `cache` or `database` checkpoints; recovery reports, resumes or compensates stale executions |
+| `firefly.orchestration.persistence.provider` | `memory`, `cache`, `database` or `event-sourced` checkpoints; recovery reports, resumes or compensates stale executions |
 | Dead-letter queue | One entry per failed step; `firefly:orchestration:dlq` lists, `firefly:orchestration:dlq:retry` starts it again |
 | `firefly.scheduling.lock.provider` | `none`, `cache`, `database`, `mysql` or `postgres` — keeps a scheduled tick on one node |
 

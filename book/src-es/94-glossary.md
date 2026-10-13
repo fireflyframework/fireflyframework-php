@@ -26,6 +26,8 @@
 
 **Callback (outbound webhook)** — Una petición HTTP que LaraFly envía a un suscriptor cuando ocurre en el bus un evento que el suscriptor pidió: firmada con `X-Firefly-Timestamp` y `X-Firefly-Signature`, reintentada con espera creciente, protegida por un circuit breaker por endpoint y anotada en un registro de ejecuciones reproducible. La distribuye `firefly/callbacks` (Capítulo 8A).
 
+**Checkpoint** — La posición del flujo global de eventos hasta la que una proyección ha proyectado, guardada en `firefly_eventsourcing_checkpoints` y avanzada en la misma transacción que las filas de la propia proyección; una reconstrucción la devuelve a 0 (Capítulo 9B).
+
 **Circuit breaker** — Un patrón de resiliencia que salta a un estado abierto tras un umbral de fallos consecutivos contra una dependencia, cortocircuitando llamadas posteriores hasta que la dependencia haya tenido tiempo de recuperarse. El `MeterBindingsPass` de `firefly/observability` expone el estado en vivo de cada breaker configurado como un gauge `resilience_circuit_breaker_state{name}` (Capítulo 11).
 
 **Claim strategy** — Cómo elige un consumidor del outbox una fila sin que otro consumidor elija la misma: `skip-locked` (PostgreSQL, MySQL 8.0.1+, MariaDB 10.6+), `read-past` (SQL Server) o la portable `optimistic-lease`, elegida por `auto` a partir de la versión que declara el servidor (Capítulo 8).
@@ -51,6 +53,10 @@
 **Durable workflow** — Una orquestación que puede esperar — una señal, un temporizador — a través de peticiones y procesos, porque cada frontera de paso escribe un punto de control desde el que se reanuda (`#[Workflow]`, `#[WaitForSignal]`, `#[WaitForTimer]`) (Capítulo 9A).
 
 **Entity** — Un objeto de dominio con una identidad estable que persiste a través de los cambios de estado. El `make:firefly-entity` de LaraFly andamia una clase que extiende `Firefly\Domain\Entity` — no hay ningún atributo `#[Entity]` (Capítulos 6, 13).
+
+**Event sourcing** — Guardar un agregado como los eventos ordenados que le ocurrieron en lugar de como una fila con sus últimos valores; su estado es su reproducción (`EventSourcedAggregateRoot`, `recordThat()`) (Capítulo 9B).
+
+**Event store** — El hogar de solo-añadir de esos eventos: un flujo por agregado, añadido bajo concurrencia optimista, y un flujo global numerado en orden de commit para las proyecciones; `memory` o `database` (`firefly.eventsourcing.store.provider`) (Capítulo 9B).
 
 **EventListener** — Cualquiera de dos superficies distintas y deliberadamente no relacionadas: `#[AsEventListener]` para el propio despacho de eventos en-proceso de Laravel, y `#[EventListener]` para el bus respaldado por broker de `firefly/eda`, que se suscribe a un *patrón* de tipo de evento en lugar de a una clase de PHP (Capítulo 8).
 
@@ -88,7 +94,7 @@
 
 **Problem Details (RFC 7807)** — La forma de error estándar `application/problem+json` (`type`, `title`, `status`, más claves de extensión específicas del framework como `code`/`category`) como la que renderiza cada excepción sin manejar. `ProblemDetailsRenderer` es lo que la produce (Capítulos 4, 12).
 
-**Projection** — Un modelo de lectura construido consumiendo un flujo de eventos de dominio, mantenido separado del modelo de escritura que los produjo — el libro mayor de Lumen es una proyección sobre los propios eventos de dominio de `Wallet` (Capítulo 6).
+**Projection** — Un modelo de lectura construido consumiendo un flujo de eventos de dominio, mantenido separado del modelo de escritura que los produjo — el libro mayor de Lumen es una proyección sobre los propios eventos de dominio de `Wallet` (Capítulo 6), y su cartera de préstamos una proyección con punto de control del flujo global del almacén de eventos (Capítulo 9B).
 
 **Proxy (`#[Transactional]` proxy)** — Una subclase generada que envuelve un método con atributo `#[Transactional]` con fronteras de transacción declarativas (`beginTransaction()`/`commit()`/`rollBack()`), producida por el mismo `ProxyClassGenerator` sin reflexión ya sea en tiempo de arranque (dev) o de forma anticipada por `firefly:cache` (producción) (Capítulos 9, 13).
 
@@ -110,6 +116,8 @@
 
 **Slice test** — Una prueba que arranca solo los beans que necesita una estrecha vertical — el pipeline web sobre un controlador (`WebSliceTestCase`), o el pipeline de datos sobre un repositorio (`DataSliceTestCase`) — en lugar de toda la aplicación, de modo que una rebanada mal cableada falla rápido en lugar de pasar por accidente (Capítulo 12).
 
+**Snapshot** — Una copia guardada del estado de un agregado con event sourcing en una versión, para que una carga reproduzca solo los eventos posteriores; se toma cada `firefly.eventsourcing.snapshot.threshold` eventos para un agregado `SnapshotAware` y se ignora en cuanto la versión de su forma deja de coincidir (Capítulo 9B).
+
 **Stereotype** — Un atributo que a la vez registra una clase como bean y señala su rol arquitectónico — `#[Service]`, `#[Repository]`, `#[Component]`, `#[Configuration]`, `#[RestController]`. Cada estereotipo es una especialización del `#[Component]` base (Capítulo 2).
 
 **TCC (Try-Confirm-Cancel)** — Un patrón de orquestación en el que cada participante primero reserva (*try*), y solo cuando todos los intentos tuvieron éxito se confirman todos; si falla cualquier intento, se cancela a cada participante que lo intentó (`#[Tcc]`, `#[TccParticipant]`) (Capítulo 9A).
@@ -117,6 +125,8 @@
 **Testcontainers** — Una biblioteca que arranca contenedores Docker reales para pruebas de integración y los desmonta después. El trait `RequiresDocker` y el helper `fireflyConfigFor()` de `firefly/testing` hacen que una prueba respaldada por testcontainers sea opcional y segura para CI incluso sin Docker presente (Capítulo 12).
 
 **Transactional (`#[Transactional]`)** — Un atributo de clase/método que declara propagación (`REQUIRED`, `REQUIRES_NEW`, `NESTED`, …), aislamiento, solo-lectura y reglas de rollback — hecho cumplir por un proxy generado en lugar de una clausura manual `DB::transaction()` (Capítulo 9).
+
+**Upcaster** — Un `EventUpcaster` que hace avanzar un evento guardado de una versión antigua cada vez que se lee — un campo renombrado, un valor por defecto nuevo — sin reescribir nunca la fila guardada, así que repositorios y proyecciones ven la misma forma actual (Capítulo 9B).
 
 **Value object** — Un objeto de dominio inmutable identificado por su valor en lugar de por un campo de identidad; dos objetos de valor son iguales si todos sus campos son iguales. `Money` — un importe entero en unidades menores más una `Currency` — es el objeto de valor canónico de Lumen (Capítulo 6).
 

@@ -26,6 +26,8 @@
 
 **Callback (outbound webhook)** — An HTTP request LaraFly sends to a subscriber when an event the subscriber asked for happens on the bus: signed with `X-Firefly-Timestamp` and `X-Firefly-Signature`, retried with back-off, guarded by a circuit breaker per endpoint, and recorded in a replayable execution log. Shipped by `firefly/callbacks` (Chapter 8A).
 
+**Checkpoint** — The position on the global event stream up to which a projection has projected, kept in `firefly_eventsourcing_checkpoints` and advanced in the same transaction as the projection's own rows; a rebuild resets it to 0 (Chapter 9B).
+
 **Circuit breaker** — A resilience pattern that trips to an open state after a threshold of consecutive failures against a dependency, short-circuiting further calls until the dependency has had time to recover. `firefly/observability`'s `MeterBindingsPass` exposes each configured breaker's live state as a `resilience_circuit_breaker_state{name}` gauge (Chapter 11).
 
 **Claim strategy** — How an outbox consumer picks a row without another consumer picking the same one: `skip-locked` (PostgreSQL, MySQL 8.0.1+, MariaDB 10.6+), `read-past` (SQL Server) or the portable `optimistic-lease`, chosen by `auto` from the server's reported version (Chapter 8).
@@ -51,6 +53,10 @@
 **Durable workflow** — An orchestration that can wait — for a signal, for a timer — across requests and processes, because every step boundary writes a checkpoint it resumes from (`#[Workflow]`, `#[WaitForSignal]`, `#[WaitForTimer]`) (Chapter 9A).
 
 **Entity** — A domain object with a stable identity that persists through state changes. LaraFly's `make:firefly-entity` scaffolds a class extending `Firefly\Domain\Entity` — there is no `#[Entity]` attribute (Chapters 6, 13).
+
+**Event sourcing** — Storing an aggregate as the ordered events that happened to it rather than as a row of its latest values; its state is their replay (`EventSourcedAggregateRoot`, `recordThat()`) (Chapter 9B).
+
+**Event store** — The append-only home of those events: one stream per aggregate, appended under optimistic concurrency, and one global stream numbered in commit order for projections; `memory` or `database` (`firefly.eventsourcing.store.provider`) (Chapter 9B).
 
 **EventListener** — Either of two distinct, deliberately unrelated surfaces: `#[AsEventListener]` for Laravel's own in-process event dispatch, and `#[EventListener]` for `firefly/eda`'s broker-backed bus, which subscribes to an event-type *pattern* rather than a PHP class (Chapter 8).
 
@@ -88,7 +94,7 @@
 
 **Problem Details (RFC 7807)** — The standard `application/problem+json` error shape (`type`, `title`, `status`, plus framework-specific extension keys like `code`/`category`) every unhandled exception renders as. `ProblemDetailsRenderer` is what produces it (Chapters 4, 12).
 
-**Projection** — A read model built by consuming a stream of domain events, kept separate from the write model that produced them — Lumen's ledger is a projection over `Wallet`'s own domain events (Chapter 6).
+**Projection** — A read model built by consuming a stream of domain events, kept separate from the write model that produced them — Lumen's ledger is a projection over `Wallet`'s own domain events (Chapter 6), and its loan book a checkpointed projection of the event store's global stream (Chapter 9B).
 
 **Proxy (`#[Transactional]` proxy)** — A generated subclass that wraps a `#[Transactional]`-attributed method with declarative transaction boundaries (`beginTransaction()`/`commit()`/`rollBack()`), produced by the same reflection-free `ProxyClassGenerator` whether at boot time (dev) or ahead of time by `firefly:cache` (production) (Chapters 9, 13).
 
@@ -110,6 +116,8 @@
 
 **Slice test** — A test that boots only the beans a narrow vertical needs — the web pipeline over one controller (`WebSliceTestCase`), or the data pipeline over one repository (`DataSliceTestCase`) — rather than the whole application, so a mis-wired slice fails fast rather than passing by accident (Chapter 12).
 
+**Snapshot** — A saved copy of an event-sourced aggregate's state at one version, so a load replays only the events after it; taken every `firefly.eventsourcing.snapshot.threshold` events for a `SnapshotAware` aggregate, and ignored once its shape version no longer matches (Chapter 9B).
+
 **Stereotype** — An attribute that both registers a class as a bean and signals its architectural role — `#[Service]`, `#[Repository]`, `#[Component]`, `#[Configuration]`, `#[RestController]`. Every stereotype is a specialization of the base `#[Component]` (Chapter 2).
 
 **TCC (Try-Confirm-Cancel)** — An orchestration pattern in which every participant first reserves (*try*), and only when every try succeeded are all of them confirmed; if any try fails, every participant that tried is cancelled (`#[Tcc]`, `#[TccParticipant]`) (Chapter 9A).
@@ -117,6 +125,8 @@
 **Testcontainers** — A library that starts real Docker containers for integration tests and tears them down afterward. `firefly/testing`'s `RequiresDocker` trait and `fireflyConfigFor()` helper make a testcontainers-backed test opt-in and CI-safe even with no Docker present (Chapter 12).
 
 **Transactional (`#[Transactional]`)** — A class/method attribute declaring propagation (`REQUIRED`, `REQUIRES_NEW`, `NESTED`, …), isolation, read-only, and rollback rules — enforced by a generated proxy rather than a manual `DB::transaction()` closure (Chapter 9).
+
+**Upcaster** — An `EventUpcaster` that moves a stored event of an old version forward each time it is read — a renamed field, a new default — without ever rewriting the stored row, so repositories and projections see the same current shape (Chapter 9B).
 
 **Value object** — An immutable domain object identified by its value rather than by an identity field; two value objects are equal if all their fields are equal. `Money` — an integer amount in minor units plus a `Currency` — is Lumen's canonical value object (Chapter 6).
 
