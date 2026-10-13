@@ -12,13 +12,18 @@ use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Messaging\Broker\InMemoryMessageBroker;
 use Firefly\Messaging\Broker\QueueMessageBroker;
+use Firefly\Messaging\DeadLetter\DatabaseDeadLetterStore;
 use Firefly\Messaging\DeadLetter\DeadLetterStore;
 use Firefly\Messaging\DeadLetter\InMemoryDeadLetterStore;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Container\BindingResolutionException;
+use Illuminate\Database\ConnectionResolverInterface;
 
 /**
  * Always-on messaging transport wiring. Selects the MessageBrokerPort adapter by firefly.messaging.provider
- * (`memory` default | `queue`; `kafka` and `rabbitmq` are bound by the eda-kafka / eda-rabbitmq adapters) and the DeadLetterStore default. #[Order(1000)] places it after user definitions;
+ * (`memory` default | `queue`; `kafka` and `rabbitmq` are bound by the eda-kafka / eda-rabbitmq adapters) and the
+ * DeadLetterStore by firefly.messaging.dead-letter.store (`memory` default | `database`). #[Order(1000)] places it
+ * after user definitions;
  * each #[ConditionalOnMissingBean] lets an app bind its own and win. Both adapters are singletons (the #[Bean]
  * default), so the wiring pass and the queue worker share ONE subscriber set. Mirrors EdaAutoConfiguration.
  */
@@ -49,10 +54,44 @@ final class MessagingAutoConfiguration
         return new InMemoryMessageBroker;
     }
 
+    /**
+     * firefly.messaging.dead-letter.store: `memory` (the default — in-process, lost on exit) or `database` (durable,
+     * replayable, on firefly.messaging.dead-letter.connection). It takes the container, not Config and the connection
+     * resolver, for the reason EdaAutoConfiguration::deadLetterStore() does: Config is autowired, never bound, so
+     * Container::call() hands a nullable `?Config $config = null` its null default; and Laravel aliases
+     * ConnectionResolverInterface to `db` even in an app that never registered DatabaseServiceProvider, so injecting
+     * it would break every boot without a database. The resolver is made only when `database` is chosen. A direct
+     * call with no container (the unit tests) yields the default.
+     */
     #[Bean]
     #[ConditionalOnMissingBean(DeadLetterStore::class)]
-    public function deadLetterStore(): DeadLetterStore
+    public function deadLetterStore(?Container $container = null): DeadLetterStore
     {
-        return new InMemoryDeadLetterStore;
+        if ($container === null) {
+            return new InMemoryDeadLetterStore;
+        }
+
+        /** @var Config $config */
+        $config = $container->make(Config::class);
+        $store = $config->string('firefly.messaging.dead-letter.store', 'memory');
+
+        if ($store === 'memory') {
+            return new InMemoryDeadLetterStore;
+        }
+
+        if ($store !== 'database') {
+            throw new ConfigurationException("firefly.messaging.dead-letter.store='{$store}' is not one of [memory|database].");
+        }
+
+        try {
+            $connections = $container->make(ConnectionResolverInterface::class);
+        } catch (BindingResolutionException $e) {
+            throw new ConfigurationException('firefly.messaging.dead-letter.store=database needs a database connection resolver; register Laravel\'s DatabaseServiceProvider (every application has it) or bind your own DeadLetterStore.', previous: $e);
+        }
+
+        return new DatabaseDeadLetterStore(
+            $connections,
+            $config->has('firefly.messaging.dead-letter.connection') ? $config->string('firefly.messaging.dead-letter.connection') : null,
+        );
     }
 }

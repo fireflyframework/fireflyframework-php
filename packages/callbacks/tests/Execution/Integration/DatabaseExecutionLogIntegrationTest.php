@@ -7,17 +7,12 @@ use Firefly\Callbacks\Execution\CallbackStatus;
 use Firefly\Callbacks\Execution\DatabaseExecutionLog;
 use Firefly\Callbacks\Schema\CallbackSchema;
 use Firefly\Callbacks\Subscription\CallbackSubscription;
-use Firefly\Callbacks\Tests\Support\CallbackDatabases;
 use Firefly\Eda\EventEnvelope;
+use Firefly\Testing\Integration\IntegrationDsn;
 
-foreach ([
-    'PostgreSQL' => ['pgsql', 'FIREFLY_PG_DSN'],
-    'MySQL' => ['mysql', 'FIREFLY_MYSQL_DSN'],
-    'MariaDB' => ['mysql', 'FIREFLY_MARIADB_DSN'],
-    'SQL Server' => ['sqlsrv', 'FIREFLY_SQLSRV_DSN'],
-] as $backend => [$driver, $variable]) {
-    it("records a large unicode body, updates it in place and filters recent deliveries on {$backend}", function () use ($driver, $variable): void {
-        $connection = CallbackDatabases::connection($driver, $variable);
+foreach (IntegrationDsn::lanes() as $lane) {
+    it("records a large unicode body, updates it in place and filters recent deliveries on {$lane}", function () use ($lane): void {
+        $connection = IntegrationDsn::connect($lane, 'callback-executions', $lane === 'sqlite' ? ['database' => IntegrationDsn::sqlitePath('callback-executions')] : []);
         CallbackSchema::drop($connection->getSchemaBuilder());
         CallbackSchema::create($connection->getSchemaBuilder());
         $log = new DatabaseExecutionLog($connection);
@@ -44,10 +39,10 @@ foreach ([
         } finally {
             CallbackSchema::drop($connection->getSchemaBuilder());
         }
-    })->group('integration')->skip(getenv($variable) === false, "Set {$variable} to an isolated database.");
+    })->group('integration')->skip(IntegrationDsn::skipReason($lane) !== null, (string) IntegrationDsn::skipReason($lane));
 
-    it("re-records an execution inside a caller's transaction and leaves that transaction usable on {$backend}", function () use ($driver, $variable): void {
-        $connection = CallbackDatabases::connection($driver, $variable);
+    it("re-records an execution inside a caller's transaction and leaves that transaction usable on {$lane}", function () use ($lane): void {
+        $connection = IntegrationDsn::connect($lane, 'callback-executions', $lane === 'sqlite' ? ['database' => IntegrationDsn::sqlitePath('callback-executions')] : []);
         CallbackSchema::drop($connection->getSchemaBuilder());
         CallbackSchema::create($connection->getSchemaBuilder());
         $log = new DatabaseExecutionLog($connection);
@@ -70,5 +65,5 @@ foreach ([
         } finally {
             CallbackSchema::drop($connection->getSchemaBuilder());
         }
-    })->group('integration')->skip(getenv($variable) === false, "Set {$variable} to an isolated database.");
+    })->group('integration')->skip(IntegrationDsn::skipReason($lane) !== null, (string) IntegrationDsn::skipReason($lane));
 }

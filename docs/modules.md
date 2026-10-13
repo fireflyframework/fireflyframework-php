@@ -1,12 +1,12 @@
 # Modules
 
-LaraFly publishes one `fireflyframework/larafly` library containing the **32 component directories** under
-`packages/*`, each with its own tests or metadata. The **35 guides** below explain their public surfaces.
+LaraFly publishes one `fireflyframework/larafly` library containing the **34 component directories** under
+`packages/*`, each with its own tests or metadata. The **37 guides** below explain their public surfaces.
 Several components carry more than one guide: `firefly/data` answers for *Data & Repositories*,
 *Relational Data* and *Transactions*. Laravel discovers the root library's providers, and configuration
 selects optional features. A bean you declare wins over the framework default.
 Two idioms deliver that outcome, and
-which one you are looking at matters the moment you go reading the source. **20 of the 32 packages** carry a
+which one you are looking at matters the moment you go reading the source. **22 of the 34 packages** carry a
 `#[Configuration]` class whose `#[Bean]` methods sit behind `#[ConditionalOnMissingBean]`, so a bean of yours
 makes the framework's back off silently — `packages/data/src/DataAutoConfiguration.php` is the model. The
 **other 12** have no such class to go looking for; `firefly/web`, the one nearly every reader installs, guards
@@ -30,8 +30,8 @@ each binding in `WebServiceProvider::register()` with a `bound()` check instead,
 
 <div class="lf-card" markdown>
 <span class="lf-card-title">Resilience &amp; Scheduling</span>
-[Resilience](modules/resilience.md) · [Scheduling](modules/scheduling.md)
-<span class="lf-card-note">Retry, circuit breaker, bulkhead, time limiter, rate limiter and fallback, each a `call(callable)` object built from `firefly.resilience.*`; `#[Scheduled]` methods held by a cache or Postgres-advisory distributed lock.</span>
+[Resilience](modules/resilience.md) · [Scheduling](modules/scheduling.md) · [Scheduling Database Locks](modules/scheduling-database.md)
+<span class="lf-card-note">Retry, circuit breaker, bulkhead, time limiter, rate limiter and fallback, each a `call(callable)` object built from `firefly.resilience.*`; `#[Scheduled]` methods held by a cache, database-lease, MySQL named or Postgres-advisory distributed lock.</span>
 </div>
 
 <div class="lf-card" markdown>
@@ -43,8 +43,8 @@ each binding in `WebServiceProvider::register()` with a `bound()` check instead,
 
 <div class="lf-card" markdown>
 <span class="lf-card-title">Eventing &amp; Messaging</span>
-[EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [Messaging](modules/messaging.md) · [Webhooks](modules/webhooks.md) · [Callbacks](modules/callbacks.md)
-<span class="lf-card-note">One `EventPublisher` port with in-memory, queue, RabbitMQ, Postgres and Kafka adapters, a genuine same-transaction outbox, and the lower-level raw-bytes broker layer beneath it. Signed inbound webhooks and outbound callbacks ride on the same bus.</span>
+[EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [EDA Database Outbox](modules/eda-database.md) · [Messaging](modules/messaging.md) · [Webhooks](modules/webhooks.md) · [Callbacks](modules/callbacks.md)
+<span class="lf-card-note">One `EventPublisher` port with in-memory, queue, RabbitMQ, database (any SQL server), Postgres and Kafka adapters, a genuine same-transaction outbox safe with concurrent consumers on every database, and the lower-level raw-bytes broker layer beneath it. Signed inbound webhooks and outbound callbacks ride on the same bus.</span>
 </div>
 
 <div class="lf-card" markdown>

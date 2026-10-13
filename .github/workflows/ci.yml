@@ -74,6 +74,161 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+  integration:
+    name: Integration (${{ matrix.lane }})
+    runs-on: ubuntu-latest
+    # A lock wait that never times out must fail the lane, not hold a runner for six hours.
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: pgsql
+            image: postgres:16
+            port: 5432
+            extensions: pdo_pgsql
+            dsn-variable: FIREFLY_PG_DSN
+            dsn: host=127.0.0.1;port=5432;dbname=firefly;user=firefly;password=firefly
+            health: pg_isready -U firefly -d firefly
+          - lane: mysql
+            image: mysql:8.4
+            port: 3306
+            extensions: pdo_mysql
+            dsn-variable: FIREFLY_MYSQL_DSN
+            dsn: host=127.0.0.1;port=3306;dbname=firefly;user=firefly;password=firefly
+            health: mysqladmin ping -h 127.0.0.1 -ufirefly -pfirefly
+          - lane: mariadb
+            image: mariadb:11
+            port: 3306
+            extensions: pdo_mysql
+            dsn-variable: FIREFLY_MARIADB_DSN
+            dsn: host=127.0.0.1;port=3306;dbname=firefly;user=firefly;password=firefly
+            health: healthcheck.sh --connect --innodb_initialized
+          - lane: sqlsrv
+            image: mcr.microsoft.com/mssql/server:2022-latest
+            port: 1433
+            extensions: pdo_sqlsrv, sqlsrv
+            dsn-variable: FIREFLY_SQLSRV_DSN
+            dsn: host=127.0.0.1;port=1433;dbname=firefly;user=sa;password=Firefly-Integration-1;encrypt=yes;trust_server_certificate=true
+            health: /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Firefly-Integration-1 -Q 'SELECT 1'
+    services:
+      database:
+        image: ${{ matrix.image }}
+        # One env block serves every image: each reads only its own variables.
+        env:
+          POSTGRES_DB: firefly
+          POSTGRES_USER: firefly
+          POSTGRES_PASSWORD: firefly
+          MYSQL_DATABASE: firefly
+          MYSQL_USER: firefly
+          MYSQL_PASSWORD: firefly
+          MYSQL_ROOT_PASSWORD: firefly-root
+          MARIADB_DATABASE: firefly
+          MARIADB_USER: firefly
+          MARIADB_PASSWORD: firefly
+          MARIADB_ROOT_PASSWORD: firefly-root
+          ACCEPT_EULA: 'Y'
+          MSSQL_SA_PASSWORD: Firefly-Integration-1
+        ports:
+          - ${{ matrix.port }}:${{ matrix.port }}
+        options: >-
+          --health-cmd "${{ matrix.health }}"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+          extensions: ${{ matrix.extensions }}
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Install the Microsoft ODBC driver (pdo_sqlsrv needs it)
+        if: matrix.lane == 'sqlsrv'
+        run: |
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/$(lsb_release -rs)/prod $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y msodbcsql18
+      - name: Create the sqlsrv database
+        if: matrix.lane == 'sqlsrv'
+        run: docker exec ${{ job.services.database.id }} /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Firefly-Integration-1 -Q "CREATE DATABASE firefly"
+      - name: Pest (integration, ${{ matrix.lane }})
+        env:
+          FIREFLY_INTEGRATION_LANE: ${{ matrix.lane }}
+        run: |
+          export ${{ matrix.dsn-variable }}='${{ matrix.dsn }}'
+          composer test:integration
+
+  brokers:
+    name: Integration (brokers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      rabbitmq:
+        image: rabbitmq:3.13-alpine
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 20
+      kafka:
+        image: apache/kafka:3.8.0
+        env:
+          KAFKA_NODE_ID: 1
+          KAFKA_PROCESS_ROLES: broker,controller
+          KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092
+          KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+          KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+          KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+          KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+          KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+        ports:
+          - 9092:9092
+        options: >-
+          --health-cmd "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server 127.0.0.1:9092"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install librdkafka
+        run: sudo apt-get update && sudo apt-get install -y librdkafka-dev
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+          extensions: rdkafka
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+      - name: Pest (integration, brokers)
+        env:
+          FIREFLY_INTEGRATION_LANE: brokers
+          FIREFLY_RABBITMQ_DSN: host=127.0.0.1;port=5672;user=guest;password=guest
+          FIREFLY_KAFKA_BROKERS: 127.0.0.1:9092
+          FIREFLY_REDIS_URL: redis://127.0.0.1:6379/0
+        run: composer test:integration
+
   docs:
     name: Docs (site + bilingual books)
     runs-on: ubuntu-latest

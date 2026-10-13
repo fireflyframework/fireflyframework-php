@@ -19,7 +19,9 @@ use Firefly\Data\Transaction\TransactionInterceptor;
 use Firefly\Eda\Bus\InMemoryEventBus;
 use Firefly\Eda\Bus\QueueEventBus;
 use Firefly\Eda\Consumer\SubscriberRegistrySink;
+use Firefly\Eda\Database\DatabaseOutboxAutoConfiguration;
 use Firefly\Eda\EventEnvelope;
+use Firefly\Eda\Postgres\PostgresOutboxAutoConfiguration;
 use Firefly\Eda\Tracing\EdaTracing;
 use Firefly\Observability\Cqrs\TracerCqrsTracing;
 use Firefly\Observability\Eda\TracerEdaTracing;
@@ -1494,4 +1496,56 @@ it('pins the tracing-propagation figure to the real orders, context keys, log fi
             );
         }
     }
+});
+
+it('scopes the CQRS/EDA bridge figure\'s atomicity caption to every provider that registers the same-tx outbox', function () {
+    // The bridge figure ends on a caption that sends the reader elsewhere for same-transaction atomicity. It was
+    // written when only firefly/eda-postgres wrote the outbox row inside the aggregate's transaction, and said
+    // so: "true same-tx atomicity is the postgres outbox adapter". firefly/eda-database now registers the same
+    // pre-commit hook for provider=database on every supported database, and provider=postgres is that outbox
+    // plus pg_notify/LISTEN — so the caption named one of two providers and implied the other did not exist.
+    // outbox-flow.svg was corrected in the same change and this figure was not. The providers are DERIVED here
+    // from the #[ConditionalOnProperty] on each auto-configuration's OutboxPreCommitHook bean, so a third outbox
+    // provider fails this test until the caption and the adapter row name it too.
+    $root = dirname(__DIR__);
+    $docs = $root.'/docs/assets/diagrams/cqrs-eda-bridge.svg';
+    $book = $root.'/book/art/figures/cqrs-eda-bridge.svg';
+
+    expect(file_get_contents($book))->toBe(file_get_contents($docs), 'book/art/figures/cqrs-eda-bridge.svg must stay byte-identical to the docs copy');
+
+    $providers = [];
+    foreach ([DatabaseOutboxAutoConfiguration::class, PostgresOutboxAutoConfiguration::class] as $configuration) {
+        foreach ((new ReflectionMethod($configuration, 'outboxPreCommitHook'))->getAttributes(ConditionalOnProperty::class) as $attribute) {
+            $condition = $attribute->newInstance();
+            if ($condition->name === 'firefly.eda.provider' && $condition->havingValue !== null) {
+                $providers[] = $condition->havingValue;
+            }
+        }
+    }
+    sort($providers);
+    expect($providers)->toBe(['database', 'postgres']);
+
+    $svg = simplexml_load_file($docs);
+    if ($svg === false) {
+        throw new RuntimeException('docs/assets/diagrams/cqrs-eda-bridge.svg is not well-formed XML');
+    }
+    $svg->registerXPathNamespace('s', 'http://www.w3.org/2000/svg');
+    $texts = array_map(static fn (SimpleXMLElement $node): string => trim((string) $node), $svg->xpath('//s:text') ?: []);
+
+    $captions = array_values(array_filter($texts, static fn (string $text): bool => str_contains($text, 'same-tx atomicity')));
+    expect($captions)->toHaveCount(1, 'the bridge figure must still say where same-transaction atomicity lives');
+    [$caption] = $captions;
+
+    expect(str_contains($caption, 'postgres outbox adapter'))->toBeFalse('the caption still credits only the postgres adapter with the same-tx outbox')
+        ->and(str_contains($caption, 'outbox-flow.svg'))->toBeTrue('the caption must keep pointing at the outbox figure');
+    foreach ($providers as $provider) {
+        expect(preg_match('/\b'.preg_quote($provider, '/').'\b/', $caption))->toBe(1, "the caption does not name provider '{$provider}', which registers the same-tx outbox");
+    }
+
+    // The adapter row under the EventPublisher port draws one box per provider; each outbox provider must be
+    // drawn, and the "(same-tx outbox)" note must sit under the outbox providers, not only under postgres.
+    foreach ($providers as $provider) {
+        expect(in_array($provider, $texts, true))->toBeTrue("the adapter row draws no box for provider '{$provider}'");
+    }
+    expect(count(array_keys($texts, '(same-tx outbox)', true)))->toBe(count($providers), 'every outbox provider box carries the (same-tx outbox) note');
 });

@@ -48,6 +48,10 @@ bash scripts/check-no-sensitive-tracked.sh   # the pre-push guard, run directly
 never needs Node. The documentation tests *are* in it — they are ordinary Pest files under `tests/` — so a
 stale code listing or an unlinked module guide fails `composer check` like any other regression.
 
+`composer test:integration` runs the integration group against real servers; start them with
+`docker compose -f docker-compose.integration.yml up -d`, export the DSNs listed in that file's header, and see
+[Integration Testing](modules/integration-testing.md#ci-lanes).
+
 ## Browser tests
 
 `tests/Browser/` drives the shipped skeleton app in a real Chromium through `pestphp/pest-plugin-browser`

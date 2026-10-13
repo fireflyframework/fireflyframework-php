@@ -23,7 +23,7 @@
       ]
     },
     "docs/assets/diagrams/cqrs-eda-bridge.svg": {
-      "structure": "679ecd3e23e10c0dd19c97d6000e0bc927bc68f655645538ae9572d396452079",
+      "structure": "94d96da10329bd64b2022c26a9c0d15425f3717d8a1f7174332ed5ec4880a70a",
       "originalViewBox": "0 0 1200 820",
       "mirrors": [
         "book/art/figures/cqrs-eda-bridge.svg"
@@ -51,7 +51,7 @@
       ]
     },
     "docs/assets/diagrams/outbox-flow.svg": {
-      "structure": "56c906d58240aa387b8a663e6ecdae9ffe067e4a6f0d0c14e97044f9dae07a03",
+      "structure": "7482a4c154035cf4c7149cffdbc7d68f981e095ef024732059ecf09396200cde",
       "originalViewBox": "0 0 1200 1080",
       "mirrors": [
         "book/art/figures/outbox-flow.svg"

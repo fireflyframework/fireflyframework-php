@@ -11,6 +11,7 @@ use Firefly\Messaging\Container\LinearBackOff;
 use Firefly\Messaging\Container\ListenerInvoker;
 use Firefly\Messaging\Container\ListenerOptions;
 use Firefly\Messaging\Container\RetryPolicy;
+use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Config\Repository;
 use PhpAmqpLib\Message\AMQPMessage;
 
@@ -19,21 +20,7 @@ uses(RabbitMqIntegrationTestCase::class);
 /** @return RabbitMqConnectionFactory over firefly.eda.rabbitmq.* parsed from FIREFLY_RABBITMQ_DSN */
 function w4RabbitDeadLetterFactory(): RabbitMqConnectionFactory
 {
-    $parts = [];
-    foreach (explode(';', (string) getenv('FIREFLY_RABBITMQ_DSN')) as $kv) {
-        [$key, $value] = array_pad(explode('=', $kv, 2), 2, '');
-        $parts[$key] = $value;
-    }
-
-    return new RabbitMqConnectionFactory(new Config(new Repository([
-        'firefly' => ['eda' => ['rabbitmq' => [
-            'host' => $parts['host'] ?? '127.0.0.1',
-            'port' => (int) ($parts['port'] ?? 5672),
-            'user' => $parts['user'] ?? 'guest',
-            'password' => $parts['password'] ?? 'guest',
-            'vhost' => '/',
-        ]]],
-    ])));
+    return new RabbitMqConnectionFactory(new Config(new Repository(['firefly' => ['eda' => ['rabbitmq' => IntegrationDsn::rabbitmq()]]])));
 }
 
 it("parks an exhausted delivery on the listener's dead-letter topic even when nobody consumes that topic", function () {
@@ -87,4 +74,4 @@ it("parks an exhausted delivery on the listener's dead-letter topic even when no
     expect($handled)->toBeTrue()
         ->and($message)->toBeInstanceOf(AMQPMessage::class)
         ->and($message?->getBody())->toBe('payload');
-})->skip(getenv('FIREFLY_RABBITMQ_DSN') === false, 'Set FIREFLY_RABBITMQ_DSN to run the @group integration RabbitMQ dead-letter topic test.')->group('integration');
+})->skip(IntegrationDsn::missing(IntegrationDsn::RABBITMQ), 'Set FIREFLY_RABBITMQ_DSN to run the @group integration RabbitMQ dead-letter topic test.')->group('integration');

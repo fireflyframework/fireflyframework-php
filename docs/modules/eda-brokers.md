@@ -2,8 +2,9 @@
 
 `firefly/eda-rabbitmq`, `firefly/eda-postgres`, and `firefly/eda-kafka` are real message-broker
 adapters behind the `firefly/eda` (M9) `EventPublisher` port — the "real brokers" seam M9 deliberately
-left for later (see [Event-Driven Architecture § Known-latent](eda.md#known-latent)). Each is its own
-opt-in package, gated behind `firefly.eda.provider`, and each ships its own `HealthIndicator`. Installing
+left for later. Each is its own opt-in package, gated behind `firefly.eda.provider`, and each ships its own
+`HealthIndicator`. The Postgres adapter is the portable [database outbox](eda-database.md) plus Postgres's two
+optimizations; on any other database select `firefly.eda.provider=database` instead. Installing
 any of them without selecting it as the active provider is fully inert: no connection is opened, no
 extension is required, and `/actuator/health` is unaffected.
 
@@ -18,7 +19,7 @@ messages back off the wire — something M9's `start()`/`stop()` never needed.
 | Package | Client library | Destination shape | DLQ | Health indicator name |
 |---|---|---|---|---|
 | `firefly/eda-rabbitmq` | `php-amqplib/php-amqplib` (AMQP 0-9-1) | `"exchange/routingKey"` (or a bare routing key against the default exchange) | Broker-native DLX (dead-letter exchange) | `rabbitmq` |
-| `firefly/eda-postgres` | `ext-pdo_pgsql` (via Laravel's `ConnectionInterface`) | a destination string stored on the outbox row | Outbox row `status='FAILED'` | `postgres` |
+| `firefly/eda-postgres` | `ext-pdo_pgsql`; builds on `firefly/eda-database` | a destination string stored on the outbox row | Outbox row `status='FAILED'` | `postgres` |
 | `firefly/eda-kafka` | `ext-rdkafka` (**OPTIONAL**) | a topic name | Dead-letter topic `<topic>.DLT`, with `x-dlt-*` provenance headers | `kafka` |
 
 All three implement the same `EventPublisher::publish(string $destination, string $eventType, array
@@ -29,10 +30,11 @@ bool)/stop()` shape.
 
 ## The `firefly.eda.provider` switch
 
-`firefly.eda.provider` now has five values: `memory` (default) and `queue` bind the M9 in-process/queue
-adapters (`EdaAutoConfiguration`, `#[Order(1000)]`); `rabbitmq`, `postgres`, and `kafka` each bind their own
-`EventPublisher` + `EventConsumer` pair from `#[Order(900)]` autoconfigurations (`RabbitMqAutoConfiguration`,
-`PostgresOutboxAutoConfiguration`, `KafkaAutoConfiguration`) — running *before* `EdaAutoConfiguration`'s
+`firefly.eda.provider` now has six values: `memory` (default) and `queue` bind the M9 in-process/queue
+adapters (`EdaAutoConfiguration`, `#[Order(1000)]`); `database`, `rabbitmq`, `postgres`, and `kafka` each bind
+their own `EventPublisher` + `EventConsumer` pair from `#[Order(900)]` autoconfigurations
+(`DatabaseOutboxAutoConfiguration`, `RabbitMqAutoConfiguration`, `PostgresOutboxAutoConfiguration`,
+`KafkaAutoConfiguration`) — running *before* `EdaAutoConfiguration`'s
 `#[ConditionalOnMissingBean(EventPublisher::class)]` so it backs off correctly (the
 `firefly/scheduling-postgres` win-the-race precedent). Each broker's beans are additionally
 `#[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: '<broker>')]`-gated, so with any other
@@ -66,12 +68,15 @@ independent: an application can publish events to Kafka and messages to RabbitMQ
 
 ### Postgres (`firefly/eda-postgres`)
 
+Under `provider=postgres` the outbox reads [the database outbox's keys](eda-database.md#configuration); the
+`firefly.eda.postgres.*` spellings below remain as aliases.
+
 | Key | Default | Meaning |
 |---|---|---|
-| `firefly.eda.postgres.connection` | the default DB connection | The named Laravel connection the outbox publisher/consumer/relay use — must be `pgsql` for `pg_notify`/`LISTEN` to activate (any other driver, e.g. `sqlite` in tests, silently skips the NOTIFY optimization and falls back to polling). |
-| `firefly.eda.postgres.channel` | `firefly_eda_events` | The `LISTEN`/`NOTIFY` channel name and the outbox row's `channel` column value. |
-| `firefly.eda.postgres.max_attempts` | `3` | How many `nack()`s (in-process consumer) or failed relay attempts an outbox row tolerates before it is marked `FAILED`. |
-| `firefly.eda.postgres.relay.downstream_provider` | *(unset)* | **OPTIONAL.** Selects the relay's downstream: the shipped aliases `rabbitmq`\|`kafka`, the class-string of any `EventPublisher`, or a bound container id. When set, `firefly:outbox:relay` forwards `PENDING` rows there; when unset the command refuses to run with an error naming this key, and delivery is entirely the terminal in-process consumer's job. An app that binds its own publisher under the container id `firefly.eda.relay.downstream` may leave this key unset — that binding is checked first. Resolution is validated when the relay command runs (not at boot), so a misconfiguration fails before a single row is claimed instead of at the first publish. Whatever it resolves to, a `PostgresEventPublisher` is **refused**: it would re-insert `PENDING` rows into the same outbox. |
+| `firefly.eda.postgres.connection` | the default DB connection | Alias of `firefly.eda.database.connection`. The connection must be `pgsql` for `pg_notify`/`LISTEN` to activate; on any other driver the NOTIFY optimization is skipped and the consumer polls. |
+| `firefly.eda.postgres.channel` | `firefly_eda_events` | Alias of `firefly.eda.database.channel` — also the `LISTEN`/`NOTIFY` channel name. |
+| `firefly.eda.postgres.max_attempts` | `3` | Alias of `firefly.eda.database.max-attempts`. |
+| `firefly.eda.postgres.relay.downstream_provider` | *(unset)* | Alias of `firefly.eda.database.relay.downstream-provider` — see [the optional relay](#b-the-optional-relay-fireflyoutboxrelay). |
 
 ### Kafka (`firefly/eda-kafka`)
 
@@ -97,7 +102,7 @@ trace the row carries instead of a fresh root.
 It does nothing unless `firefly.observability.tracing.enabled` and `firefly.observability.tracing.eda.enabled`
 are on (with them off the bound `EdaTracing` is the no-op). Set it to `false` to keep in-process spans while
 refusing to put trace identifiers on a wire someone else reads. The key is read in exactly one place —
-`Firefly\Eda\Tracing\BrokerTracing` — by the three publisher beans and by `RelayDownstream`, because a gate
+`Firefly\Eda\Tracing\BrokerTracing` — by the publisher beans (the database outbox's too) and by `RelayDownstream`, because a gate
 that lives only in a bean fails open wherever a publisher is built by container autowiring. The relay honours it
 whether you name a shipped adapter by its alias (`rabbitmq`) or by its own class-string: both spellings take the
 same configured path. A downstream of your OWN — a publisher class this package ships no adapter for, or one you
@@ -116,7 +121,9 @@ M9 shipped only at-least-once delivery within a process/queue — publishing a d
 atomic with the aggregate's own database write. `firefly/eda-postgres` closes that gap with a **genuine
 same-transaction outbox**: the `firefly_eda_outbox` row is written *inside* the aggregate's own open
 transaction, on the aggregate's own connection, so it commits or rolls back atomically with the aggregate
-— no dual-write, no "commit then hope the publish succeeds."
+— no dual-write, no "commit then hope the publish succeeds." The outbox itself — schema, writer, pre-commit
+hook, leased consumer and relay — lives in [`firefly/eda-database`](eda-database.md), which runs it on every
+database under `provider=database`; this package adds the in-transaction `pg_notify` and the `LISTEN` wake-up.
 
 ![The genuine same-transaction outbox](../assets/diagrams/outbox-flow.svg)
 
@@ -136,7 +143,7 @@ interface PreCommitEventHook
 `DomainEventDispatcher::afterCommit()` — which already runs *during* the pre-commit drain, before
 `DB::connection($connection)->afterCommit(...)` is even registered — now calls
 `$this->preCommitHook?->handle($event, $connection)` first. The hook is `null` by default: with no
-broker package installed (or any provider other than `postgres`), `DomainEventDispatcher` behaves exactly
+outbox package installed (or any provider other than `database` or `postgres`), `DomainEventDispatcher` behaves exactly
 as it did in M8 — publish deferred to `DB::afterCommit` only, zero behaviour change. `$connection` is
 threaded through unchanged from the dispatcher, so a `#[Transactional(connection: 'x')]` aggregate's
 outbox row lands on connection `x`, not some default connection.
@@ -159,14 +166,16 @@ that transaction actually commits — so the consumer's `LISTEN` wakes with low 
 moment the row becomes visible to other connections, and never wakes for a row that gets rolled back.
 
 Outbox columns (one source of truth, `OutboxSchema`): `id, destination, channel, event_type, payload,
-headers, transaction_id, status, attempts, error_message, created_at, processed_at, failed_at`. `status`
+headers, transaction_id, status, attempts, error_message, created_at, processed_at, failed_at, claimed_by,
+claimed_until` — the last two are the claim's lease. `status`
 is one of `PENDING` (just written) / `PUBLISHED` (delivered) / `FAILED` (exhausted `max_attempts`).
 
 ### Double-publish avoidance
 
 With `provider=postgres`, both the in-tx `OutboxPreCommitHook` *and* the ordinary M10 after-commit bridge
 (`DomainEventBridge` → `CommandEventPublisher` → `EdaCommandEventPublisher`) could in principle write the
-same event to the outbox twice. `PostgresOutboxAutoConfiguration` prevents this by binding, all at
+same event to the outbox twice. `PostgresOutboxAutoConfiguration` (and `DatabaseOutboxAutoConfiguration` does the
+same under `provider=database`) prevents this by binding, all at
 `#[Order(900)]` (ahead of `firefly/data`'s and `firefly/cqrs`'s `#[Order(1000)]` defaults):
 
 - its own `DomainEventDispatcher` carrying the `OutboxPreCommitHook` (wins `DataAutoConfiguration`'s
@@ -189,35 +198,33 @@ state. Pick one (or neither, if you're only using RabbitMQ/Kafka directly and ne
 This is the default, always-available path: `firefly:eda:consume` drives `PostgresEventConsumer`, which:
 
 1. `subscribe()` issues `LISTEN <channel>` (pgsql only).
-2. `poll($timeoutMs)` first waits (briefly, best-effort) on a `NOTIFY` via `NotificationWaiter` — guarded so
-   *any* failure on that wait (including a deprecation-to-exception handler tripping on the
-   soon-to-be-deprecated `pgsqlGetNotify()` fallback path) never crashes the poll loop — then, regardless of
-   whether a notification arrived, **claims** the oldest `status='PENDING'` row with
-   `SELECT ... FOR UPDATE SKIP LOCKED` (pgsql) or a plain `ORDER BY id` (sqlite, for tests). The poll-fallback
-   claim also picks up rows that were written while no consumer was listening.
+2. `poll($timeoutMs)` first **claims** one row — a lease written by the strategy the server supports
+   (`SKIP LOCKED` on pgsql) — and only when nothing was claimable waits (briefly, best-effort, guarded against
+   any failure, including a deprecation-to-exception handler tripping on the soon-to-be-deprecated
+   `pgsqlGetNotify()` fallback path) on a `NOTIFY` via `NotificationWaiter`, then claims once more. The claim
+   also picks up rows that were written while no consumer was listening.
 3. The claimed row is handed to `ConsumerLoop`, which delivers it to the `SubscriberRegistry` — driving
    every matching `#[EventListener]` handler, exactly as the in-memory/queue adapters do.
-4. On success, `ack()` runs a guarded `UPDATE ... SET status='PUBLISHED' WHERE id=? AND status='PENDING'` —
-   the `WHERE status='PENDING'` guard makes the ack idempotent. On a handler throw, `nack()` increments
-   `attempts` and either resets the row to `PENDING` (retry) or — past `max_attempts` — marks it `FAILED`.
+4. On success, `ack()` runs a guarded `UPDATE ... SET status='PUBLISHED' WHERE id=? AND status='PENDING' AND
+   claimed_by=<this consumer>` — the guard makes the ack idempotent and settles only a row this consumer still
+   holds. On a handler throw, `nack()` increments `attempts` and either frees the row as `PENDING` (retry) or —
+   past `max-attempts` — marks it `FAILED`.
 
 There is **no `EventPublisher::publish()` call anywhere in this path** — `PostgresEventConsumer` reads and
 updates the outbox table directly, so there is no re-INSERT and no risk of self-reference.
 
-This is a **durable `PENDING`→`PUBLISHED` status window**, not an in-memory high-water mark: a restarted
-consumer resumes at the oldest still-`PENDING` row and never replays a `PUBLISHED` row. A **single**
-consumer worker gives exactly-once in-process delivery. Running **multiple** workers concurrently degrades
-to at-least-once — `FOR UPDATE SKIP LOCKED` plus the guarded `ack()` UPDATE prevent two workers from both
-claiming or both acking the same row, but a worker that crashes *after* running the handler but *before*
-its `ack()` commits will have another worker (or its own restart) redeliver that row. **Write your
-`#[EventListener]` handlers idempotently** if you run more than one consumer worker. A single worker
-consuming in `id` order also gives effective FIFO per outbox (not per-partition/per-key ordering like
-Kafka — just the natural insertion order of one table).
+This is a **durable `PENDING`→`PUBLISHED` status window**: a restarted consumer resumes at the oldest
+claimable row and never replays a `PUBLISHED` one. Any number of consumer workers may run at once — each row is
+leased to one of them while it is delivered, and a worker that crashes mid-delivery leaves its row to the next
+worker when the lease ends (`firefly.eda.database.lease-seconds`), so across a crash delivery is at-least-once:
+write your `#[EventListener]` handlers idempotently. Workers share the table, so ordering is the table's
+insertion order only per worker, not across them.
 
 ### (b) The optional relay — `firefly:outbox:relay`
 
 `firefly:outbox:relay` is a **distinct, optional** path that fronts a **different downstream broker**. Enable
-it by setting `firefly.eda.postgres.relay.downstream_provider` — to a shipped alias (`rabbitmq`/`kafka`), to
+it by setting `firefly.eda.database.relay.downstream-provider` (or its alias
+`firefly.eda.postgres.relay.downstream_provider`) — to a shipped alias (`rabbitmq`/`kafka`), to
 an `EventPublisher` class-string, or to the id of a binding you supply — or by binding your own publisher
 under the container id `firefly.eda.relay.downstream` (checked first, so the key may then stay unset). A
 shipped adapter named by its OWN class-string is the same downstream as its alias and resolves identically,
@@ -234,13 +241,12 @@ row is claimed. Boot-time validation was considered and rejected: a downstream b
 `boot()` may not exist yet when the check would run, so it would fail correctly-configured applications — and
 it would fail every web request and every unrelated artisan command over a relay-only concern.
 
-`OutboxRelay::relayBatch()` claims a batch of `PENDING` rows (`FOR UPDATE SKIP LOCKED` on pgsql, inside a
-short transaction so concurrent relay workers never double-claim; a plain per-row `WHERE id=? AND
-status='PENDING'` guard on drivers without row locking), publishes each through the configured downstream
-`EventPublisher`, and marks it `PUBLISHED` — or, on a publish failure, increments `attempts` and marks it
-`FAILED` past `max_attempts`, exactly like the in-process consumer's `nack()`.
+`OutboxRelay::relayBatch()` leases a batch of claimable rows with the same strategy as the consumer (several
+relay workers never forward the same row), forwards each through the configured downstream `EventPublisher`,
+and marks it `PUBLISHED` — or, on a forward failure, counts the attempt and marks it `FAILED` past
+`max-attempts`.
 
-Both the command and `OutboxRelay`'s constructor **refuse a `PostgresEventPublisher` as the downstream** —
+Both the command and `OutboxRelay`'s constructor **refuse the outbox writer (`DatabaseEventPublisher` or `PostgresEventPublisher`) as the downstream** —
 that would re-INSERT `PENDING` rows into the very same outbox, an infinite loop — throwing a `LogicException`
 / printing a clear error instead. The refusal applies however the downstream was named: alias, class-string
 or container binding. The relay is for genuinely bridging to a *different* broker (e.g. you want
@@ -430,17 +436,25 @@ anonymous Pest closure, so PHPStan can see `skipUnlessDocker()` statically):
 | Adapter | Required extension | Environment variable |
 |---|---|---|
 | RabbitMQ | — (`php-amqplib` is a hard Composer dependency) | `FIREFLY_RABBITMQ_DSN` |
-| Postgres | `ext-pdo_pgsql` | `FIREFLY_PG_DSN` (parsed as `host=…;port=…;dbname=…;user=…;password=…`) |
+| Postgres | `ext-pdo_pgsql` | `FIREFLY_PG_DSN` (`host=…;port=…;dbname=…;user=…;password=…` or a URL, parsed by `IntegrationDsn`) |
 | Kafka | `ext-rdkafka` | `FIREFLY_KAFKA_BROKERS` |
+| Database outbox, dead letters, locks | `pdo_pgsql` / `pdo_mysql` / `pdo_sqlsrv` | `FIREFLY_PG_DSN`, `FIREFLY_MYSQL_DSN`, `FIREFLY_MARIADB_DSN`, `FIREFLY_SQLSRV_DSN` |
+| Redis (CacheLock) | — (`predis/predis`, dev) | `FIREFLY_REDIS_URL` |
+
+The last two rows cover the database-agnostic suites (the outbox, the dead-letter stores, the lock providers and
+the data layer on real servers) and `CacheLock` over Redis: they need no Docker check, only the variable and the
+client.
 
 Missing extension, missing environment variable, or no Docker daemon reachable — any one of these skips
 the suite with a clear message, so `composer check` and ordinary CI runs never depend on a live broker.
 Run them explicitly (with the broker/extension/Docker prerequisites satisfied) via:
 
 ```bash
-FIREFLY_PG_DSN="host=127.0.0.1;port=5432;dbname=firefly;user=postgres;password=postgres" \
-  vendor/bin/pest --group=integration
+FIREFLY_PG_DSN="host=127.0.0.1;port=5432;dbname=firefly;user=firefly;password=firefly" \
+  composer test:integration
 ```
+
+CI runs one lane per server and one for the brokers — see [Integration Testing](integration-testing.md#ci-lanes).
 
 ## Example: switching an app to the Postgres outbox
 
@@ -464,10 +478,11 @@ optional and only read by `firefly:outbox:relay`, so leave it out for terminal i
 ```
 
 ```bash
-composer require firefly/eda-postgres
 php artisan migrate                 # creates firefly_eda_outbox
 php artisan firefly:eda:consume     # terminal in-process delivery — run this as a long-lived worker
 ```
+
+On any other database, use `provider=database` — see [EDA Database Outbox](eda-database.md).
 
 No application code changes: the same `#[EventListener]` handlers and the same `EventPublisher::publish()`
 call sites that worked against `memory`/`queue` now run against a durable, same-transaction outbox.

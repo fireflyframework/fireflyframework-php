@@ -5,16 +5,11 @@ declare(strict_types=1);
 use Firefly\Callbacks\Schema\CallbackSchema;
 use Firefly\Callbacks\Subscription\CallbackSubscription;
 use Firefly\Callbacks\Subscription\DatabaseSubscriptionRegistry;
-use Firefly\Callbacks\Tests\Support\CallbackDatabases;
+use Firefly\Testing\Integration\IntegrationDsn;
 
-foreach ([
-    'PostgreSQL' => ['pgsql', 'FIREFLY_PG_DSN'],
-    'MySQL' => ['mysql', 'FIREFLY_MYSQL_DSN'],
-    'MariaDB' => ['mysql', 'FIREFLY_MARIADB_DSN'],
-    'SQL Server' => ['sqlsrv', 'FIREFLY_SQLSRV_DSN'],
-] as $backend => [$driver, $variable]) {
-    it("round-trips subscriptions, re-saves unchanged ones and matches patterns on {$backend}", function () use ($driver, $variable): void {
-        $connection = CallbackDatabases::connection($driver, $variable);
+foreach (IntegrationDsn::lanes() as $lane) {
+    it("round-trips subscriptions, re-saves unchanged ones and matches patterns on {$lane}", function () use ($lane): void {
+        $connection = IntegrationDsn::connect($lane, 'callback-subscriptions', $lane === 'sqlite' ? ['database' => IntegrationDsn::sqlitePath('callback-subscriptions')] : []);
         CallbackSchema::drop($connection->getSchemaBuilder());
         CallbackSchema::create($connection->getSchemaBuilder());
         CallbackSchema::create($connection->getSchemaBuilder());
@@ -36,5 +31,5 @@ foreach ([
         } finally {
             CallbackSchema::drop($connection->getSchemaBuilder());
         }
-    })->group('integration')->skip(getenv($variable) === false, "Set {$variable} to an isolated database.");
+    })->group('integration')->skip(IntegrationDsn::skipReason($lane) !== null, (string) IntegrationDsn::skipReason($lane));
 }

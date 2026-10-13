@@ -165,6 +165,12 @@ This is a **separate class** from eda's `DeadLetterStore` (`Firefly\Messaging\De
 `Firefly\Eda\DeadLetter\DeadLetterStore`) — no shared code, no cross-package edge; it wraps a raw `Message`
 rather than an `EventEnvelope`, faithful to the two ports' different payload shapes.
 
+`firefly.messaging.dead-letter.store` selects it: `memory` (default) or `database` (`DatabaseDeadLetterStore`, one
+`firefly_messaging_dead_letters` row per message on `firefly.messaging.dead-letter.connection`, the raw bytes
+base64-encoded so they round-trip on every driver; run `php artisan migrate`).
+`php artisan firefly:messaging:dead-letters:replay` republishes entries to their original topic (`--id`, `--topic`,
+`--limit`, `--dry-run`, `--keep`).
+
 ## Config keys
 
 | Key | Type | Default | Meaning |
@@ -172,6 +178,8 @@ rather than an `EventEnvelope`, faithful to the two ports' different payload sha
 | `firefly.messaging.provider` | `memory`\|`queue`\|`kafka`\|`rabbitmq` | `memory` | Selects the broker: `InMemoryMessageBroker` or `QueueMessageBroker` (`MessagingAutoConfiguration`); `kafka`/`rabbitmq` are bound by the eda adapters (see [Kafka and RabbitMQ](#kafka-and-rabbitmq)). |
 | `firefly.messaging.queue.connection` | string\|null | `null` (default connection) | Queue connection `QueueMessageBroker`/`DispatchMessageJob` dispatch onto, when `provider=queue`. |
 | `firefly.messaging.queue.name` | string\|null | `null` (default queue) | Queue name, when `provider=queue`. |
+| `firefly.messaging.dead-letter.store` | `memory`\|`database` | `memory` | Where a `#[MessageListener(deadLetterTopic: …)]` message goes once its retries are exhausted — see above. |
+| `firefly.messaging.dead-letter.connection` | string\|null | `null` | The connection `DatabaseDeadLetterStore` writes on (`null` = the default connection). |
 | `firefly.messaging.listener.retry.max-attempts` | int | `5` | Attempts per delivery (the first included) on a listener container broker. |
 | `firefly.messaging.listener.retry.initial-delay` | duration | `1s` | Exponential back-off after the first failure (seconds, or `250ms`/`30s`/`5m`/`1h`). |
 | `firefly.messaging.listener.retry.multiplier` | float >= 1 | `2.0` | Back-off multiplier after each further failure. |

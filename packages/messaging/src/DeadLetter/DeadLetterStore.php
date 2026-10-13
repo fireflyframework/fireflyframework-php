@@ -10,7 +10,9 @@ use Throwable;
 /**
  * The messaging dead-letter sink (pyfly messaging/error_handling.py parity, bytes flavour). A consumer that
  * exhausts its retries has its message stored here re-keyed to its deadLetterTopic. Distinct from eda's
- * DeadLetterStore (envelope vs raw-bytes) — no shared class, no cross-package edge.
+ * DeadLetterStore (envelope vs raw-bytes) — no shared class, no cross-package edge. InMemoryDeadLetterStore is the
+ * default; DatabaseDeadLetterStore (firefly.messaging.dead-letter.store=database) keeps them durably. Both implement
+ * ReplayableDeadLetterStore, which firefly:messaging:dead-letters:replay needs.
  */
 interface DeadLetterStore
 {

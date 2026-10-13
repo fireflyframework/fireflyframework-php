@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Firefly\Actuator\Tests\Support;
 
+use Firefly\Testing\Integration\IntegrationDsn;
+
 /** The redis indicator ON against the shared Redis named by FIREFLY_REDIS_URL, through predis. */
 abstract class RedisHealthCapstoneTestCase extends ActuatorCapstoneTestCase
 {
@@ -17,7 +19,7 @@ abstract class RedisHealthCapstoneTestCase extends ActuatorCapstoneTestCase
             'firefly.management.endpoint.health.redis.enabled' => true,
             'firefly.management.endpoint.health.redis.connections' => $this->redisConnections(),
             'database.redis.client' => 'predis',
-            'database.redis.default' => ['url' => (string) getenv('FIREFLY_REDIS_URL')],
+            'database.redis.default' => ['url' => (string) IntegrationDsn::value(IntegrationDsn::REDIS)],
             'database.redis.unreachable' => ['host' => '127.0.0.1', 'port' => 1, 'timeout' => 0.5, 'read_write_timeout' => 0.5],
         ];
     }

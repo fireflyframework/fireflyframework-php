@@ -2,18 +2,13 @@
 
 declare(strict_types=1);
 
+use Firefly\Testing\Integration\IntegrationDsn;
 use Firefly\Webhooks\Idempotency\DatabaseWebhookIdempotencyStore;
 use Firefly\Webhooks\Idempotency\WebhookSchema;
-use Firefly\Webhooks\Tests\Support\WebhookDatabases;
 
-foreach ([
-    'PostgreSQL' => ['pgsql', 'FIREFLY_PG_DSN'],
-    'MySQL' => ['mysql', 'FIREFLY_MYSQL_DSN'],
-    'MariaDB' => ['mysql', 'FIREFLY_MARIADB_DSN'],
-    'SQL Server' => ['sqlsrv', 'FIREFLY_SQLSRV_DSN'],
-] as $backend => [$driver, $variable]) {
-    it("claims once, case-sensitively, reclaims an expired receipt and prunes on {$backend}", function () use ($driver, $variable): void {
-        $connection = WebhookDatabases::connection($driver, $variable);
+foreach (IntegrationDsn::lanes() as $lane) {
+    it("claims once, case-sensitively, reclaims an expired receipt and prunes on {$lane}", function () use ($lane): void {
+        $connection = IntegrationDsn::connect($lane, 'webhooks', $lane === 'sqlite' ? ['database' => IntegrationDsn::sqlitePath('webhooks')] : []);
         WebhookSchema::drop($connection->getSchemaBuilder());
         WebhookSchema::create($connection->getSchemaBuilder());
         WebhookSchema::create($connection->getSchemaBuilder());
@@ -38,10 +33,10 @@ foreach ([
         } finally {
             WebhookSchema::drop($connection->getSchemaBuilder());
         }
-    })->group('integration')->skip(getenv($variable) === false, "Set {$variable} to an isolated database.");
+    })->group('integration')->skip(IntegrationDsn::skipReason($lane) !== null, (string) IntegrationDsn::skipReason($lane));
 
-    it("answers a duplicate inside an open transaction without aborting it on {$backend}", function () use ($driver, $variable): void {
-        $connection = WebhookDatabases::connection($driver, $variable);
+    it("answers a duplicate inside an open transaction without aborting it on {$lane}", function () use ($lane): void {
+        $connection = IntegrationDsn::connect($lane, 'webhooks', $lane === 'sqlite' ? ['database' => IntegrationDsn::sqlitePath('webhooks')] : []);
         WebhookSchema::drop($connection->getSchemaBuilder());
         WebhookSchema::create($connection->getSchemaBuilder());
         $store = new DatabaseWebhookIdempotencyStore($connection);
@@ -61,5 +56,5 @@ foreach ([
             }
             WebhookSchema::drop($connection->getSchemaBuilder());
         }
-    })->group('integration')->skip(getenv($variable) === false, "Set {$variable} to an isolated database.");
+    })->group('integration')->skip(IntegrationDsn::skipReason($lane) !== null, (string) IntegrationDsn::skipReason($lane));
 }

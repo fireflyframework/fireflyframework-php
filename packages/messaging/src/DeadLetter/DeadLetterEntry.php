@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Firefly\Messaging\DeadLetter;
 
+use DateTimeImmutable;
 use Firefly\Messaging\Message;
 
 /**
  * One dead-lettered message plus the exception class + message that caused it. The message is already re-keyed to
- * the dead-letter topic and carries the x-original-topic / x-exception headers added by RetryingMessageHandler.
+ * the dead-letter topic and carries the x-original-topic / x-exception headers added by RetryingMessageHandler. A
+ * replayable store fills `id` (what firefly:messaging:dead-letters:replay selects and removes by) and
+ * `deadLetteredAt`.
  */
 final readonly class DeadLetterEntry
 {
@@ -16,5 +19,7 @@ final readonly class DeadLetterEntry
         public Message $message,
         public string $exceptionClass,
         public string $exceptionMessage,
+        public ?string $id = null,
+        public ?DateTimeImmutable $deadLetteredAt = null,
     ) {}
 }

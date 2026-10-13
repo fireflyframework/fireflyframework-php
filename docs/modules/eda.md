@@ -194,9 +194,14 @@ interface DeadLetterStore
 }
 ```
 
-`InMemoryDeadLetterStore` (the `#[ConditionalOnMissingBean]` default) is an in-process, append-only list of
-`DeadLetterEntry` (envelope + exception class + exception message) — nothing is silently lost, but it does
-not survive past the process. A durable adapter is SP-4 territory.
+`firefly.eda.dead-letter.store` selects the store under every provider: `memory` (the default,
+`InMemoryDeadLetterStore`, an in-process, append-only list of `DeadLetterEntry` — envelope + exception class +
+exception message — lost when the process exits) or `database` (`DatabaseDeadLetterStore`, one
+`firefly_eda_dead_letters` row per exhausted envelope on `firefly.eda.dead-letter.connection`; run
+`php artisan migrate`). Both implement `ReplayableDeadLetterStore` — `find(DeadLetterQuery)` and `remove(id)` —
+which `php artisan firefly:eda:dead-letters:replay` uses to republish entries, oldest first, through the bound
+`EventPublisher` to their original destination (`--id`, `--destination`, `--event-type`, `--limit`, `--dry-run`,
+`--keep`). An application-bound `DeadLetterStore` still wins.
 
 ## Serializer seam
 
@@ -239,14 +244,16 @@ fails open wherever a publisher is built by autowiring instead.
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `firefly.eda.provider` | `memory`\|`queue`\|`rabbitmq`\|`postgres`\|`kafka` | `memory` | `EdaAutoConfiguration` selects `InMemoryEventBus` or `QueueEventBus`; the three broker values are honoured by the adapter packages (see [EDA brokers](eda-brokers.md)) and read here as "not queue". |
+| `firefly.eda.provider` | `memory`\|`queue`\|`database`\|`rabbitmq`\|`postgres`\|`kafka` | `memory` | `EdaAutoConfiguration` selects `InMemoryEventBus` or `QueueEventBus`; the other values are honoured by the adapter packages — `database` by [EDA Database Outbox](eda-database.md), `rabbitmq`, `postgres` and `kafka` by [EDA Brokers](eda-brokers.md) — and read here as "not queue". |
 | `firefly.eda.serialization_format` | string | `json` | Selects `Serializer`; anything but `json` throws `SerializationException`. |
 | `firefly.eda.retries` | int | `0` | Handler-level retry count applied to every `#[EventListener]` by `EventListenerWiringPass`. |
 | `firefly.eda.retry_delay` | float (seconds) | `0.0` | Linear-backoff base delay (`retry_delay * attempt`). |
+| `firefly.eda.dead-letter.store` | `memory`\|`database` | `memory` | Where exhausted envelopes go — see [Retry / DLQ model](#retry-dlq-model). |
+| `firefly.eda.dead-letter.connection` | string\|null | `null` | The connection `DatabaseDeadLetterStore` writes on (`null` = the default connection). |
 | `firefly.eda.queue.connection` | string\|null | `null` (default connection) | Queue connection `QueueEventBus`/`DispatchEventJob` dispatch onto, when `provider=queue`. |
 | `firefly.eda.queue.name` | string\|null | `null` (default queue) | Queue name, when `provider=queue`. |
 | `firefly.eda.destinations` | list\<string\> | `[]` | The broker destinations `php artisan firefly:eda:consume` binds when `--destination` is not passed. Read **only** by that command; it must be a list of strings or the command throws a `ConfigurationException`. |
-| `firefly.eda.tracing.brokers.enabled` | bool | `true` | Whether the rabbitmq/kafka/postgres publishers may stamp a `traceparent` on the envelope they hand to the transport. Read in ONE place (`BrokerTracing`), by the adapters' publisher beans and by the relay's downstream overrides. Set it to `false` to keep in-process spans while putting no trace identifier on a third party's wire; it can only ever downgrade the bound `EdaTracing` to the no-op, never switch tracing on. |
+| `firefly.eda.tracing.brokers.enabled` | bool | `true` | Whether the rabbitmq/kafka/database/postgres publishers may stamp a `traceparent` on the envelope they hand to the transport. Read in ONE place (`BrokerTracing`), by the adapters' publisher beans and by the relay's downstream overrides. Set it to `false` to keep in-process spans while putting no trace identifier on a third party's wire; it can only ever downgrade the bound `EdaTracing` to the no-op, never switch tracing on. |
 
 !!! note "A publish `destination` is a call-site argument, not a config key"
     `EventPublisher::publish(string $destination, ...)` takes the destination explicitly at the call site —
@@ -308,13 +315,6 @@ final class OrderService
 
 These are carried-forward, documented limitations of the M9 shipment — not bugs:
 
-- **Real brokers are OUT.** Only the in-memory and Laravel-queue adapters ship. Kafka/RabbitMQ/Postgres/Redis
-  land as their own `firefly/eda-<broker>` packages at **SP-4**, each gated behind
-  `#[ConditionalOnProperty('firefly.eda.provider', '<x>')]`, patterned on `firefly/scheduling-postgres`.
-- **The durable transactional outbox is deferred to SP-4.** M9 gives at-least-once delivery within a
-  process/queue, not a DB-transaction-to-broker durability guarantee. The substrate is already built and
-  untouched — M8's `DB::afterCommit` hook (`DomainEventDispatcher`) and the in-house `PgAdvisoryLock`
-  (`firefly/scheduling-postgres`) — so SP-4's `firefly/eda-postgres` relay is a clean future drop-in.
 - **Avro/Protobuf serializers, event `filter`, and an event circuit-breaker are thin/deferred seams.** JSON
   is the only shipped serializer; the others throw `SerializationException` until their own opt-in packages
   land. Filter and circuit-breaker are not implemented in M9. Publisher actuator-health wiring is **M12**.

@@ -14,12 +14,13 @@ use Firefly\Messaging\Container\ListenerInvoker;
 use Firefly\Messaging\Container\ListenerOptions;
 use Firefly\Messaging\Container\RetryPolicy;
 use Firefly\Messaging\Message;
+use Firefly\Testing\Integration\IntegrationDsn;
 
 uses(KafkaIntegrationTestCase::class);
 
 function w4KafkaMessaging(string $group, int $maxAttempts = 1): KafkaMessageBroker
 {
-    $brokers = (string) getenv('FIREFLY_KAFKA_BROKERS');
+    $brokers = (string) IntegrationDsn::value(IntegrationDsn::KAFKA);
 
     return new KafkaMessageBroker(
         static fn (string $g): KafkaRecordClient => new RdKafkaRecordClient(new KafkaConsumerFactory($brokers, $g), new KafkaProducerFactory($brokers)),
@@ -47,7 +48,7 @@ function w4KafkaPollUntil(KafkaMessageBroker $broker, Closure $done): void
 /** The next record a fresh consumer of $group reads from $topic within 45s, or null. */
 function w4KafkaFirstRecord(string $group, string $topic): ?KafkaRecord
 {
-    $brokers = (string) getenv('FIREFLY_KAFKA_BROKERS');
+    $brokers = (string) IntegrationDsn::value(IntegrationDsn::KAFKA);
     $client = new RdKafkaRecordClient(new KafkaConsumerFactory($brokers, $group), new KafkaProducerFactory($brokers));
     $client->subscribe([$topic]);
     $record = null;
@@ -82,7 +83,7 @@ it('round-trips publish -> poll -> listener -> commit on a real Kafka, with key 
 
     expect($seen)->toBe([['hello', 'k-1', 't-1']])
         ->and($next?->value)->toBe('marker');
-})->skip(! extension_loaded('rdkafka') || getenv('FIREFLY_KAFKA_BROKERS') === false, 'Set FIREFLY_KAFKA_BROKERS (and load ext-rdkafka) to run the Kafka messaging round trip.')->group('integration');
+})->skip(! extension_loaded('rdkafka') || IntegrationDsn::missing(IntegrationDsn::KAFKA), 'Set FIREFLY_KAFKA_BROKERS (and load ext-rdkafka) to run the Kafka messaging round trip.')->group('integration');
 
 it('retries a failing listener, then produces the record to <topic>.DLT with provenance headers', function () {
     $topic = 'firefly.messaging.it.'.bin2hex(random_bytes(4));
@@ -115,4 +116,4 @@ it('retries a failing listener, then produces the record to <topic>.DLT with pro
             'x-dlt-source-topic' => $topic,
             'x-dlt-source-offset' => '0',
         ]);
-})->skip(! extension_loaded('rdkafka') || getenv('FIREFLY_KAFKA_BROKERS') === false, 'Set FIREFLY_KAFKA_BROKERS (and load ext-rdkafka) to run the Kafka messaging round trip.')->group('integration');
+})->skip(! extension_loaded('rdkafka') || IntegrationDsn::missing(IntegrationDsn::KAFKA), 'Set FIREFLY_KAFKA_BROKERS (and load ext-rdkafka) to run the Kafka messaging round trip.')->group('integration');

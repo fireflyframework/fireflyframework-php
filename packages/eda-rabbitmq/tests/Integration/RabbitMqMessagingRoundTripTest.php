@@ -13,6 +13,7 @@ use Firefly\Messaging\Container\ListenerInvoker;
 use Firefly\Messaging\Container\ListenerOptions;
 use Firefly\Messaging\Container\RetryPolicy;
 use Firefly\Messaging\Message;
+use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Config\Repository;
 
 uses(RabbitMqIntegrationTestCase::class);
@@ -20,19 +21,7 @@ uses(RabbitMqIntegrationTestCase::class);
 /** @return RabbitMqConnectionFactory over firefly.eda.rabbitmq.* parsed from FIREFLY_RABBITMQ_DSN */
 function w4RabbitConnection(): RabbitMqConnectionFactory
 {
-    $parts = [];
-    foreach (explode(';', (string) getenv('FIREFLY_RABBITMQ_DSN')) as $pair) {
-        [$key, $value] = array_pad(explode('=', $pair, 2), 2, '');
-        $parts[$key] = $value;
-    }
-
-    return new RabbitMqConnectionFactory(new Config(new Repository(['firefly' => ['eda' => ['rabbitmq' => [
-        'host' => $parts['host'] ?? '127.0.0.1',
-        'port' => (int) ($parts['port'] ?? 5672),
-        'user' => $parts['user'] ?? 'guest',
-        'password' => $parts['password'] ?? 'guest',
-        'vhost' => '/',
-    ]]]])));
+    return new RabbitMqConnectionFactory(new Config(new Repository(['firefly' => ['eda' => ['rabbitmq' => IntegrationDsn::rabbitmq()]]])));
 }
 
 function w4RabbitMessaging(string $exchange, int $maxAttempts = 1): RabbitMqMessageBroker
@@ -97,7 +86,7 @@ it('round-trips publish -> poll -> listener -> ack on a real RabbitMQ, with key 
     w4RabbitTearDown($exchange, [$topic]);
 
     expect($seen)->toBe([['hello', 'k-1', 't-1']]);
-})->skip(getenv('FIREFLY_RABBITMQ_DSN') === false, 'Set FIREFLY_RABBITMQ_DSN to run the RabbitMQ messaging round trip.')->group('integration');
+})->skip(IntegrationDsn::missing(IntegrationDsn::RABBITMQ), 'Set FIREFLY_RABBITMQ_DSN to run the RabbitMQ messaging round trip.')->group('integration');
 
 it('retries, then rejects the message into <queue>.dlq through the dead-letter exchange', function () {
     $suffix = bin2hex(random_bytes(4));
@@ -132,7 +121,7 @@ it('retries, then rejects the message into <queue>.dlq through the dead-letter e
     w4RabbitTearDown($exchange, [$topic]);
 
     expect($calls)->toBe(2)->and($dead)->toBe(['payload']);
-})->skip(getenv('FIREFLY_RABBITMQ_DSN') === false, 'Set FIREFLY_RABBITMQ_DSN to run the RabbitMQ messaging round trip.')->group('integration');
+})->skip(IntegrationDsn::missing(IntegrationDsn::RABBITMQ), 'Set FIREFLY_RABBITMQ_DSN to run the RabbitMQ messaging round trip.')->group('integration');
 
 it("republishes to the listener's own dead-letter topic with the diagnostic headers", function () {
     $suffix = bin2hex(random_bytes(4));
@@ -162,4 +151,4 @@ it("republishes to the listener's own dead-letter topic with the diagnostic head
         'x-exception-message' => 'bad order',
         'x-delivery-attempts' => '1',
     ]);
-})->skip(getenv('FIREFLY_RABBITMQ_DSN') === false, 'Set FIREFLY_RABBITMQ_DSN to run the RabbitMQ messaging round trip.')->group('integration');
+})->skip(IntegrationDsn::missing(IntegrationDsn::RABBITMQ), 'Set FIREFLY_RABBITMQ_DSN to run the RabbitMQ messaging round trip.')->group('integration');
