@@ -138,6 +138,24 @@ it('denies an authenticated withdraw without the owner role as 403 problem+json'
     $this->getJson("/api/v1/wallets/{$id}/balance")->assertJson(['balance_minor' => 5000]);
 })->group('lumen');
 
+it('names the authorities the rule asked for on a refused withdraw, as a refused controller method does', function () {
+    /** @var LumenTestCase $this */
+    // MethodSecurityRefusal puts the rule's authorities on the AuthorizationException as the `requiredAuthorities`
+    // extension member, and CommandProcessingException carries the cause's extension members, so the document a
+    // refused command renders names them too. hasPermission() is not an authority: only the two roles appear.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('mallory', 'mallory', [new SimpleGrantedAuthority('ROLE_USER')])
+    ));
+
+    /** @var string $id */
+    $id = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-3c', 'currency' => 'EUR'])->json('wallet_id');
+
+    $this->postJson("/api/v1/wallets/{$id}/withdraw", ['amount_minor' => 1000])
+        ->assertStatus(403)
+        ->assertJsonPath('code', 'ACCESS_DENIED')
+        ->assertJsonPath('requiredAuthorities', ['ROLE_ADMIN', 'ROLE_WALLET_OWNER']);
+})->group('lumen');
+
 it('allows an authorized withdraw and renders an overdraw as 409 problem+json', function () {
     /** @var LumenTestCase $this */
     // SecurityContextHolder is a request-scoped holder backed by Laravel's Context facade (packages/security/src

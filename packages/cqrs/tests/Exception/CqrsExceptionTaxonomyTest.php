@@ -82,3 +82,37 @@ it('keeps its own generic code when the cause is not a FireflyException', functi
         ->and((new QueryProcessingException('App\FindOrder', new RuntimeException('boom')))->errorCode())
         ->toBe('QUERY_PROCESSING_ERROR');
 });
+
+/*
+ | The extension members and the title are part of the fault's identity on the wire too.
+ |
+ | ErrorResponse::fromException() reads both off the exception it is handed, and over the bus that exception
+ | is the wrapper. Copying the code, status, category and severity but not these two left a refused command's
+ | `requiredAuthorities` (and a rule's own `field`, `allowed` or title) on the cause, where nothing rendering
+ | the wrapper ever looked: the same refusal said less through a command than through a controller.
+ */
+it('carries the cause extension members and title through both wrappers', function (string $class, string $subject) {
+    $cause = (new ResourceNotFoundException('no such room', 'ROOM_NOT_FOUND'))
+        ->withExtensions(['field' => 'roomId', 'requiredAuthorities' => ['ROLE_ADMIN']])
+        ->withTitle('Room not found');
+    /** @var CqrsException $wrapped */
+    $wrapped = new $class($subject, $cause);
+
+    expect($wrapped->extensions())->toBe(['field' => 'roomId', 'requiredAuthorities' => ['ROLE_ADMIN']])
+        ->and($wrapped->title())->toBe('Room not found');
+})->with([
+    'command' => [CommandProcessingException::class, 'App\IngestMessage'],
+    'query' => [QueryProcessingException::class, 'App\FindRoom'],
+]);
+
+it('carries no extension members and no title of its own when the cause has none, or is not a FireflyException', function (string $class, Throwable $cause) {
+    /** @var CqrsException $wrapped */
+    $wrapped = new $class('App\Subject', $cause);
+
+    expect($wrapped->extensions())->toBe([])
+        ->and($wrapped->title())->toBeNull();
+})->with([
+    'command, plain cause' => [CommandProcessingException::class, new RuntimeException('boom')],
+    'query, plain cause' => [QueryProcessingException::class, new RuntimeException('boom')],
+    'command, bare FireflyException' => [CommandProcessingException::class, new ResourceNotFoundException('gone')],
+]);
