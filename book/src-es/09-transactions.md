@@ -521,6 +521,8 @@ it('transfers atomically: money is conserved across debit + credit', function ()
     $dst = $commands->send(new OpenWallet('owner-B', Currency::EUR));
     $commands->send(new Deposit($src, 10000));
 
+    // TransferHandler is guarded like WithdrawHandler: the source wallet's owner may move money out of it.
+    lumenSignInWalletOwner('owner-A');
     $commands->send(new Transfer($src, $dst, 4000));
 
     // Debit + credit committed as one unit of work: the 10000 that left nowhere reappears split 6000/4000.
@@ -542,8 +544,17 @@ it('rolls the whole transfer back when the credit leg fails (money cannot vanish
     $dst = $commands->send(new OpenWallet('owner-B', Currency::USD));
     $commands->send(new Deposit($src, 10000));
 
-    expect(fn () => $commands->send(new Transfer($src, $dst, 4000)))
-        ->toThrow(CommandProcessingException::class);
+    // Signed in as the source's owner, so the guard lets the transfer through and it is the CREDIT leg that fails.
+    lumenSignInWalletOwner('owner-A');
+    $failed = null;
+    try {
+        $commands->send(new Transfer($src, $dst, 4000));
+    } catch (CommandProcessingException $e) {
+        $failed = $e;
+    }
+
+    expect($failed)->toBeInstanceOf(CommandProcessingException::class);
+    expect($failed?->getPrevious())->toBeInstanceOf(ConflictException::class);
 
     // Load-bearing, non-tautological proof that money cannot vanish: the source debit was ROLLED BACK (still 10000,
     // not 6000) and the destination never received anything (still 0). No value was created or destroyed.
@@ -552,7 +563,7 @@ it('rolls the whole transfer back when the credit leg fails (money cannot vanish
 })->group('lumen');
 ```
 
-La segunda prueba es la que importa. `Wallet::withdraw()` sobre el origen corrió con éxito y lanzó `FundsWithdrawn` a su propio búfer; luego `Wallet::deposit()` sobre el destino lanzó un `ConflictException` de moneda no coincidente — *después* de que la llamada `save()` del débito ya se hubiera ejecutado dentro de la misma transacción, todavía abierta. Porque el `rollbackFor` por defecto de `#[Transactional]` captura cualquier `Throwable`, el método entero revierte: el débito del origen se deshace a nivel de base de datos, y — porque el rollback ocurre *antes* de que `dispatchAfterCommit()` fuera a alcanzarse en el camino de éxito, y `TransactionTemplate` también lo llama en la rama `catch` precisamente para que un drenado revertido igual vacíe el rastreador sin llegar jamás a programar una publicación — ni `FundsWithdrawn` ni un `FundsDeposited` que ni siquiera llegó a lanzarse alcanza a ningún listener. El `CommandProcessingException` del Capítulo 7 envuelve el `ConflictException` subyacente, y las dos aserciones de saldo son todo el punto: no "la transferencia falló" en abstracto, sino que el propio `10000` del origen volvió **exactamente**, y el `0` del destino nunca se movió. No se creó valor; no se destruyó ninguno.
+La segunda prueba es la que importa. `Wallet::withdraw()` sobre el origen corrió con éxito y lanzó `FundsWithdrawn` a su propio búfer; luego `Wallet::deposit()` sobre el destino lanzó un `ConflictException` de moneda no coincidente — *después* de que la llamada `save()` del débito ya se hubiera ejecutado dentro de la misma transacción, todavía abierta. Porque el `rollbackFor` por defecto de `#[Transactional]` captura cualquier `Throwable`, el método entero revierte: el débito del origen se deshace a nivel de base de datos, y — porque el rollback ocurre *antes* de que `dispatchAfterCommit()` fuera a alcanzarse en el camino de éxito, y `TransactionTemplate` también lo llama en la rama `catch` precisamente para que un drenado revertido igual vacíe el rastreador sin llegar jamás a programar una publicación — ni `FundsWithdrawn` ni un `FundsDeposited` que ni siquiera llegó a lanzarse alcanza a ningún listener. Las dos pruebas inician sesión antes como propietario del monedero de origen, porque `TransferHandler` lleva el `#[PreAuthorize]` del Capítulo 10: sin principal, el bus rechazaría la transferencia antes de que el manejador se ejecutara, y la segunda prueba pasaría por el motivo equivocado. Por eso también comprueba la causa: el `CommandProcessingException` del Capítulo 7 envuelve el `ConflictException` que lanzó la pierna de crédito, no un rechazo de seguridad, y las dos aserciones de saldo son todo el punto: no "la transferencia falló" en abstracto, sino que el propio `10000` del origen volvió **exactamente**, y el `0` del destino nunca se movió. No se creó valor; no se destruyó ninguno.
 
 ---
 

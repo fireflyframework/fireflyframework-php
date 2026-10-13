@@ -771,6 +771,7 @@ use Firefly\Container\Attributes\Component;
 use Firefly\Security\Access\PermissionEvaluator;
 use Firefly\Security\Core\Authentication;
 use Illuminate\Contracts\Container\Container;
+use Lumen\Application\Command\Transfer;
 use Lumen\Application\Command\Withdraw;
 use Lumen\Application\Loan\RepayLoan;
 use Lumen\Infrastructure\Loan\LoanRepository;
@@ -778,8 +779,8 @@ use Lumen\Infrastructure\WalletRepository;
 
 /**
  * Backs `hasPermission(#command, 'debit')`: a principal may debit a wallet only when it owns it. The target is the
- * command the bus is about to dispatch — a Withdraw names its wallet, a RepayLoan names a loan whose wallet is read
- * from the event store — and the debit is granted only when that wallet's owner_id equals the authenticated
+ * command the bus is about to dispatch — a Withdraw names its wallet, a Transfer debits its source wallet (never its
+ * destination), a RepayLoan names a loan whose wallet is read from the event store — and the debit is granted only when that wallet's owner_id equals the authenticated
  * principal's name. Everything else fails closed: a permission other than `debit`, a target of any other type, a
  * wallet or loan that does not exist, an unauthenticated principal (whom the bus still answers with a 401, not a 403).
  *
@@ -808,6 +809,7 @@ final class WalletPermissionEvaluator implements PermissionEvaluator
 
         $walletId = match (true) {
             $target instanceof Withdraw => $target->walletId,
+            $target instanceof Transfer => $target->sourceWalletId,
             $target instanceof RepayLoan => $this->walletOfLoan($target->loanId),
             default => null,
         };
@@ -829,7 +831,7 @@ final class WalletPermissionEvaluator implements PermissionEvaluator
 }
 ```
 
-Hay tres cosas en él que merece la pena copiar. **Se registra por ser un bean**: `SecurityAutoConfiguration` define su `DenyAllPermissionEvaluator` solo `#[ConditionalOnMissingBean(PermissionEvaluator::class)]`, así que un componente escaneado que implemente la interfaz desplaza al predeterminado sin más cableado. **Falla cerrado**: un nombre de permiso distinto de `debit`, un tipo de objetivo para el que no se escribió, un monedero o un préstamo que no existe, o un principal no autenticado responden todos `false`, y una excepción lanzada dentro lo captura el `catch (\Throwable)` del evaluador de expresiones y también se convierte en `false`. **Responde a una sola pregunta para cada comando que carga en un monedero**: un `Withdraw` nombra su monedero, un `RepayLoan` (Capítulo 9B) nombra un préstamo cuyo monedero el evaluador lee del almacén de eventos, así que los dos manejadores llevan la misma regla. El analizador no cortocircuita `or`, así que el evaluador también se ejecuta para un `ADMIN`; allí su respuesta, sencillamente, no cambia el resultado.
+Hay tres cosas en él que merece la pena copiar. **Se registra por ser un bean**: `SecurityAutoConfiguration` define su `DenyAllPermissionEvaluator` solo `#[ConditionalOnMissingBean(PermissionEvaluator::class)]`, así que un componente escaneado que implemente la interfaz desplaza al predeterminado sin más cableado. **Falla cerrado**: un nombre de permiso distinto de `debit`, un tipo de objetivo para el que no se escribió, un monedero o un préstamo que no existe, o un principal no autenticado responden todos `false`, y una excepción lanzada dentro lo captura el `catch (\Throwable)` del evaluador de expresiones y también se convierte en `false`. **Responde a una sola pregunta para cada comando que carga en un monedero**: un `Withdraw` nombra su monedero, un `Transfer` carga en su monedero de *origen* —ser propietario del de destino no concede nada— y un `RepayLoan` (Capítulo 9B) nombra un préstamo cuyo monedero el evaluador lee del almacén de eventos, así que los tres manejadores llevan la misma regla. El analizador no cortocircuita `or`, así que el evaluador también se ejecuta para un `ADMIN`; allí su respuesta, sencillamente, no cambia el resultado.
 
 ---
 
@@ -1112,6 +1114,36 @@ it('denies a withdraw from a WALLET_OWNER who does not own the wallet as 403 pro
 
 Esa es la prueba que más importa de este capítulo: es la petición que de verdad enviaría un atacante. El 401 y el 403 sin rol de más arriba demuestran que el endpoint está protegido; esta demuestra que la protección mira el monedero.
 
+Una transferencia también es un cargo, y `TransferHandler` lleva la misma regla. Su `Transfer` nombra dos monederos, y el evaluador pregunta por el de **origen**, el monedero del que sale el dinero. Ser propietario del de destino no basta: el principal de abajo tiene el rol y es dueño del monedero que recibe, y se le rechaza antes de tocar ninguno de los dos:
+
+<!-- source: samples/lumen/tests/Web/WalletRestTest.php -->
+```php
+it('denies a transfer out of a wallet the WALLET_OWNER does not own as 403 problem+json and moves no money', function () {
+    // …
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('owner-10b', 'owner-10b', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
+    // …
+    $src = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-10a', 'currency' => 'EUR'])->json('wallet_id');
+    // …
+    $dst = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-10b', 'currency' => 'EUR'])->json('wallet_id');
+    $this->postJson("/api/v1/wallets/{$src}/deposit", ['amount_minor' => 5000]);
+
+    $this->postJson('/api/v1/wallets/transfers', [
+        'source_wallet_id' => $src,
+        'destination_wallet_id' => $dst,
+        'amount_minor' => 1000,
+    ])->assertStatus(403)
+        // …
+        ->assertJsonPath('code', 'ACCESS_DENIED')
+        ->assertJsonPath('category', 'security');
+
+    $this->getJson("/api/v1/wallets/{$src}/balance")->assertJson(['balance_minor' => 5000]);
+    $this->getJson("/api/v1/wallets/{$dst}/balance")->assertJson(['balance_minor' => 0]);
+```
+
+El mismo archivo demuestra que una transferencia anónima es un 401 y que un `ADMIN` puede mover dinero entre dos monederos de los que no es dueño; `TransferSecurityTest.php` lo demuestra todo de nuevo a través del bus.
+
 Concede la autoridad correcta y el mismo comando tiene éxito:
 
 <!-- source: samples/lumen/tests/Web/WalletRestTest.php -->
@@ -1212,7 +1244,7 @@ it('enforces #[PreAuthorize] on withdraw: denies without the owner role, allows 
 ## Ponlo en práctica {.exercises}
 
 1. **Escribe una expresión rechazada.** Intenta compilar `#[PreAuthorize("#command.ownerId == authentication.name")]` en un manejador de prueba y ejecuta `php artisan firefly:cache`. Confirma que `MethodSecurityScanner` falla de forma ruidosa con una `ConfigurationException` que nombra la clase y el método exactos, en vez de aceptar silenciosamente una expresión que siempre denegaría (o fallaría al analizar) en tiempo de ejecución.
-2. **Amplía la comprobación de propiedad.** En una copia de prueba del proyecto, pon `#[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command, 'debit'))")]` en `TransferHandler::handle()` y enseña a `WalletPermissionEvaluator` que un `Transfer` carga en su `sourceWalletId`. Confirma que el dueño del monedero de origen puede transferir desde él, mientras que un dueño distinto recibe un 403 y los dos saldos se quedan como estaban.
+2. **Protege una lectura y cuenta lo que cuesta.** Ahora todo cargo es del propietario o de un administrador: `WithdrawHandler`, `TransferHandler` y `RepayLoanHandler` llevan la misma regla. Las lecturas siguen abiertas, así que cualquiera puede pedir el saldo de cualquier monedero. En una copia de prueba del proyecto, da a `WalletPermissionEvaluator` un segundo permiso, `view`, que un `GetBalance` concede al propietario de su `walletId`, y pon `#[PreAuthorize("hasRole('ADMIN') or hasPermission(#query, 'view')")]` en `GetBalanceHandler::handle()`. Confirma que el `GET /api/v1/wallets/{id}/balance` de otro propietario es ahora un 403, y que un saldo cacheado para el propietario se le sigue negando a todos los demás, porque el bus de consultas autoriza antes de leer la caché. Después ejecuta la suite del ejemplo y cuenta las pruebas que leen un saldo sin principal: esa cifra es lo que de verdad cuesta proteger una lectura.
 3. **Adueñate de la página de login.** Añade una acción `#[GetMapping('/login')]` propia a un proyecto de prueba con `form_login.enabled` encendido, arráncalo, y confirma que la página del framework *no* reemplaza a la tuya — después confirma que tu formulario sigue dando acceso a la gente enviando el token de sesión a la URL de procesamiento, porque `FormLoginFilter` responde antes del enrutado de cualquier modo.
 4. **Mira al punto de entrada cambiar de respuesta.** Contra una ruta protegida, envía `Accept: text/html` y después `Accept: application/json`, y confirma que obtienes una redirección a `/login` y un `401 application/problem+json` respectivamente. Después pon `firefly.security.http.entry_point` a `problem` y confirma que la petición del navegador también recibe el 401.
 5. **Pon una regla sobre un servicio corriente.** Añade `#[PreAuthorize("hasRole('ADMIN')")]` a un método de un `#[Service]` no final que no sea ni controlador ni manejador, ejecuta `php artisan firefly:cache`, y confirma que la llamada se rechaza. Después marca la clase como `final`, vuelve a ejecutar la caché, y confirma que el escáner rechaza en tiempo de compilación en vez de distribuir una regla que nada podría hacer cumplir.

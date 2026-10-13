@@ -780,6 +780,7 @@ class TransferHandler
 {
     public function __construct(private readonly WalletRepository $wallets) {}
 
+    #[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command, 'debit'))")]
     #[Transactional(propagation: Propagation::REQUIRED)]
     public function handle(Transfer $command): void
     {

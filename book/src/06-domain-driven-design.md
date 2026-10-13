@@ -600,6 +600,7 @@ use Firefly\Cqrs\Attributes\CommandHandler;
 use Firefly\Data\Transaction\Attributes\Transactional;
 use Firefly\Data\Transaction\Propagation;
 use Firefly\Kernel\Exception\Business\ResourceNotFoundException;
+use Firefly\Security\Access\Attributes\PreAuthorize;
 use Lumen\Domain\Money;
 use Lumen\Infrastructure\WalletRepository;
 
@@ -613,6 +614,12 @@ use Lumen\Infrastructure\WalletRepository;
  * back on any Throwable — the source debit is undone too. That is the money-cannot-vanish invariant: there is no path
  * where the source loses funds the destination never receives.
  *
+ * Guarded by the same #[PreAuthorize] as WithdrawHandler, because a transfer IS a debit: an ADMIN may move money out
+ * of any wallet, a WALLET_OWNER only out of the wallet it owns. WalletPermissionEvaluator reads the Transfer bound to
+ * #command and checks the owner of its SOURCE wallet — owning the destination grants nothing, or anyone could pull
+ * money out of any wallet by naming it as the source. SecurityCommandAuthorizer enforces the rule at the bus before
+ * the handler runs, so a refused transfer touches neither wallet.
+ *
  * Intentionally NOT final: the generated transactional proxy subclasses this handler (same reason as the S4 handlers).
  */
 #[CommandHandler]
@@ -620,6 +627,7 @@ class TransferHandler
 {
     public function __construct(private readonly WalletRepository $wallets) {}
 
+    #[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command, 'debit'))")]
     #[Transactional(propagation: Propagation::REQUIRED)]
     public function handle(Transfer $command): void
     {
@@ -639,6 +647,8 @@ class TransferHandler
     }
 }
 ```
+
+The `#[PreAuthorize]` line above `#[Transactional]` belongs to Chapter 10, not to this one: a transfer is a debit, so only an admin or the owner of the **source** wallet may start one, and the bus refuses everyone else before `handle()` runs, with neither wallet touched.
 
 `recordTransferTo()` is where the `TransferCompleted` fact promised earlier gets raised — deliberately the *last* line, after both legs have already succeeded, on the source wallet (which `save()` already registered with the tracker, so an event raised after that save still drains at commit). It is a small `Wallet` method that just calls `raiseEvent(new TransferCompleted(...))`; because it runs only on the success path, a rolled-back transfer never reaches it and never publishes it.
 

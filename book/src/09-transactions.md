@@ -521,6 +521,8 @@ it('transfers atomically: money is conserved across debit + credit', function ()
     $dst = $commands->send(new OpenWallet('owner-B', Currency::EUR));
     $commands->send(new Deposit($src, 10000));
 
+    // TransferHandler is guarded like WithdrawHandler: the source wallet's owner may move money out of it.
+    lumenSignInWalletOwner('owner-A');
     $commands->send(new Transfer($src, $dst, 4000));
 
     // Debit + credit committed as one unit of work: the 10000 that left nowhere reappears split 6000/4000.
@@ -542,8 +544,17 @@ it('rolls the whole transfer back when the credit leg fails (money cannot vanish
     $dst = $commands->send(new OpenWallet('owner-B', Currency::USD));
     $commands->send(new Deposit($src, 10000));
 
-    expect(fn () => $commands->send(new Transfer($src, $dst, 4000)))
-        ->toThrow(CommandProcessingException::class);
+    // Signed in as the source's owner, so the guard lets the transfer through and it is the CREDIT leg that fails.
+    lumenSignInWalletOwner('owner-A');
+    $failed = null;
+    try {
+        $commands->send(new Transfer($src, $dst, 4000));
+    } catch (CommandProcessingException $e) {
+        $failed = $e;
+    }
+
+    expect($failed)->toBeInstanceOf(CommandProcessingException::class);
+    expect($failed?->getPrevious())->toBeInstanceOf(ConflictException::class);
 
     // Load-bearing, non-tautological proof that money cannot vanish: the source debit was ROLLED BACK (still 10000,
     // not 6000) and the destination never received anything (still 0). No value was created or destroyed.
@@ -552,7 +563,7 @@ it('rolls the whole transfer back when the credit leg fails (money cannot vanish
 })->group('lumen');
 ```
 
-The second test is the one that matters. `Wallet::withdraw()` on the source ran successfully and raised `FundsWithdrawn` into its own buffer; then `Wallet::deposit()` on the destination threw a currency-mismatch `ConflictException` — *after* the debit's `save()` call had already executed inside the same, still-open transaction. Because `#[Transactional]`'s default `rollbackFor` catches every `Throwable`, the entire method rolls back: the source's debit is undone at the database level, and — because rollback happens *before* `dispatchAfterCommit()` would ever be reached on the success path, and `TransactionTemplate` also calls it on the `catch` arm precisely so a rolled-back drain still empties the tracker without ever scheduling a publish — neither `FundsWithdrawn` nor a `FundsDeposited` that never even got raised reaches any listener. `Chapter 7`'s `CommandProcessingException` wraps the underlying `ConflictException`, and the two balance assertions are the whole point: not "the transfer failed" in the abstract, but the source's own `10000` came back **exactly**, and the destination's `0` never moved. No value was created; none was destroyed.
+The second test is the one that matters. `Wallet::withdraw()` on the source ran successfully and raised `FundsWithdrawn` into its own buffer; then `Wallet::deposit()` on the destination threw a currency-mismatch `ConflictException` — *after* the debit's `save()` call had already executed inside the same, still-open transaction. Because `#[Transactional]`'s default `rollbackFor` catches every `Throwable`, the entire method rolls back: the source's debit is undone at the database level, and — because rollback happens *before* `dispatchAfterCommit()` would ever be reached on the success path, and `TransactionTemplate` also calls it on the `catch` arm precisely so a rolled-back drain still empties the tracker without ever scheduling a publish — neither `FundsWithdrawn` nor a `FundsDeposited` that never even got raised reaches any listener. Both tests sign in as the source wallet's owner first, because `TransferHandler` carries Chapter 10's `#[PreAuthorize]`: without a principal the bus would refuse the transfer before the handler ran, and the second test would pass for the wrong reason. That is why it asserts the cause too: Chapter 7's `CommandProcessingException` wraps the `ConflictException` the credit leg threw, not a security refusal, and the two balance assertions are the whole point: not "the transfer failed" in the abstract, but the source's own `10000` came back **exactly**, and the destination's `0` never moved. No value was created; none was destroyed.
 
 ---
 
