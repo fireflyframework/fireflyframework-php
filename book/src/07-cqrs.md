@@ -410,12 +410,15 @@ final class CommandProcessingException extends CqrsException
             $cause instanceof FireflyException ? $cause->category() : ErrorCategory::Internal,
             $cause instanceof FireflyException ? $cause->severity() : ErrorSeverity::Error,
             $cause,
+            // …
+            $cause instanceof FireflyException ? $cause->extensions() : [],
+            $cause instanceof FireflyException ? $cause->title() : null,
         );
     }
 }
 ```
 
-Three things to notice. First, the cause is always available on `getPrevious()` — the constructor's fifth argument to the parent — so nothing about the original failure is lost, only wrapped. Second, this is **category-preserving**: when the cause is a `FireflyException` (every kernel exception is), its own `httpStatus()`/`category()`/`severity()` are copied onto the wrapper rather than defaulting to a generic `500`/`Internal`. A `ResourceNotFoundException` (404, business) thrown for an unknown wallet id still renders as a 404 problem-details response even after being wrapped — the bus adds context, it never masks the fault. Third, `send()` checks `$e instanceof CommandProcessingException` before wrapping, so a nested command dispatch (a handler that itself calls `$commands->send(...)`) never gets double-wrapped in two layers of the same exception. `QueryProcessingException` is the read-side twin, identical in shape.
+Three things to notice. First, the cause is always available on `getPrevious()` — the constructor's fifth argument to the parent — so nothing about the original failure is lost, only wrapped. Second, this is **category-preserving**: when the cause is a `FireflyException` (every kernel exception is), its own `httpStatus()`/`category()`/`severity()` are copied onto the wrapper rather than defaulting to a generic `500`/`Internal`, and so are its RFC 9457 extension members and title, which is why a refused `#[PreAuthorize]` still names its `requiredAuthorities` in the problem document after the bus has wrapped it (Chapter 4 shows that document). A `ResourceNotFoundException` (404, business) thrown for an unknown wallet id still renders as a 404 problem-details response even after being wrapped — the bus adds context, it never masks the fault. Third, `send()` checks `$e instanceof CommandProcessingException` before wrapping, so a nested command dispatch (a handler that itself calls `$commands->send(...)`) never gets double-wrapped in two layers of the same exception. `QueryProcessingException` is the read-side twin, identical in shape.
 
 `HandlerRegistry` throws its own, narrower exceptions for a **wiring** mistake rather than a business fault — an unmapped message sent through the bus:
 

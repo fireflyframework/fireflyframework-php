@@ -22,8 +22,11 @@ Both run a bounded pipeline of injected, no-op-by-default collaborators:
 
 Any handler/stage throwable is re-thrown **wrapped** in a category-preserving
 `CommandProcessingException` / `QueryProcessingException` (unless it already is one). "Category-preserving"
-means a `ValidationException` (422) or a not-found (500 framework) keeps its own HTTP status / category /
-severity for RFC-7807 rendering — the wrapper never masks an expected fault to a generic 500.
+means a `ValidationException` (422) or a not-found (500 framework) keeps its own error code / HTTP status /
+category / severity for RFC-7807 rendering — the wrapper never masks an expected fault to a generic 500 — and
+its RFC 9457 extension members and title too, so a refused `#[PreAuthorize]` publishes the same
+`requiredAuthorities` through the bus as it does from a controller. Only `detail` differs: the wrapper prefixes
+the cause's message with the message class it was processing.
 
 ## Handlers
 

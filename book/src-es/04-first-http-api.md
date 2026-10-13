@@ -585,7 +585,7 @@ El `403` queda reservado para un principal que **sí** ha iniciado sesión y aun
 }
 ```
 
-Los dos se producen sin ningún cambio de código en `WalletController::withdraw()`: el bus envuelve la excepción de seguridad que haya levantado el evaluador en una `CommandProcessingException` que copia el código, el estado y la categoría de la causa, así que el cable lleva la identidad de la causa y no un error genérico del bus. El Capítulo 10 vuelve sobre este par — y sobre las dos pruebas distribuidas que lo fijan — en detalle.
+Los dos se producen sin ningún cambio de código en `WalletController::withdraw()`: el bus envuelve la excepción de seguridad que haya levantado el evaluador en una `CommandProcessingException` que copia el código, el estado, la categoría y los miembros de extensión de la causa, así que el cable lleva la identidad de la causa y no un error genérico del bus, y el 403 nombra las mismas `requiredAuthorities` que nombraría un método de controlador rechazado. Solo `detail` delata que pasó por el bus: el envoltorio antepone a la frase de la causa el comando que estaba procesando. El Capítulo 10 vuelve sobre este par — y sobre las dos pruebas distribuidas que lo fijan — en detalle.
 
 ### Manejar una excepción tú mismo
 

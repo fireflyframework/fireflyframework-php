@@ -190,7 +190,10 @@ and whose problem document carries the authorities the rule asked for as an RFC 
 `hasAuthority`/`hasAnyAuthority` literals with roles normalised to `ROLE_`. The guarded **class and method go
 to the log**, at warning, with the principal and its authorities — they used to be the wire sentence
 ("Access is denied for [App\Ctrl::admin].") and a PHP class name is not something a person should read on a
-panel. A rule can carry its own product code and sentence:
+panel. A rule on a command or query handler refuses with the same document through the bus: the CQRS
+wrappers copy the cause's code, status and extension members, so `requiredAuthorities` survives the wrap, and
+only `detail` differs, prefixed with `Processing command [App\…] failed:`. A rule can carry its own product
+code and sentence:
 
 <!-- source: packages/security/tests/Fixtures/SecuredController.php -->
 ```php

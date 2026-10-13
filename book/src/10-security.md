@@ -1087,7 +1087,7 @@ Two real, shipped test files exercise the entire chain — HTTP request in, `Sec
 
 The three enforcement seams give the same pair of answers, because they share the same evaluator: 401 means *signing in would help*, 403 means *it would not*. A client can tell which, and act accordingly.
 
-The bus wraps either one in `CommandProcessingException`, which copies the cause's error code, HTTP status and category — so the wire carries `AUTHENTICATION_FAILED` or `ACCESS_DENIED` rather than the bus's own generic code. And in both tests the balance assertion afterwards is doing real work: it proves the debit genuinely never happened, not merely that the HTTP response looked like a rejection.
+The bus wraps either one in `CommandProcessingException`, which copies the cause's error code, HTTP status, category and extension members — so the wire carries `AUTHENTICATION_FAILED` or `ACCESS_DENIED` rather than the bus's own generic code. And in both tests the balance assertion afterwards is doing real work: it proves the debit genuinely never happened, not merely that the HTTP response looked like a rejection.
 
 The role without the wallet is refused the same way. A principal holding `ROLE_WALLET_OWNER` who owns *some* wallet, just not this one, gets the 403 and nothing moves:
 

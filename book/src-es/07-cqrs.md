@@ -410,12 +410,15 @@ final class CommandProcessingException extends CqrsException
             $cause instanceof FireflyException ? $cause->category() : ErrorCategory::Internal,
             $cause instanceof FireflyException ? $cause->severity() : ErrorSeverity::Error,
             $cause,
+            // …
+            $cause instanceof FireflyException ? $cause->extensions() : [],
+            $cause instanceof FireflyException ? $cause->title() : null,
         );
     }
 }
 ```
 
-Tres cosas merecen destacarse. Primero, la causa siempre está disponible en `getPrevious()` — el quinto argumento del constructor hacia el padre — así que nada del fallo original se pierde, solo se envuelve. Segundo, esto **preserva la categoría**: cuando la causa es una `FireflyException` (todas las excepciones del kernel lo son), su propio `httpStatus()`/`category()`/`severity()` se copian sobre el envoltorio en vez de recaer en un genérico `500`/`Internal`. Una `ResourceNotFoundException` (404, negocio) lanzada por un id de monedero desconocido sigue renderizándose como una respuesta de detalles de problema 404 incluso después de ser envuelta — el bus añade contexto, nunca enmascara el fallo. Tercero, `send()` comprueba `$e instanceof CommandProcessingException` antes de envolver, así que un despacho de comando anidado (un manejador que a su vez llama a `$commands->send(...)`) nunca queda envuelto dos veces en dos capas de la misma excepción. `QueryProcessingException` es el gemelo del lado de lectura, idéntico en forma.
+Tres cosas merecen destacarse. Primero, la causa siempre está disponible en `getPrevious()` — el quinto argumento del constructor hacia el padre — así que nada del fallo original se pierde, solo se envuelve. Segundo, esto **preserva la categoría**: cuando la causa es una `FireflyException` (todas las excepciones del kernel lo son), su propio `httpStatus()`/`category()`/`severity()` se copian sobre el envoltorio en vez de recaer en un genérico `500`/`Internal`, y también sus miembros de extensión RFC 9457 y su título, razón por la cual un `#[PreAuthorize]` rechazado sigue nombrando sus `requiredAuthorities` en el documento de problema después de que el bus lo envuelva (el Capítulo 4 muestra ese documento). Una `ResourceNotFoundException` (404, negocio) lanzada por un id de monedero desconocido sigue renderizándose como una respuesta de detalles de problema 404 incluso después de ser envuelta — el bus añade contexto, nunca enmascara el fallo. Tercero, `send()` comprueba `$e instanceof CommandProcessingException` antes de envolver, así que un despacho de comando anidado (un manejador que a su vez llama a `$commands->send(...)`) nunca queda envuelto dos veces en dos capas de la misma excepción. `QueryProcessingException` es el gemelo del lado de lectura, idéntico en forma.
 
 `HandlerRegistry` lanza sus propias excepciones, más estrechas, para un error de **cableado** en vez de un fallo de negocio — un mensaje sin mapear enviado a través del bus:
 

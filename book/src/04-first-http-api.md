@@ -585,7 +585,7 @@ A withdraw attempt is refused twice over, and the two refusals are **not the sam
 }
 ```
 
-Both are produced with no code change to `WalletController::withdraw()` at all: the bus wraps whichever security exception the evaluator raised in a `CommandProcessingException` that copies the cause's code, status and category, so the wire carries the cause's identity rather than a generic bus error. Chapter 10 returns to this pair — and to the two shipped tests that pin it — in full.
+Both are produced with no code change to `WalletController::withdraw()` at all: the bus wraps whichever security exception the evaluator raised in a `CommandProcessingException` that copies the cause's code, status, category and extension members, so the wire carries the cause's identity rather than a generic bus error, and the 403 names the same `requiredAuthorities` a refused controller method would. Only `detail` says it came through the bus: the wrapper prefixes the cause's sentence with the command it was processing. Chapter 10 returns to this pair — and to the two shipped tests that pin it — in full.
 
 ### Handling an exception yourself
 

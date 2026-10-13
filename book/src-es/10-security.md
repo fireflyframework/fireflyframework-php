@@ -1087,7 +1087,7 @@ Dos archivos de prueba reales y distribuidos ejercitan la cadena completa — pe
 
 Las tres costuras de aplicación dan el mismo par de respuestas, porque comparten el mismo evaluador: 401 significa *iniciar sesión ayudaría*, 403 significa *no ayudaría*. Un cliente puede distinguirlas y actuar en consecuencia.
 
-El bus envuelve cualquiera de las dos en una `CommandProcessingException`, que copia el código de error, el estado HTTP y la categoría de la causa — así que el cable lleva `AUTHENTICATION_FAILED` o `ACCESS_DENIED` y no el código genérico del bus. Y en las dos pruebas la aserción sobre el saldo, después, hace trabajo real: demuestra que el débito genuinamente nunca ocurrió, no solo que la respuesta HTTP tuviera apariencia de rechazo.
+El bus envuelve cualquiera de las dos en una `CommandProcessingException`, que copia el código de error, el estado HTTP, la categoría y los miembros de extensión de la causa — así que el cable lleva `AUTHENTICATION_FAILED` o `ACCESS_DENIED` y no el código genérico del bus. Y en las dos pruebas la aserción sobre el saldo, después, hace trabajo real: demuestra que el débito genuinamente nunca ocurrió, no solo que la respuesta HTTP tuviera apariencia de rechazo.
 
 El rol sin el monedero se rechaza igual. Un principal con `ROLE_WALLET_OWNER` que es dueño de *algún* monedero, pero no de este, recibe el 403 y no se mueve nada:
 
