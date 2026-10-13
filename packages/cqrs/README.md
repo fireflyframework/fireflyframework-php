@@ -9,6 +9,7 @@ query cache), and the domain->integration-event bridge that re-emits every commi
 transaction semantics for free from the firefly/data proxy — cqrs writes no interception code.
 With `firefly.cqrs.query.cache.provider=cache` the query cache is real — `#[CachedQuery]` results on the Laravel
 cache, evicted by `#[InvalidatesQuery]` events committed in process or arriving over the bus.
-Read models / projections are a future `firefly/eventsourcing` package.
+Read models and projections ship in `firefly/eventsourcing`: see
+[Event Sourcing — Projections](../../docs/modules/eventsourcing.md#projections).
 
 Apache-2.0 © Firefly Software Solutions Inc.

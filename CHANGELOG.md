@@ -108,6 +108,9 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 - **Transaction timeouts on SQL Server** set the session's `LOCK_TIMEOUT` and restore it afterwards.
 - **The CQRS module doc points at the shipped projections.** `docs/modules/cqrs.md` no longer calls read models
   a future package; it links the `firefly/eventsourcing` projections section.
+- **The cqrs package README points at the shipped projections.** `packages/cqrs/README.md` no longer calls read
+  models a future package; it links the `firefly/eventsourcing` projections section, and the event-sourcing prose
+  guard now reads package READMEs too.
 
 ### Fixed
 

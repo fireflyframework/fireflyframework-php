@@ -3689,16 +3689,26 @@ it('refuses any page that still calls event sourcing future work while firefly/e
     // the things that really are deferred, so the "future work" of a neighbour must not condemn a sentence that
     // only points at the shipped package — and judges any sentence that names event sourcing or the package and
     // also calls it future, deferred or not yet shipped, in either language the project publishes in.
+    //
+    // The package READMEs are judged too: packages/cqrs/README.md closed its summary with "Read models /
+    // projections are a future `firefly/eventsourcing` package." — the same false claim on the page a reader
+    // of the cqrs package opens first, phrased as "a future ... package" rather than "future work".
     $root = dirname(__DIR__);
     $ships = is_file($root.'/packages/eventsourcing/composer.json');
 
     $subject = '/firefly\/eventsourcing|event[\s-]+sourc|event[\s-]+store|abastecimiento de eventos/i';
-    $future = '/future work|is deferred|are deferred|not yet (?:shipped|available)|still ahead|trabajo futuro|queda pendiente|todav[ií]a no/i';
+    $future = '/future work|\bfuture\b[^.]{0,40}\bpackage\b|is deferred|are deferred|not yet (?:shipped|available)|still ahead|trabajo futuro|queda pendiente|todav[ií]a no/i';
+
+    $pages = fireflyProsePages();
+    foreach (glob($root.'/packages/*/README.md') ?: [] as $readme) {
+        $paragraphs = preg_split('/\n\s*\n/', (string) file_get_contents($readme));
+        $pages[substr($readme, strlen($root) + 1)] = $paragraphs === false ? [] : $paragraphs;
+    }
 
     $judged = 0;
     $failures = [];
 
-    foreach (fireflyProsePages() as $page => $paragraphs) {
+    foreach ($pages as $page => $paragraphs) {
         foreach ($paragraphs as $paragraph) {
             $flatParagraph = (string) preg_replace('/\s+/', ' ', trim($paragraph));
             // A sentence ends at terminal punctuation followed by the start of the next one, and a list item
