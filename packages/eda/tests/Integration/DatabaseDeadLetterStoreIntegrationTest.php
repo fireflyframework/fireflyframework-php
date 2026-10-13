@@ -17,7 +17,7 @@ uses(FireflyDatabaseTestCase::class);
 
 /**
  * firefly_eda_dead_letters on every server: the migration's DDL, a JSON payload with nesting and non-ASCII text, the
- * millisecond instant on each server's own datetime type, oldest-first ordering, selection and removal.
+ * millisecond instant on each server's own datetime type, oldest-first ordering (insertion order on a tied instant), selection and removal.
  *
  * Runs one direction of the package's anonymous dead-letter migration, on the default connection.
  */
@@ -62,6 +62,14 @@ foreach (IntegrationDsn::lanes() as $lane) {
                 ->and($store->remove((string) $all[0]->id))->toBeTrue()
                 ->and($store->find(new DeadLetterQuery(ids: [(string) $all[0]->id])))->toBe([])
                 ->and($store->all())->toHaveCount(2);
+
+            // A tie on the instant: the time-ordered id keeps insertion order under this server's collation.
+            $tied = $at('2026-10-12 10:00:02.000');
+            $types = array_map(static fn (int $i): string => "tie.{$i}", range(1, 20));
+            foreach ($types as $type) {
+                $tied->store(new EventEnvelope($type, 'ties'), new RuntimeException('tie'));
+            }
+            expect(array_map(static fn (DeadLetterEntry $entry): string => $entry->envelope->eventType, $store->find(new DeadLetterQuery(destination: 'ties'))))->toBe($types);
         } finally {
             edaDeadLetterMigrate('down');
             DB::connection('it_dlq')->disconnect();

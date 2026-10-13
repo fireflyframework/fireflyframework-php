@@ -69,3 +69,14 @@ it('selects by id, destination and event type, oldest first, and removes one ent
         ->and($store->remove((string) $orders[0]->id))->toBeFalse()
         ->and(DB::table(DeadLetterSchema::TABLE)->count())->toBe(2);
 });
+
+it('keeps insertion order for dead letters written in the same millisecond, so --limit replays the oldest', function () {
+    $store = deadLetterDatabaseStore('2026-10-12 10:00:00.250');
+    $types = array_map(static fn (int $i): string => "order.same-instant-{$i}", range(1, 40));
+    foreach ($types as $type) {
+        $store->store(new EventEnvelope($type, 'orders'), new RuntimeException('tie'));
+    }
+
+    expect(array_map(static fn (DeadLetterEntry $e): string => $e->envelope->eventType, $store->all()))->toBe($types)
+        ->and($store->find(new DeadLetterQuery(destination: 'orders', limit: 1))[0]->envelope->eventType)->toBe('order.same-instant-1');
+});

@@ -19,8 +19,10 @@ use Throwable;
  * database connection (firefly.eda.dead-letter.store=database, firefly.eda.dead-letter.connection). The row keeps the
  * whole envelope — event id, type, destination, payload and headers (with RetryingEventHandler's x-original-topic /
  * x-exception) — plus the cause and the instant, so `firefly:eda:dead-letters:replay` can republish it byte for byte.
- * The id is a UUID made in PHP (portable — no driver's identity or sequence), the instant the application clock in
- * UTC at millisecond precision. The connection is resolved per call, never at construction, so binding the store
+ * The instant is the application clock in UTC at millisecond precision. The id is a time-ordered UUID (version 7)
+ * made in PHP (portable — no driver's identity or sequence) and monotonic within the process: two dead letters
+ * written in the same millisecond get increasing ids, and find() orders by (dead_lettered_at, id), so "oldest first"
+ * holds even on a tie and `--limit` replays the entry that was written first. The connection is resolved per call, never at construction, so binding the store
  * opens nothing at boot. Independent of the event provider: Kafka, RabbitMQ, memory and the outbox all dead-letter here.
  */
 final class DatabaseDeadLetterStore implements ReplayableDeadLetterStore
@@ -39,7 +41,7 @@ final class DatabaseDeadLetterStore implements ReplayableDeadLetterStore
         $now = $this->clock === null ? new DateTimeImmutable : ($this->clock)();
 
         $this->db()->table(DeadLetterSchema::TABLE)->insert([
-            'id' => (string) Str::uuid(),
+            'id' => (string) Str::uuid7(),
             'event_id' => $envelope->eventId,
             'event_type' => $envelope->eventType,
             'destination' => $envelope->destination,

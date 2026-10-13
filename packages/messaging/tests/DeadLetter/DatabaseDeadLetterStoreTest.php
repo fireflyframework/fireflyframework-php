@@ -109,3 +109,14 @@ it('keeps an opaque key byte for byte — longer than a varchar, and not valid U
     'a raw 16-byte UUID' => [hex2bin('0192f5a1c3d47e8f9a0b1c2d3e4f5061')],
     'an empty key' => [''],
 ]);
+
+it('keeps insertion order for dead letters written in the same millisecond, so --limit replays the oldest', function () {
+    $store = messagingDeadLetterStore('2026-10-12 10:00:00.500');
+    $values = array_map(static fn (int $i): string => "same-instant-{$i}", range(1, 40));
+    foreach ($values as $value) {
+        $store->store(new Message('ledger.DLT', $value, null, ['x-original-topic' => 'ledger']), new RuntimeException('tie'));
+    }
+
+    expect(array_map(static fn (DeadLetterEntry $e): string => $e->message->value, $store->all()))->toBe($values)
+        ->and($store->find(new DeadLetterQuery(topic: 'ledger', limit: 1))[0]->message->value)->toBe('same-instant-1');
+});

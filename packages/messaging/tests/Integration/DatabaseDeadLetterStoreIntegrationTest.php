@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Messaging\DeadLetter\DatabaseDeadLetterStore;
+use Firefly\Messaging\DeadLetter\DeadLetterEntry;
 use Firefly\Messaging\DeadLetter\DeadLetterQuery;
 use Firefly\Messaging\Message;
 use Firefly\Testing\FireflyDatabaseTestCase;
@@ -16,7 +17,7 @@ uses(FireflyDatabaseTestCase::class);
 
 /**
  * firefly_messaging_dead_letters on every server — above all, arbitrary BYTES in the value and the key round-trip
- * unchanged (base64).
+ * unchanged (base64), and dead letters written in the same millisecond come back in insertion order.
  *
  * Runs one direction of the package's anonymous dead-letter migration, on the default connection.
  */
@@ -58,6 +59,14 @@ foreach (IntegrationDsn::lanes() as $lane) {
                 ->and($store->find(new DeadLetterQuery(topic: 'audit.DLT'))[0]->message->key ?? 'missing')->toBe('missing')
                 ->and($store->remove((string) $ledger[0]->id))->toBeTrue()
                 ->and($store->all())->toHaveCount(1);
+
+            // A tie on the instant: the time-ordered id keeps insertion order under this server's collation.
+            $tied = new DatabaseDeadLetterStore($connections, 'it_dlq', static fn (): DateTimeImmutable => new DateTimeImmutable('2026-10-12 10:00:00.000', new DateTimeZone('UTC')));
+            $values = array_map(static fn (int $i): string => "tie-{$i}", range(1, 20));
+            foreach ($values as $value) {
+                $tied->store(new Message('ties.DLT', $value, null, ['x-original-topic' => 'ties']), new RuntimeException('tie'));
+            }
+            expect(array_map(static fn (DeadLetterEntry $entry): string => $entry->message->value, $store->find(new DeadLetterQuery(topic: 'ties'))))->toBe($values);
         } finally {
             messagingDeadLetterMigrate('down');
             DB::connection('it_dlq')->disconnect();

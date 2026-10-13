@@ -16,7 +16,8 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 - **Durable dead letters.** `firefly.eda.dead-letter.store=database` and `firefly.messaging.dead-letter.store=database`
   keep exhausted envelopes and messages in `firefly_eda_dead_letters` / `firefly_messaging_dead_letters`, and
   `firefly:eda:dead-letters:replay` / `firefly:messaging:dead-letters:replay` republish them (`--dry-run`, `--keep`,
-  selectors by id, destination, event type or topic).
+  selectors by id, destination, event type or topic), oldest first: the ids are time-ordered UUIDs (version 7),
+  monotonic within a process, so dead letters written in the same millisecond replay in the order they were written.
 - **`firefly/scheduling-database`.** `firefly.scheduling.lock.provider=database` (`DatabaseLeaseLock`, a lease table
   honouring the TTL on every driver) and `firefly.scheduling.lock.provider=mysql` (`MySqlNamedLock`, `GET_LOCK` on
   MySQL and MariaDB).

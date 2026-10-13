@@ -22,9 +22,12 @@ use Throwable;
  * original topic (`x-original-topic`, also a column so it can be selected), the headers, the cause and the instant —
  * and the raw value and key base64-encoded (see DeadLetterSchema for why). Text that only describes the failure
  * (the exception message, and the headers' JSON) is made valid UTF-8 before it is written, so a listener that threw
- * with raw bytes in its message still has its message kept rather than lost to an encoding error. The id is a UUID
- * made in PHP, the instant the application clock in UTC at millisecond precision; the connection is resolved per
- * call, never at construction, so binding the store opens nothing at boot.
+ * with raw bytes in its message still has its message kept rather than lost to an encoding error. The instant is the
+ * application clock in UTC at millisecond precision. The id is a time-ordered UUID (version 7) made in PHP — no
+ * driver's identity or sequence — and it is monotonic within the process: two dead letters written in the same
+ * millisecond get increasing ids, and find() orders by (dead_lettered_at, id), so "oldest first" holds even on a tie
+ * and `--limit` replays the entry that was written first. The connection is resolved per call, never at
+ * construction, so binding the store opens nothing at boot.
  */
 final class DatabaseDeadLetterStore implements ReplayableDeadLetterStore
 {
@@ -42,7 +45,7 @@ final class DatabaseDeadLetterStore implements ReplayableDeadLetterStore
         $now = $this->clock === null ? new DateTimeImmutable : ($this->clock)();
 
         $this->db()->table(DeadLetterSchema::TABLE)->insert([
-            'id' => (string) Str::uuid(),
+            'id' => (string) Str::uuid7(),
             'topic' => $message->topic,
             'original_topic' => $message->headers['x-original-topic'] ?? null,
             'message_key' => $message->key === null ? null : base64_encode($message->key),
