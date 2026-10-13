@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Callbacks\Schema;
 
+use Firefly\Callbacks\Subscription\CallbackSubscription;
 use Illuminate\Database\Connection;
 use Illuminate\Database\MySqlConnection;
 use Illuminate\Database\Schema\Blueprint;
@@ -35,7 +36,7 @@ final class CallbackSchema
 
         if (! $schema->hasTable(self::SUBSCRIPTIONS)) {
             $schema->create(self::SUBSCRIPTIONS, static function (Blueprint $table) use ($connection): void {
-                self::binary($table->string('id', 36), $connection);
+                self::binary($table->string('id', CallbackSubscription::MAX_ID_LENGTH), $connection);
                 $table->string('name', 191);
                 $table->text('url');
                 $table->text('event_types');
@@ -52,7 +53,7 @@ final class CallbackSchema
         if (! $schema->hasTable(self::EXECUTIONS)) {
             $schema->create(self::EXECUTIONS, static function (Blueprint $table) use ($connection): void {
                 self::binary($table->string('id', 64), $connection);
-                self::binary($table->string('subscription_id', 36), $connection);
+                self::binary($table->string('subscription_id', CallbackSubscription::MAX_ID_LENGTH), $connection);
                 $table->string('event_id', 64);
                 $table->string('event_type', 191);
                 $table->text('url');

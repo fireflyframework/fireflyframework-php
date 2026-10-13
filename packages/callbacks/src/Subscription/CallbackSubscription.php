@@ -14,6 +14,9 @@ use Firefly\Kernel\Exception\Framework\ConfigurationException;
  */
 final readonly class CallbackSubscription
 {
+    /** The width of the id columns in CallbackSchema — a UUID fits exactly. */
+    public const MAX_ID_LENGTH = 36;
+
     /**
      * @param  list<string>  $eventTypes
      * @param  array<string, string>  $headers
@@ -45,7 +48,8 @@ final readonly class CallbackSubscription
     /**
      * A subscription written in configuration (firefly.callbacks.subscriptions.N). A seed without an `id` gets one
      * derived from its URL and event types, so it is the same subscription — with the same execution history —
-     * across deployments.
+     * across deployments. An explicit `id` is at most MAX_ID_LENGTH characters of `[A-Za-z0-9._-]`, the width the
+     * subscription and execution tables give it.
      *
      * @param  array<array-key, mixed>  $raw
      */
@@ -75,7 +79,14 @@ final readonly class CallbackSubscription
             }
         }
 
-        $id = is_string($raw['id'] ?? null) && $raw['id'] !== '' ? $raw['id'] : substr(hash('sha256', $url."\0".implode(',', $eventTypes)), 0, 32);
+        $id = $raw['id'] ?? null;
+        if ($id === null || $id === '') {
+            $id = substr(hash('sha256', $url."\0".implode(',', $eventTypes)), 0, 32);
+        } elseif (! is_string($id) || preg_match('/^[A-Za-z0-9._-]{1,'.self::MAX_ID_LENGTH.'}$/', $id) !== 1) {
+            // The registry and execution tables key on a 36-character column, so a longer seed would boot and
+            // then fail every execution insert — refuse it here instead.
+            throw new ConfigurationException("{$where}.id must be at most ".self::MAX_ID_LENGTH.' characters of letters, digits, dots, dashes or underscores.');
+        }
         $name = is_string($raw['name'] ?? null) && $raw['name'] !== '' ? $raw['name'] : (string) parse_url($url, PHP_URL_HOST);
         $secret = is_string($raw['secret'] ?? null) && $raw['secret'] !== '' ? $raw['secret'] : null;
         $maxAttempts = is_int($raw['max-attempts'] ?? null) && $raw['max-attempts'] > 0 ? $raw['max-attempts'] : null;

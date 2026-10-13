@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Callbacks\CallbacksSettings;
+use Firefly\Callbacks\Subscription\CallbackSubscription;
 use Firefly\Config\Config;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Illuminate\Config\Repository;
@@ -59,4 +60,14 @@ it('refuses at boot what could never deliver', function (array $callbacks, strin
     'event types not strings' => [['event-types' => [1]], 'firefly.callbacks.event-types'],
     'subscription without url' => [['subscriptions' => [['event-types' => ['a']]]], 'firefly.callbacks.subscriptions.0.url'],
     'subscription without event types' => [['subscriptions' => [['url' => 'https://x.example.com']]], 'firefly.callbacks.subscriptions.0.event-types'],
+    'subscription id longer than its column' => [['subscriptions' => [['id' => 'partner-orders-production-eu-west-1a-2', 'url' => 'https://x.example.com', 'event-types' => ['a']]]], 'firefly.callbacks.subscriptions.0.id must be at most 36 characters'],
+    'subscription id with unsafe characters' => [['subscriptions' => [['id' => 'orders/eu west', 'url' => 'https://x.example.com', 'event-types' => ['a']]]], 'firefly.callbacks.subscriptions.0.id'],
+    'subscription id not a string' => [['subscriptions' => [['id' => 42, 'url' => 'https://x.example.com', 'event-types' => ['a']]]], 'firefly.callbacks.subscriptions.0.id'],
 ]);
+
+it('accepts a seeded id exactly as wide as the id columns', function () {
+    $id = str_repeat('a', CallbackSubscription::MAX_ID_LENGTH);
+    $settings = w4CallbacksSettings(['subscriptions' => [['id' => $id, 'url' => 'https://x.example.com', 'event-types' => ['a']]]]);
+
+    expect($settings->subscriptions[0]->id)->toBe($id);
+});
