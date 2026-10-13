@@ -170,9 +170,38 @@ rather than an `EventEnvelope`, faithful to the two ports' different payload sha
 | `firefly.messaging.provider` | `memory`\|`queue` | `memory` | Selects `InMemoryMessageBroker` or `QueueMessageBroker` (`MessagingAutoConfiguration`). |
 | `firefly.messaging.queue.connection` | string\|null | `null` (default connection) | Queue connection `QueueMessageBroker`/`DispatchMessageJob` dispatch onto, when `provider=queue`. |
 | `firefly.messaging.queue.name` | string\|null | `null` (default queue) | Queue name, when `provider=queue`. |
+| `firefly.messaging.listener.retry.max-attempts` | int | `5` | Attempts per delivery (the first included) on a listener container broker. |
+| `firefly.messaging.listener.retry.initial-delay` | duration | `1s` | Exponential back-off after the first failure (seconds, or `250ms`/`30s`/`5m`/`1h`). |
+| `firefly.messaging.listener.retry.multiplier` | float >= 1 | `2.0` | Back-off multiplier after each further failure. |
+| `firefly.messaging.listener.retry.max-delay` | duration | `30s` | Back-off cap. |
 
-There is no `firefly.messaging.retries`/`retry_delay` config key — retry/DLQ policy lives entirely on each
-`#[MessageListener]` attribute (see above), not in configuration.
+There is no `firefly.messaging.retries`/`retry_delay` config key — on the `memory` and `queue` adapters
+retry/DLQ policy lives entirely on each `#[MessageListener]` attribute (see above), not in configuration. The
+`listener.retry.*` keys apply only to a listener container broker, described next.
+
+## Listener container brokers and `firefly:messaging:consume`
+
+A broker that consumes from a real server (the Kafka and RabbitMQ adapters) implements
+`Firefly\Messaging\Container\ListenerContainerBroker`, a `MessageBrokerPort` with two more methods:
+`subscribeListener(string $topic, callable $handler, ?string $group, ListenerOptions $options)` and
+`poll(int $timeoutMs): bool`. Its container owns retries and dead letters and acknowledges a delivery only once
+its listeners have handled it or it has been dead-lettered, so `MessageListenerWiringPass` hands it the BARE
+listener plus the listener's `ListenerOptions` instead of wrapping it in `RetryingMessageHandler` — wrapping it
+too would retry every failure twice over.
+
+Each delivery runs under a `RetryPolicy` through the shared `ListenerInvoker`: `firefly.messaging.listener.retry.*`
+(five attempts, 1s doubling, capped at 30s by default — PyFly's listener container), unless the listener sets
+`retries: N > 0`, which means N + 1 attempts with `retryDelay` as a linear back-off, exactly as on the in-memory
+and queue adapters. A listener's `deadLetterTopic` replaces the broker's default dead-letter route. A
+dead-lettered message carries `x-original-topic`, `x-exception` (the short exception class name),
+`x-exception-message` and `x-delivery-attempts` (`DeadLetterHeaders`).
+
+`php artisan firefly:messaging:consume {--max-messages=} {--time-limit=} {--poll-timeout=1000} {--sleep=0}` is
+the worker: it polls one delivery at a time until a bound trips or a SIGINT/SIGTERM arrives (honored between
+deliveries when ext-pcntl is loaded), then stops the broker. On `memory` (delivers in process) and `queue` (runs
+in `php artisan queue:work`) it refuses with exit code 1 and the reason. Setting
+`firefly.messaging.provider=kafka|rabbitmq` without the matching adapter bound refuses the boot instead of
+falling back to the in-memory broker.
 
 `MessagingAutoConfiguration` (`#[Configuration] #[Order(1000)]`) binds the `MessageBrokerPort` and
 `DeadLetterStore` beans, each behind `#[ConditionalOnMissingBean]` so an application binding its own wins. It

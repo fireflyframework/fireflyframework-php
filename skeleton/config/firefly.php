@@ -2567,6 +2567,32 @@ return [
         //     'connection' => 'redis',
         //     'name' => 'messages',
         // ],
+
+        /*
+         | listener.retry — how a LISTENER CONTAINER broker (a MessageBrokerPort that implements
+         | ListenerContainerBroker and is driven by `php artisan firefly:messaging:consume`) retries one
+         | delivery before dead-lettering it. memory and queue keep the per-listener policy of
+         | #[MessageListener(retries:, retryDelay:)] and never read these keys.
+         |
+         | max-attempts — attempts per delivery, the first included; at least 1.
+         | initial-delay / multiplier / max-delay — exponential back-off: initial-delay after the first
+         | failure, times multiplier after each further one, capped at max-delay. Durations are seconds or
+         | '250ms' / '30s' / '5m' / '1h'; the multiplier is at least 1. A malformed value refuses the boot,
+         | naming the key.
+         |
+         | A listener that sets its own `retries: N > 0` overrides these with N + 1 attempts and a linear
+         | retryDelay back-off; its deadLetterTopic replaces the broker's default dead-letter route.
+         |
+         | Default: 5 attempts, 1s doubling, capped at 30s (PyFly's listener container).
+        */
+        'listener' => [
+            'retry' => [
+                'max-attempts' => env('FIREFLY_MESSAGING_LISTENER_RETRY_MAX_ATTEMPTS', 5),
+                'initial-delay' => env('FIREFLY_MESSAGING_LISTENER_RETRY_INITIAL_DELAY', '1s'),
+                'multiplier' => env('FIREFLY_MESSAGING_LISTENER_RETRY_MULTIPLIER', 2.0),
+                'max-delay' => env('FIREFLY_MESSAGING_LISTENER_RETRY_MAX_DELAY', '30s'),
+            ],
+        ],
     ],
 
     /*
