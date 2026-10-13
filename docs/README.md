@@ -127,7 +127,7 @@ thirty-seventh guide turns this page red rather than quietly making it wrong.
 | Document | Description |
 |----------|-------------|
 | [Modules](modules.md) | The grouped index of all 36 module guides, and how a package wires itself |
-| [CLI Reference](cli.md) | Every `firefly:*` command and `make:firefly-*` generator, including the seven contributed by capability packages |
+| [CLI Reference](cli.md) | Every `firefly:*` command and `make:firefly-*` generator, including the thirteen contributed by capability packages |
 | [Database Support Matrix](database-support.md) | What each database-backed capability does on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite, and which CI lane proves it |
 | [Laravel Comparison](laravel-comparison.md) | Side-by-side concept mapping for developers coming from plain Laravel |
 | [Versioning](versioning.md) | CalVer (`YY.MM.Patch`), no `version` field, how Packagist derives releases from tags |
