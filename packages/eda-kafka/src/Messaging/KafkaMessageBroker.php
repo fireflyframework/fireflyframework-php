@@ -28,10 +28,15 @@ use Throwable;
  *     first), then its record is produced to its own deadLetterTopic, or to `<topic><dlt-suffix>` (`.DLT`), with the
  *     diagnostic headers and the eda adapter's x-dlt-* provenance headers PyFly also writes. With dead letters off
  *     (firefly.messaging.listener.dead-letter.enabled=false) the record is logged and skipped — an explicit choice.
- *   * A dead letter that cannot be produced throws OUT of poll() with the offset NOT committed: the worker exits,
- *     its supervisor restarts it, and the record is consumed again — never silently lost.
- *   * publish() produces and flushes before returning, so a message published from a PHP-FPM request is on the
- *     broker when the request ends.
+ *   * A dead letter that cannot be produced — refused at produce(), not acknowledged within the flush timeout, or
+ *     reported as failed by librdkafka's delivery report (RdKafkaRecordClient::flush() throws on each) — throws
+ *     OUT of poll() with the offset NOT committed: the worker exits, its supervisor restarts it, and the record is
+ *     consumed again — never silently lost.
+ *   * publish() produces and flushes before returning, and throws when the broker did not take the message, so a
+ *     message published from a PHP-FPM request that returns normally is on the broker when the request ends.
+ *   * FAIR ACROSS GROUPS: each poll() starts at the group after the one that delivered last, so a backlog on one
+ *     group never starves another group's listeners, nor keeps its consumer from calling consume() for longer than
+ *     max.poll.interval.ms (which would make librdkafka drop it from its group and rebalance).
  */
 final class KafkaMessageBroker implements ListenerContainerBroker
 {
@@ -40,6 +45,9 @@ final class KafkaMessageBroker implements ListenerContainerBroker
 
     /** @var array<string, KafkaRecordClient> */
     private array $consumers = [];
+
+    /** The index, in subscription order, of the group the next poll() asks first. */
+    private int $cursor = 0;
 
     /**
      * @param  Closure(string): KafkaRecordClient  $consumerFor  builds the consumer of one group
@@ -83,16 +91,20 @@ final class KafkaMessageBroker implements ListenerContainerBroker
             return false;
         }
 
-        $slice = max(1, intdiv($timeoutMs, count($this->listeners)));
+        $groups = array_map('strval', array_keys($this->listeners));
+        $count = count($groups);
+        $slice = max(1, intdiv($timeoutMs, $count));
 
-        foreach (array_keys($this->listeners) as $group) {
-            $group = (string) $group;
+        for ($i = 0; $i < $count; $i++) {
+            $index = ($this->cursor + $i) % $count;
+            $group = $groups[$index];
             $consumer = $this->consumer($group);
             $record = $consumer->consume($slice);
             if ($record === null) {
                 continue;
             }
 
+            $this->cursor = ($index + 1) % $count;
             $this->dispatch($group, $record);
             $consumer->commit($record);
 

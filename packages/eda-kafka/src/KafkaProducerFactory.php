@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Firefly\Eda\Kafka;
 
+use Closure;
 use RdKafka\Conf;
+use RdKafka\Message;
 use RdKafka\Producer;
 use RuntimeException;
 
@@ -23,6 +25,13 @@ use RuntimeException;
  * BEFORE that point when the extension is missing — so this declaration is never evaluated against a real value
  * on a no-ext machine. The genuinely load-bearing guard is extension_loaded('rdkafka') as the FIRST statement of
  * producer(), not the absence of a `use` statement.
+ *
+ * $deliveryReport is librdkafka's delivery-report callback (dr_msg_cb), served from flush()/poll() once per
+ * produced message with its final outcome. It is the ONLY place a permanent delivery failure surfaces —
+ * TOPIC_AUTHORIZATION_FAILED, a record over the topic's max.message.bytes, a message that timed out — because
+ * Producer::flush() answers NO_ERROR as soon as the out-queue is empty, failed messages included. The eda
+ * publisher passes none (its defaults are unchanged); the firefly/messaging RdKafkaRecordClient passes one so a
+ * dead letter it could not deliver is never acknowledged.
  */
 final class KafkaProducerFactory
 {
@@ -33,7 +42,10 @@ final class KafkaProducerFactory
         return extension_loaded('rdkafka');
     }
 
-    public function producer(): Producer
+    /**
+     * @param  (Closure(Producer, Message): void)|null  $deliveryReport
+     */
+    public function producer(?Closure $deliveryReport = null): Producer
     {
         if (! self::available()) {
             throw new RuntimeException('The Kafka adapter requires ext-rdkafka (firefly.eda.provider=kafka). Install librdkafka + the rdkafka extension, or choose another provider.');
@@ -41,6 +53,9 @@ final class KafkaProducerFactory
 
         $conf = new Conf;
         $conf->set('metadata.broker.list', $this->brokers);
+        if ($deliveryReport !== null) {
+            $conf->setDrMsgCb($deliveryReport);
+        }
 
         return new Producer($conf);
     }

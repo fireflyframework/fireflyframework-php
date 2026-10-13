@@ -29,6 +29,12 @@ final class FakeKafkaRecordClient implements KafkaRecordClient
 
     public ?Throwable $produceFailure = null;
 
+    /** Thrown by flush(): what RdKafkaRecordClient does when a delivery report says a produced record failed. */
+    public ?Throwable $flushFailure = null;
+
+    /** @var list<int> the timeout of every consume() call, in order */
+    public array $consumeCalls = [];
+
     /**
      * @param  array<string, string>  $headers
      */
@@ -44,6 +50,8 @@ final class FakeKafkaRecordClient implements KafkaRecordClient
 
     public function consume(int $timeoutMs): ?KafkaRecord
     {
+        $this->consumeCalls[] = $timeoutMs;
+
         return array_shift($this->incoming);
     }
 
@@ -64,6 +72,9 @@ final class FakeKafkaRecordClient implements KafkaRecordClient
     public function flush(int $timeoutMs): void
     {
         $this->flushes++;
+        if ($this->flushFailure !== null) {
+            throw $this->flushFailure;
+        }
     }
 
     public function close(): void
