@@ -8,6 +8,7 @@ use Firefly\Security\Core\Authentication;
 use Firefly\Security\Core\SimpleGrantedAuthority;
 use Illuminate\Container\Container;
 use Lumen\Application\Command\Deposit;
+use Lumen\Application\Command\Transfer;
 use Lumen\Application\Command\Withdraw;
 use Lumen\Domain\Currency;
 use Lumen\Domain\Wallet;
@@ -45,6 +46,7 @@ function lumenWalletPermissionEvaluator(): WalletPermissionEvaluator
         }
     };
     $wallets->save(Wallet::open('wlt-alice', 'alice', Currency::EUR));
+    $wallets->save(Wallet::open('wlt-bob', 'bob', Currency::EUR));
 
     return new WalletPermissionEvaluator($wallets, new Container);
 }
@@ -61,6 +63,26 @@ it('grants debit on a withdraw to the owner of the wallet', function () {
 
 it('refuses debit on a withdraw to a principal who does not own the wallet', function () {
     expect(lumenWalletPermissionEvaluator()->hasPermission(lumenWalletOwner('mallory'), new Withdraw('wlt-alice', 100), 'debit'))
+        ->toBeFalse();
+})->group('lumen');
+
+it('grants debit on a transfer to the owner of the source wallet', function () {
+    expect(lumenWalletPermissionEvaluator()->hasPermission(lumenWalletOwner('alice'), new Transfer('wlt-alice', 'wlt-bob', 100), 'debit'))
+        ->toBeTrue();
+})->group('lumen');
+
+it('refuses debit on a transfer to the owner of the destination wallet: a transfer debits its source', function () {
+    expect(lumenWalletPermissionEvaluator()->hasPermission(lumenWalletOwner('bob'), new Transfer('wlt-alice', 'wlt-bob', 100), 'debit'))
+        ->toBeFalse();
+})->group('lumen');
+
+it('refuses debit on a transfer to a principal who owns neither wallet', function () {
+    expect(lumenWalletPermissionEvaluator()->hasPermission(lumenWalletOwner('mallory'), new Transfer('wlt-alice', 'wlt-bob', 100), 'debit'))
+        ->toBeFalse();
+})->group('lumen');
+
+it('refuses debit on a transfer out of a wallet that does not exist', function () {
+    expect(lumenWalletPermissionEvaluator()->hasPermission(lumenWalletOwner('alice'), new Transfer('wlt-nope', 'wlt-alice', 100), 'debit'))
         ->toBeFalse();
 })->group('lumen');
 

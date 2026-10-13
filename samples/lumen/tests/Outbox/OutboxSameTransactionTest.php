@@ -8,6 +8,11 @@ use Firefly\Cqrs\Command\CommandBus;
 use Firefly\Cqrs\Exception\CommandProcessingException;
 use Firefly\Cqrs\Query\QueryBus;
 use Firefly\Eda\Postgres\Outbox\OutboxSchema;
+use Firefly\Kernel\Exception\Business\ConflictException;
+use Firefly\Security\Core\Authentication;
+use Firefly\Security\Core\SecurityContext;
+use Firefly\Security\Core\SecurityContextHolder;
+use Firefly\Security\Core\SimpleGrantedAuthority;
 use Illuminate\Support\Facades\DB;
 use Lumen\Application\Command\Deposit;
 use Lumen\Application\Command\OpenWallet;
@@ -16,6 +21,8 @@ use Lumen\Application\Query\GetBalance;
 use Lumen\Domain\Currency;
 
 uses(OutboxPostgresTestCase::class);
+
+afterEach(fn () => SecurityContextHolder::clearContext());
 
 // Gate on firefly/eda-postgres actually being installed (it is, via lumen's require-dev) — the adapter supplies the
 // OutboxSchema/OutboxPreCommitHook the same-tx proof drives. Both tests skip cleanly if it is ever absent.
@@ -32,6 +39,10 @@ it('writes the FundsWithdrawn outbox row INSIDE the transfer transaction (presen
     $dst = $commands->send(new OpenWallet('owner-B', Currency::EUR));
     $commands->send(new Deposit($src, 10000));
 
+    // TransferHandler is guarded: the source wallet's owner may move money out of it.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('owner-A', 'owner-A', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
     $commands->send(new Transfer($src, $dst, 4000));
 
     // The transfer committed: its FundsWithdrawn domain event was written to the outbox IN the same transaction, so a
@@ -68,8 +79,19 @@ it('rolls the outbox row back WITH the transfer when the credit leg fails (absen
 
     $rowsBefore = DB::table(OutboxSchema::TABLE)->count();
 
-    expect(fn () => $commands->send(new Transfer($src, $dst, 4000)))
-        ->toThrow(CommandProcessingException::class);
+    // Signed in as the source's owner, so the guard lets the transfer through and it is the CREDIT leg that fails.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('owner-A', 'owner-A', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
+    $failed = null;
+    try {
+        $commands->send(new Transfer($src, $dst, 4000));
+    } catch (CommandProcessingException $e) {
+        $failed = $e;
+    }
+
+    expect($failed)->toBeInstanceOf(CommandProcessingException::class)
+        ->and($failed?->getPrevious())->toBeInstanceOf(ConflictException::class);
 
     // Genuine same-tx atomicity: the failed transfer added NO outbox rows (its FundsWithdrawn INSERT rolled back with
     // the aggregate — none survives), and NO balance moved. Money can neither vanish nor leak an outbox event.

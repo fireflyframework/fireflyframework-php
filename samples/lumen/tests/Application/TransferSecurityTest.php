@@ -7,6 +7,8 @@ namespace Lumen\Tests\Application;
 use Firefly\Cqrs\Command\CommandBus;
 use Firefly\Cqrs\Exception\CommandProcessingException;
 use Firefly\Cqrs\Query\QueryBus;
+use Firefly\Kernel\Exception\Business\ConflictException;
+use Firefly\Kernel\Exception\Security\AuthenticationException;
 use Firefly\Kernel\Exception\Security\AuthorizationException;
 use Firefly\Security\Core\Authentication;
 use Firefly\Security\Core\SecurityContext;
@@ -26,6 +28,14 @@ uses(LumenTestCase::class);
 // finally/afterEach, so even a throwing test (the deny case below) still clears the request-scoped holder.
 afterEach(fn () => SecurityContextHolder::clearContext());
 
+/** Signs in a ROLE_WALLET_OWNER whose name is the owner_id of the wallets it may debit. */
+function lumenSignInWalletOwner(string $name): void
+{
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated($name, $name, [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
+}
+
 it('transfers atomically: money is conserved across debit + credit', function () {
     /** @var LumenTestCase $this */
     /** @var CommandBus $commands */
@@ -39,6 +49,8 @@ it('transfers atomically: money is conserved across debit + credit', function ()
     $dst = $commands->send(new OpenWallet('owner-B', Currency::EUR));
     $commands->send(new Deposit($src, 10000));
 
+    // TransferHandler is guarded like WithdrawHandler: the source wallet's owner may move money out of it.
+    lumenSignInWalletOwner('owner-A');
     $commands->send(new Transfer($src, $dst, 4000));
 
     // Debit + credit committed as one unit of work: the 10000 that left nowhere reappears split 6000/4000.
@@ -61,8 +73,17 @@ it('rolls the whole transfer back when the credit leg fails (money cannot vanish
     $dst = $commands->send(new OpenWallet('owner-B', Currency::USD));
     $commands->send(new Deposit($src, 10000));
 
-    expect(fn () => $commands->send(new Transfer($src, $dst, 4000)))
-        ->toThrow(CommandProcessingException::class);
+    // Signed in as the source's owner, so the guard lets the transfer through and it is the CREDIT leg that fails.
+    lumenSignInWalletOwner('owner-A');
+    $failed = null;
+    try {
+        $commands->send(new Transfer($src, $dst, 4000));
+    } catch (CommandProcessingException $e) {
+        $failed = $e;
+    }
+
+    expect($failed)->toBeInstanceOf(CommandProcessingException::class);
+    expect($failed?->getPrevious())->toBeInstanceOf(ConflictException::class);
 
     // Load-bearing, non-tautological proof that money cannot vanish: the source debit was ROLLED BACK (still 10000,
     // not 6000) and the destination never received anything (still 0). No value was created or destroyed.
@@ -145,4 +166,82 @@ it('refuses a withdraw from a WALLET_OWNER who does not own that wallet, and let
     $commands->send(new Withdraw($walletId, 1000));
 
     expect($queries->ask(new GetBalance($walletId)))->toBe(4000);
+})->group('lumen');
+
+it('refuses a transfer from nobody with an AuthenticationException, before either wallet is touched', function () {
+    /** @var LumenTestCase $this */
+    /** @var CommandBus $commands */
+    $commands = $this->fireflyContext()->get(CommandBus::class);
+    /** @var QueryBus $queries */
+    $queries = $this->fireflyContext()->get(QueryBus::class);
+
+    /** @var string $src */
+    $src = $commands->send(new OpenWallet('owner-F', Currency::EUR));
+    /** @var string $dst */
+    $dst = $commands->send(new OpenWallet('owner-G', Currency::EUR));
+    $commands->send(new Deposit($src, 5000));
+
+    // No principal at all: TransferHandler's #[PreAuthorize] answers "authenticate first" (401), not 403.
+    $denied = null;
+    try {
+        $commands->send(new Transfer($src, $dst, 1000));
+    } catch (CommandProcessingException $e) {
+        $denied = $e;
+    }
+
+    expect($denied?->getPrevious())->toBeInstanceOf(AuthenticationException::class);
+    expect($queries->ask(new GetBalance($src)))->toBe(5000);
+    expect($queries->ask(new GetBalance($dst)))->toBe(0);
+})->group('lumen');
+
+it('refuses a transfer out of a wallet the WALLET_OWNER does not own, even into its own wallet', function () {
+    /** @var LumenTestCase $this */
+    /** @var CommandBus $commands */
+    $commands = $this->fireflyContext()->get(CommandBus::class);
+    /** @var QueryBus $queries */
+    $queries = $this->fireflyContext()->get(QueryBus::class);
+
+    /** @var string $src */
+    $src = $commands->send(new OpenWallet('owner-H', Currency::EUR));
+    /** @var string $dst */
+    $dst = $commands->send(new OpenWallet('owner-I', Currency::EUR));
+    $commands->send(new Deposit($src, 5000));
+
+    // owner-I owns the DESTINATION. A transfer debits its source, so owning the receiving wallet grants nothing:
+    // without this guard, anyone could pull money out of any wallet by naming it as the source of a transfer.
+    lumenSignInWalletOwner('owner-I');
+
+    $denied = null;
+    try {
+        $commands->send(new Transfer($src, $dst, 1000));
+    } catch (CommandProcessingException $e) {
+        $denied = $e;
+    }
+
+    expect($denied?->getPrevious())->toBeInstanceOf(AuthorizationException::class);
+    expect($queries->ask(new GetBalance($src)))->toBe(5000);
+    expect($queries->ask(new GetBalance($dst)))->toBe(0);
+})->group('lumen');
+
+it('lets an ADMIN transfer between two wallets it owns neither of', function () {
+    /** @var LumenTestCase $this */
+    /** @var CommandBus $commands */
+    $commands = $this->fireflyContext()->get(CommandBus::class);
+    /** @var QueryBus $queries */
+    $queries = $this->fireflyContext()->get(QueryBus::class);
+
+    /** @var string $src */
+    $src = $commands->send(new OpenWallet('owner-J', Currency::EUR));
+    /** @var string $dst */
+    $dst = $commands->send(new OpenWallet('owner-K', Currency::EUR));
+    $commands->send(new Deposit($src, 5000));
+
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('teller', 'teller', [new SimpleGrantedAuthority('ROLE_ADMIN')])
+    ));
+
+    $commands->send(new Transfer($src, $dst, 1000));
+
+    expect($queries->ask(new GetBalance($src)))->toBe(4000);
+    expect($queries->ask(new GetBalance($dst)))->toBe(1000);
 })->group('lumen');

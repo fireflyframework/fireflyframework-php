@@ -8,6 +8,7 @@ use Firefly\Container\Attributes\Component;
 use Firefly\Security\Access\PermissionEvaluator;
 use Firefly\Security\Core\Authentication;
 use Illuminate\Contracts\Container\Container;
+use Lumen\Application\Command\Transfer;
 use Lumen\Application\Command\Withdraw;
 use Lumen\Application\Loan\RepayLoan;
 use Lumen\Infrastructure\Loan\LoanRepository;
@@ -15,8 +16,8 @@ use Lumen\Infrastructure\WalletRepository;
 
 /**
  * Backs `hasPermission(#command, 'debit')`: a principal may debit a wallet only when it owns it. The target is the
- * command the bus is about to dispatch — a Withdraw names its wallet, a RepayLoan names a loan whose wallet is read
- * from the event store — and the debit is granted only when that wallet's owner_id equals the authenticated
+ * command the bus is about to dispatch — a Withdraw names its wallet, a Transfer debits its source wallet (never its
+ * destination), a RepayLoan names a loan whose wallet is read from the event store — and the debit is granted only when that wallet's owner_id equals the authenticated
  * principal's name. Everything else fails closed: a permission other than `debit`, a target of any other type, a
  * wallet or loan that does not exist, an unauthenticated principal (whom the bus still answers with a 401, not a 403).
  *
@@ -45,6 +46,7 @@ final class WalletPermissionEvaluator implements PermissionEvaluator
 
         $walletId = match (true) {
             $target instanceof Withdraw => $target->walletId,
+            $target instanceof Transfer => $target->sourceWalletId,
             $target instanceof RepayLoan => $this->walletOfLoan($target->loanId),
             default => null,
         };

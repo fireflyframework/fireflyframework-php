@@ -7,6 +7,10 @@ namespace Lumen\Tests\Integration;
 use Firefly\Cqrs\Command\CommandBus;
 use Firefly\Cqrs\Query\QueryBus;
 use Firefly\Eda\Postgres\Outbox\OutboxSchema;
+use Firefly\Security\Core\Authentication;
+use Firefly\Security\Core\SecurityContext;
+use Firefly\Security\Core\SecurityContextHolder;
+use Firefly\Security\Core\SimpleGrantedAuthority;
 use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +21,8 @@ use Lumen\Application\Query\GetBalance;
 use Lumen\Domain\Currency;
 
 uses(OutboxPostgresIntegrationTestCase::class);
+
+afterEach(fn () => SecurityContextHolder::clearContext());
 
 /**
  * Real-Postgres outbox round-trip for the wallet sample. Env-gated exactly like
@@ -42,6 +48,10 @@ it('writes the transfer outbox row atomically on real Postgres and the consumer 
     $dst = $commands->send(new OpenWallet('owner-B', Currency::EUR));
     $commands->send(new Deposit($src, 10000));
 
+    // TransferHandler is guarded: the source wallet's owner may move money out of it.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('owner-A', 'owner-A', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
     $commands->send(new Transfer($src, $dst, 4000));
 
     // The committed transfer's FundsWithdrawn event landed in the outbox same-tx (PENDING), and the money moved.

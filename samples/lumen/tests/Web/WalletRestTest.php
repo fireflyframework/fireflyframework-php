@@ -222,6 +222,11 @@ it('transfers between two wallets over REST and reflects both fresh balances', f
     $dst = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-5b', 'currency' => 'EUR'])->json('wallet_id');
     $this->postJson("/api/v1/wallets/{$src}/deposit", ['amount_minor' => 10000]);
 
+    // The transfer is guarded like the withdraw: signed in as the source wallet's owner, it goes through.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('owner-5a', 'owner-5a', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
+
     $this->postJson('/api/v1/wallets/transfers', [
         'source_wallet_id' => $src,
         'destination_wallet_id' => $dst,
@@ -235,6 +240,79 @@ it('transfers between two wallets over REST and reflects both fresh balances', f
 
     $this->getJson("/api/v1/wallets/{$src}/balance")->assertJson(['balance_minor' => 6000]);
     $this->getJson("/api/v1/wallets/{$dst}/balance")->assertJson(['balance_minor' => 4000]);
+})->group('lumen');
+
+it('denies an unauthenticated transfer as 401 problem+json and moves no money', function () {
+    /** @var LumenTestCase $this */
+    // TransferHandler carries the same #[PreAuthorize] as WithdrawHandler, with the Transfer bound to #command and
+    // WalletPermissionEvaluator asking who owns its SOURCE wallet. No principal -> "authenticate first".
+    /** @var string $src */
+    $src = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-9a', 'currency' => 'EUR'])->json('wallet_id');
+    /** @var string $dst */
+    $dst = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-9b', 'currency' => 'EUR'])->json('wallet_id');
+    $this->postJson("/api/v1/wallets/{$src}/deposit", ['amount_minor' => 5000]);
+
+    $this->postJson('/api/v1/wallets/transfers', [
+        'source_wallet_id' => $src,
+        'destination_wallet_id' => $dst,
+        'amount_minor' => 1000,
+    ])->assertStatus(401)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('status', 401)
+        ->assertJsonPath('code', 'AUTHENTICATION_FAILED')
+        ->assertJsonPath('category', 'security');
+
+    $this->getJson("/api/v1/wallets/{$src}/balance")->assertJson(['balance_minor' => 5000]);
+    $this->getJson("/api/v1/wallets/{$dst}/balance")->assertJson(['balance_minor' => 0]);
+})->group('lumen');
+
+it('denies a transfer out of a wallet the WALLET_OWNER does not own as 403 problem+json and moves no money', function () {
+    /** @var LumenTestCase $this */
+    // owner-10b owns the destination and holds the role; a transfer debits its source, which is owner-10a's.
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('owner-10b', 'owner-10b', [new SimpleGrantedAuthority('ROLE_WALLET_OWNER')])
+    ));
+
+    /** @var string $src */
+    $src = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-10a', 'currency' => 'EUR'])->json('wallet_id');
+    /** @var string $dst */
+    $dst = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-10b', 'currency' => 'EUR'])->json('wallet_id');
+    $this->postJson("/api/v1/wallets/{$src}/deposit", ['amount_minor' => 5000]);
+
+    $this->postJson('/api/v1/wallets/transfers', [
+        'source_wallet_id' => $src,
+        'destination_wallet_id' => $dst,
+        'amount_minor' => 1000,
+    ])->assertStatus(403)
+        ->assertHeader('Content-Type', 'application/problem+json')
+        ->assertJsonPath('status', 403)
+        ->assertJsonPath('code', 'ACCESS_DENIED')
+        ->assertJsonPath('category', 'security');
+
+    $this->getJson("/api/v1/wallets/{$src}/balance")->assertJson(['balance_minor' => 5000]);
+    $this->getJson("/api/v1/wallets/{$dst}/balance")->assertJson(['balance_minor' => 0]);
+})->group('lumen');
+
+it('allows an ADMIN to transfer between wallets it does not own', function () {
+    /** @var LumenTestCase $this */
+    SecurityContextHolder::setContext(new SecurityContext(
+        Authentication::authenticated('teller', 'teller', [new SimpleGrantedAuthority('ROLE_ADMIN')])
+    ));
+
+    /** @var string $src */
+    $src = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-11a', 'currency' => 'EUR'])->json('wallet_id');
+    /** @var string $dst */
+    $dst = $this->postJson('/api/v1/wallets', ['owner_id' => 'owner-11b', 'currency' => 'EUR'])->json('wallet_id');
+    $this->postJson("/api/v1/wallets/{$src}/deposit", ['amount_minor' => 5000]);
+
+    $this->postJson('/api/v1/wallets/transfers', [
+        'source_wallet_id' => $src,
+        'destination_wallet_id' => $dst,
+        'amount_minor' => 1000,
+    ])->assertStatus(200)->assertJson([
+        'source_balance_minor' => 4000,
+        'destination_balance_minor' => 1000,
+    ]);
 })->group('lumen');
 
 it('reads the projected ledger for a wallet over REST', function () {

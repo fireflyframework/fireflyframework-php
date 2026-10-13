@@ -48,12 +48,14 @@ HTTP endpoints — none of which contain business logic of their own.
   are bridged to the real `InMemoryEventBus`; `LedgerProjector`
   (`#[EventListener]`) turns them into append-only `ledger_entries` rows the
   `GetLedger` query reads back.
-- **Method security** — `WithdrawHandler` and `RepayLoanHandler` carry
+- **Method security** — `WithdrawHandler`, `TransferHandler` and
+  `RepayLoanHandler` carry
   `#[PreAuthorize("hasRole('ADMIN') or (hasRole('WALLET_OWNER') and hasPermission(#command, 'debit'))")]`,
   enforced by `SecurityCommandAuthorizer` at the bus, before the handler ever
   runs. `hasPermission` is answered by `WalletPermissionEvaluator`, the
   sample's own `PermissionEvaluator` bean: it grants a debit only when the
-  wallet's `owner_id` is the principal's name, and refuses everything else.
+  wallet's `owner_id` is the principal's name (for a transfer, the source
+  wallet's), and refuses everything else.
 - **A thin REST controller** — `WalletController` maps HTTP onto
   commands/queries and dispatches through the bus; a `#[Valid]` request body
   is validated before the DTO is even hydrated, and any business/security
@@ -96,21 +98,21 @@ HTTP endpoints — none of which contain business logic of their own.
 | POST   | `/api/v1/wallets`                         | Open a wallet (201)                       |
 | POST   | `/api/v1/wallets/{id}/deposit`            | Deposit funds (minor units)               |
 | POST   | `/api/v1/wallets/{id}/withdraw`           | Withdraw funds (minor units) — secured    |
-| POST   | `/api/v1/wallets/transfers`               | Transfer funds between two wallets        |
+| POST   | `/api/v1/wallets/transfers`               | Transfer funds between two wallets — secured |
 | POST   | `/api/v1/wallets/{id}/payouts`            | Pay out to a bank account (saga) — secured |
 | GET    | `/api/v1/wallets/{id}/balance`            | Fetch just the balance                    |
 | GET    | `/api/v1/wallets/{id}/ledger`             | Fetch the wallet's projected ledger rows  |
 | GET    | `/api/v1/wallet-rollout`                  | Gated rollout probe; 404 while dark       |
 
 Amounts are in **minor units** (cents): `1500` means €15.00 for an EUR
-wallet. The withdraw endpoint requires an authenticated principal in the
-`SecurityContextHolder` that carries `ROLE_ADMIN`, or carries
-`ROLE_WALLET_OWNER` and owns the wallet (its name is the wallet's
-`owner_id`) — with no principal at all it renders a 401
+wallet. The withdraw and transfer endpoints require an authenticated principal
+in the `SecurityContextHolder` that carries `ROLE_ADMIN`, or carries
+`ROLE_WALLET_OWNER` and owns the wallet the money leaves (its name is the
+wallet's `owner_id`; for a transfer, the source wallet's) — with no principal at all it renders a 401
 `application/problem+json` response (`AUTHENTICATION_FAILED`: authenticate
 first), and with a principal that is signed in but is neither an admin nor
-the wallet's owner a 403 (`ACCESS_DENIED`). The endpoint is secured, not
-broken.
+the wallet's owner a 403 (`ACCESS_DENIED`). Either way no balance moves. The
+endpoints are secured, not broken.
 
 The payout endpoint runs the same Withdraw first, so it needs the same principal; a refusal there is the withdraw's own 401/403/404/409. A refusal by the bank afterwards is a 409 PAYOUT_FAILED once every completed step has been undone, so the money is back in the wallet. When an undo itself fails (the refund, for instance), the money is not back: the answer is a 500 PAYOUT_COMPENSATION_FAILED that names the `uncompensated_steps` and the `payout_id` the execution is checkpointed and dead-lettered under, for an operator to settle.
 
