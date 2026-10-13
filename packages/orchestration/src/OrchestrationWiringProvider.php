@@ -10,6 +10,7 @@ use Firefly\Context\Boot\FireflyServiceProvider;
 use Firefly\Context\Scan\AppScan;
 use Firefly\Orchestration\Boot\EventGatewayWiringPass;
 use Firefly\Orchestration\Boot\OrchestrationRegistryPass;
+use Firefly\Orchestration\Boot\OrchestrationRouteRegistrar;
 use Firefly\Orchestration\Boot\OrchestrationSchedulePass;
 use Firefly\Orchestration\Boot\ScheduledExecutionsPass;
 use Firefly\Orchestration\Console\DeadLetterCommand;
@@ -31,7 +32,8 @@ use Illuminate\Contracts\Container\Container;
  *    in-process scan of `firefly.scan.paths`, then an empty manifest (the AppScan convention), lazily, so a
  *    cached application that has firefly/cli pays nothing;
  *  - contributes the registry, gateway, schedule (the tick and the recovery sweep) and scheduled-execution
- *    (#[ScheduledSaga] / #[ScheduledTcc] / #[ScheduledWorkflow]) passes;
+ *    (#[ScheduledSaga] / #[ScheduledTcc] / #[ScheduledWorkflow]) passes, and the REST route registrar that
+ *    mounts nothing unless firefly.orchestration.rest.enabled;
  *  - registers the firefly:orchestration:* commands (list, show, signal, dlq, dlq:retry, tick) in a console;
  *  - publishes the migration (`--tag=firefly-orchestration-migrations`) and loads it while persistence or
  *    the DLQ is `database`.
@@ -62,7 +64,7 @@ final class OrchestrationWiringProvider extends FireflyServiceProvider
      */
     public function passes(): array
     {
-        return [new OrchestrationRegistryPass, new EventGatewayWiringPass, new OrchestrationSchedulePass, new ScheduledExecutionsPass];
+        return [new OrchestrationRegistryPass, new EventGatewayWiringPass, new OrchestrationSchedulePass, new ScheduledExecutionsPass, new OrchestrationRouteRegistrar];
     }
 
     public function boot(): void
