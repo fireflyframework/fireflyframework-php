@@ -89,9 +89,10 @@ Data:
 Read those two rules together and the direction is unambiguous: `Data` may see `Domain`, and `Domain` may
 see nothing but `Kernel`. There is no entry anywhere in the ruleset that lets an aggregate reach for a
 repository adapter, an Eloquent model or an HTTP request. Read the ruleset the other way and the leaves fall
-out too: `Admin`, `OpenApi`, `Cli`, `Testing`, `Installer` and the three broker adapters (`EdaRabbitmq`,
-`EdaPostgres`, `EdaKafka`) appear in no other layer's list at all, so nothing in the framework depends on
-them and each can be added or dropped without touching the rest. Two layers have `~` for a rule — `Kernel`
+out too: `Admin`, `OpenApi`, `Cli`, `Testing`, `Installer`, the three broker adapters (`EdaRabbitmq`,
+`EdaPostgres`, `EdaKafka`) and the two database adapters (`EdaDatabase`, `SchedulingDatabase`) appear in no
+other layer's list at all — except `EdaDatabase`, which `EdaPostgres` builds on — so nothing else in the
+framework depends on them and each can be added or dropped without touching the rest. Two layers have `~` for a rule — `Kernel`
 and `Installer` — which is Deptrac for "may depend on no layer whatsoever": the first is what makes the
 kernel's exception taxonomy safe for anyone to reuse, and the second is what keeps a global `firefly new`
 install from dragging the runtime family onto a developer's machine.

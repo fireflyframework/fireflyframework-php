@@ -28,7 +28,7 @@
 ## Module Guides
 
 Every module guide lives under [`modules/`](modules/), in the ten groups `mkdocs.yml`'s navigation and the
-site's own [Modules](modules.md) landing page use. All 33 are listed here, and neither the list nor the
+site's own [Modules](modules.md) landing page use. All 35 are listed here, and neither the list nor the
 number is maintained on trust: `tests/ModuleDocumentationTest.php` fails the build if a guide is missing
 from the navigation, from the table below, from the root `README.md`'s table, from `docs/index.md` or from
 the landing page, and `tests/SiteNavigationTest.php` reads that number off `docs/modules/*.md` itself, so a
@@ -59,6 +59,7 @@ thirty-fourth guide turns this page red rather than quietly making it wrong.
 |-------|-------------|
 | [Resilience](modules/resilience.md) | `firefly/resilience` — Retry, CircuitBreaker, RateLimiter, Bulkhead, TimeLimiter, Fallback |
 | [Scheduling](modules/scheduling.md) | `firefly/scheduling` — `#[Scheduled]` on Laravel's own scheduler, with distributed-lock guard |
+| [Scheduling Database Locks](modules/scheduling-database.md) | `firefly/scheduling-database` — database lease and MySQL named-lock `DistributedLock` providers |
 
 ### Data & Domain
 
@@ -75,6 +76,7 @@ thirty-fourth guide turns this page red rather than quietly making it wrong.
 |-------|-------------|
 | [Event-Driven Architecture](modules/eda.md) | `firefly/eda` — broker-backed `EventPublisher`, envelopes, retry/DLQ, in-memory + queue adapters |
 | [EDA Brokers](modules/eda-brokers.md) | Real broker adapters behind the `EventPublisher` port — RabbitMQ, Postgres LISTEN/NOTIFY, Kafka |
+| [EDA Database Outbox](modules/eda-database.md) | `firefly/eda-database` — the portable same-transaction outbox, claimed by leases on every database |
 | [Messaging](modules/messaging.md) | `firefly/messaging` — the lower-level raw-bytes `MessageBrokerPort`, `#[MessageListener]` |
 
 ### CQRS
@@ -123,8 +125,9 @@ thirty-fourth guide turns this page red rather than quietly making it wrong.
 
 | Document | Description |
 |----------|-------------|
-| [Modules](modules.md) | The grouped index of all 33 module guides, and how a package wires itself |
-| [CLI Reference](cli.md) | Every `firefly:*` command and `make:firefly-*` generator, including the four contributed by capability packages |
+| [Modules](modules.md) | The grouped index of all 35 module guides, and how a package wires itself |
+| [CLI Reference](cli.md) | Every `firefly:*` command and `make:firefly-*` generator, including the seven contributed by capability packages |
+| [Database Support Matrix](database-support.md) | What each database-backed capability does on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite, and which CI lane proves it |
 | [Laravel Comparison](laravel-comparison.md) | Side-by-side concept mapping for developers coming from plain Laravel |
 | [Versioning](versioning.md) | CalVer (`YY.MM.Patch`), no `version` field, how Packagist derives releases from tags |
 | [Contributing](contributing.md) | Monorepo layout, local setup, the gate, the documentation guard, conventions |

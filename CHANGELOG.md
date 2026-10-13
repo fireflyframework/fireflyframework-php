@@ -4,6 +4,59 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+### Added
+
+- **`firefly/eda-database` — the same-transaction outbox on every database.** `firefly.eda.provider=database`
+  writes the outbox row inside the aggregate's transaction on PostgreSQL, MySQL, MariaDB, SQL Server or SQLite, and
+  claims committed rows by leases through an `OutboxClaimStrategy` (SKIP LOCKED on PostgreSQL, MySQL 8.0.1+ and
+  MariaDB 10.6+, READPAST on SQL Server, a portable optimistic lease elsewhere — chosen from the server's version,
+  overridable by `firefly.eda.database.claim-strategy`). Any number of `firefly:eda:consume` workers and
+  `firefly:outbox:relay` processes may run against one outbox; two racing processes are proven to deliver every
+  row exactly once on each server. An `outbox` health component reports the driver, the strategy and the backlog.
+- **Durable dead letters.** `firefly.eda.dead-letter.store=database` and `firefly.messaging.dead-letter.store=database`
+  keep exhausted envelopes and messages in `firefly_eda_dead_letters` / `firefly_messaging_dead_letters`, and
+  `firefly:eda:dead-letters:replay` / `firefly:messaging:dead-letters:replay` republish them (`--dry-run`, `--keep`,
+  selectors by id, destination, event type or topic), oldest first: the ids are time-ordered UUIDs (version 7),
+  monotonic within a process, so dead letters written in the same millisecond replay in the order they were written.
+- **`firefly/scheduling-database`.** `firefly.scheduling.lock.provider=database` (`DatabaseLeaseLock`, a lease table
+  honouring the TTL on every driver) and `firefly.scheduling.lock.provider=mysql` (`MySqlNamedLock`, `GET_LOCK` on
+  MySQL and MariaDB).
+- **Integration lanes.** `composer test:integration`; CI jobs `integration` (PostgreSQL 16, MySQL 8.4, MariaDB 11,
+  SQL Server 2022) and `brokers` (RabbitMQ, Kafka, Redis), each health-checked and exporting only its own DSN, with a
+  lane-sanity test that fails a misconfigured lane; `docker-compose.integration.yml` mirrors them locally.
+  `Firefly\Testing\Integration\IntegrationDsn` is the one parser every integration test uses (both DSN forms).
+- **Data layer on real servers.** Exception translation (including deadlock victims), statement timeouts and
+  pessimistic/optimistic repository locking are integration-tested on every server; `DatabaseCapabilities` (in
+  `firefly/data`) reads SKIP LOCKED and READPAST support from the server version; the [database support
+  matrix](docs/database-support.md) documents the result.
+
+### Changed
+
+- **`firefly/eda-postgres` is the database outbox plus `pg_notify`/`LISTEN`.** `PostgresEventPublisher`,
+  `PostgresEventConsumer` and its `OutboxPreCommitHook` now extend the `firefly/eda-database` classes;
+  `provider=postgres` reads the `firefly.eda.database.*` keys, with every `firefly.eda.postgres.*` key kept as an
+  alias. The outbox table gains `claimed_by` / `claimed_until` (run `php artisan migrate`).
+- **Transaction timeouts on SQL Server** set the session's `LOCK_TIMEOUT` and restore it afterwards.
+
+### Fixed
+
+- **Concurrent consumers could deliver an outbox row twice.** The Postgres consumer's `FOR UPDATE SKIP LOCKED` ran
+  outside any transaction, so its lock ended with the statement; on other drivers the claim was an unlocked read.
+  Every claim is now a lease committed before delivery.
+- **`RabbitMqRoundTripTest` failed against a real broker when `FIREFLY_RABBITMQ_DSN` was a URL**, which the old
+  parser read as one key and silently replaced with `127.0.0.1:5672`.
+- **The lumen sample's Postgres round trip called `firefly:eda:consume` without registering it.**
+- **The CQRS/EDA bridge figure still credited only the Postgres adapter with same-transaction atomicity.** Its
+  caption now names the database outbox (`provider=database` or `postgres`), and its adapter row draws the
+  `database` provider; a test derives both providers from their outbox auto-configurations.
+
+### Deprecated
+
+- `Firefly\Eda\Postgres\Outbox\OutboxSchema`, `OutboxRow`, `OutboxRelay` (its `$useSkipLocked` argument now picks
+  `auto` or the optimistic lease),
+  `RelayDownstream` and `Firefly\Eda\Postgres\Console\OutboxRelayCommand` — use their `Firefly\Eda\Database\…`
+  namesakes; the old names remain as subclasses for one release.
+
 ## [26.10.1] - 2026-10-06
 
 ### Added

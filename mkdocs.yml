@@ -132,6 +132,7 @@ nav:
       - Resilience & Scheduling:
           - Resilience: modules/resilience.md
           - Scheduling: modules/scheduling.md
+          - Scheduling Database Locks: modules/scheduling-database.md
       - Data & Domain:
           - Domain (DDD): modules/domain.md
           - Data & Repositories: modules/data.md
@@ -140,6 +141,7 @@ nav:
       - Eventing & Messaging:
           - Event-Driven Architecture: modules/eda.md
           - EDA Brokers: modules/eda-brokers.md
+          - EDA Database Outbox: modules/eda-database.md
           - Messaging: modules/messaging.md
       - CQRS:
           - CQRS (Command/Query): modules/cqrs.md
@@ -163,6 +165,7 @@ nav:
           - Installer: modules/installer.md
   - Reference:
       - CLI Reference: cli.md
+      - Database Support Matrix: database-support.md
       - Feature Flag Contract: feature-flags-contract.md
       - Versioning: versioning.md
   - Contributing:

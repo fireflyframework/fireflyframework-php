@@ -47,7 +47,9 @@ final class CapabilityCatalog
 
             new Capability('eda-kafka', 'firefly/eda-kafka', 'Kafka publisher/consumer over ext-rdkafka', requires: ['eda'], adapter: true),
             new Capability('eda-rabbitmq', 'firefly/eda-rabbitmq', 'RabbitMQ publisher/consumer over php-amqplib', requires: ['eda'], adapter: true),
-            new Capability('eda-postgres', 'firefly/eda-postgres', 'Postgres same-transaction outbox publisher', requires: ['eda'], adapter: true),
+            new Capability('eda-database', 'firefly/eda-database', 'Portable same-transaction outbox on any database connection, safe with concurrent consumers', requires: ['eda'], adapter: true),
+            new Capability('eda-postgres', 'firefly/eda-postgres', 'Postgres same-transaction outbox: the database outbox plus pg_notify/LISTEN', requires: ['eda-database'], adapter: true),
+            new Capability('scheduling-database', 'firefly/scheduling-database', 'Database lease-table and MySQL named-lock DistributedLock backends', requires: ['scheduling'], adapter: true),
             new Capability('scheduling-postgres', 'firefly/scheduling-postgres', 'Postgres advisory-lock DistributedLock backend', requires: ['scheduling'], adapter: true),
 
             new Capability('testing', 'firefly/testing', 'The first-party test kit: boot harness, sqlite fixtures, assertions', dev: true),

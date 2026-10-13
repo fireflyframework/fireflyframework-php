@@ -2231,12 +2231,36 @@ return [
     |   'none'     — no coordination (correct for a single instance). The default.
     |   'cache'    — the app's atomic cache lock.
     |   'postgres' — Postgres advisory locks; requires firefly/scheduling-postgres.
+    |   'database' — a lease table on any database connection; requires firefly/scheduling-database.
+    |   'mysql'    — MySQL/MariaDB GET_LOCK named locks; requires firefly/scheduling-database.
     |
     */
 
     'scheduling' => [
         'lock' => [
             'provider' => env('FIREFLY_SCHEDULING_LOCK', 'none'),
+
+            /*
+             | provider=database — the lease table firefly_scheduling_locks (run `php artisan migrate`) on
+             | `connection` (UNSET, null or blank = the default connection). The TTL is honoured on every
+             | driver: a hung task blocks its schedule for at most its #[Scheduled(lockTtl:)].
+             |
+             | Default: connection unset.
+            */
+            // 'database' => [
+            //     'connection' => 'mysql',
+            // ],
+
+            /*
+             | provider=mysql — GET_LOCK named locks, held for the connection's session and released when it
+             | closes; no table, no TTL (lock-ttl is ignored). `connection` must be a mysql or mariadb
+             | connection (UNSET, null or blank = the default connection).
+             |
+             | Default: connection unset.
+            */
+            // 'mysql' => [
+            //     'connection' => 'mysql',
+            // ],
         ],
 
         /*
@@ -2327,14 +2351,15 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Events — firefly/eda (+ eda-rabbitmq / eda-postgres / eda-kafka)
+    | Events — firefly/eda (+ eda-database / eda-rabbitmq / eda-postgres / eda-kafka)
     |--------------------------------------------------------------------------
     |
     | `provider` selects the EventPublisher adapter:
     |   'memory'   — in-process bus. The default; listeners run synchronously.
     |   'queue'    — Laravel queue; listeners run in `queue:work`.
+    |   'database' — requires firefly/eda-database; the same-transaction outbox on any database.
     |   'rabbitmq' — requires firefly/eda-rabbitmq.
-    |   'postgres' — requires firefly/eda-postgres; enables the same-transaction outbox.
+    |   'postgres' — requires firefly/eda-postgres; the database outbox plus pg_notify/LISTEN.
     |   'kafka'    — requires firefly/eda-kafka and ext-rdkafka.
     |
     | The broker providers are consumed by `php artisan firefly:eda:consume`; 'queue' uses
@@ -2362,6 +2387,19 @@ return [
         */
         'retries' => 0,
         'retry_delay' => 0.0,
+
+        /*
+         | Where a listener's envelope goes once its retries are exhausted, under EVERY provider. 'memory'
+         | keeps it in the process (lost when it exits); 'database' writes it to firefly_eda_dead_letters
+         | on `connection` (UNSET = the default connection) — run `php artisan migrate` — and
+         | `php artisan firefly:eda:dead-letters:replay` republishes it.
+         |
+         | Defaults: store 'memory', connection unset.
+        */
+        'dead-letter' => [
+            'store' => env('FIREFLY_EDA_DEAD_LETTER_STORE', 'memory'),
+            // 'connection' => 'mysql',
+        ],
 
         /*
          | Broker destinations `firefly:eda:consume` binds when `--destination` is not passed. Must be a
@@ -2413,9 +2451,38 @@ return [
         // ],
 
         /*
-         | provider=postgres — the same-transaction outbox. `connection` UNSET means the default database
-         | connection. `channel` is the LISTEN/NOTIFY channel; `max_attempts` bounds relay retries before
-         | a row is marked FAILED.
+         | provider=database — and provider=postgres, which reads the same block — the same-transaction
+         | outbox (firefly/eda-database). `connection` UNSET means the default database connection.
+         | `claim-strategy` decides how a consumer or relay takes rows: 'auto' asks the server (SKIP LOCKED
+         | on PostgreSQL, MySQL 8.0.1+ and MariaDB 10.6+; READPAST on SQL Server; a conditional-UPDATE lease
+         | everywhere else), or force 'skip-locked' | 'read-past' | 'optimistic-lease'. A claimed row
+         | belongs to its claimant for `lease-seconds` — size it above your slowest listener. An idle consumer
+         | sleeps `poll-interval-ms` between claims (provider=postgres waits on NOTIFY instead).
+         | `relay.downstream-provider` is only read by `php artisan firefly:outbox:relay`.
+         |
+         | Every key falls back to its firefly.eda.postgres.* spelling below when it is unset or null (an
+         | unset env() counts as unset).
+         |
+         | Defaults: connection unset, channel 'firefly_eda_events', max-attempts 3, claim-strategy 'auto',
+         | lease-seconds 300, poll-interval-ms 500, relay.downstream-provider unset.
+        */
+        // 'database' => [
+        //     'connection' => 'mysql',
+        //     'channel' => 'firefly_eda_events',
+        //     'max-attempts' => 3,
+        //     'claim-strategy' => env('FIREFLY_EDA_CLAIM_STRATEGY', 'auto'),
+        //     'lease-seconds' => 300,
+        //     'poll-interval-ms' => 500,
+        //     'relay' => [
+        //         'downstream-provider' => 'rabbitmq',
+        //     ],
+        // ],
+
+        /*
+         | provider=postgres — the legacy spelling of the block above (each key here is an alias of its
+         | firefly.eda.database.* twin); `channel` is also the LISTEN/NOTIFY channel. `connection` UNSET
+         | means the default database connection; `max_attempts` bounds relay retries before a row is
+         | marked FAILED.
          |
          | `relay.downstream_provider` is OPTIONAL and only used by `php artisan firefly:outbox:relay`,
          | which forwards committed outbox rows to a SECOND broker. It takes 'rabbitmq', 'kafka', an
@@ -2444,13 +2511,13 @@ return [
         // ],
 
         /*
-         | Broker publishers and the trace. The rabbitmq, kafka and postgres adapters route publish()
+         | Broker publishers and the trace. The rabbitmq, kafka, database and postgres adapters route publish()
          | through the same EdaTracing seam the in-memory and queue buses use, so the envelope that reaches
          | the wire carries a `traceparent` (and `tracestate`) and the consumer on the far side — ours or a
          | third party's — continues the trace instead of starting a new one. The consume side was already
-         | traced; this is the other half. On Postgres it covers BOTH writers of an outbox row: the
-         | EventPublisher bean and the in-transaction OutboxPreCommitHook, which is the only path a domain
-         | event takes under provider=postgres — so the traced row is the one that commits with the
+         | traced; this is the other half. On the outbox (provider=database or postgres) it covers BOTH writers
+         | of a row: the EventPublisher bean and the in-transaction OutboxPreCommitHook, which is the only path
+         | a domain event takes under those providers — so the traced row is the one that commits with the
          | aggregate. `firefly:outbox:relay` forwards a claimed row under that row's own trace rather than
          | starting a new one.
          |
@@ -2458,7 +2525,7 @@ return [
          | `firefly.observability.tracing.eda.enabled` are on, because with them off the bound EdaTracing is
          | the no-op. Set this to false to keep in-process spans while refusing to put trace identifiers on
          | a wire someone else reads: it is read in ONE place (Firefly\Eda\Tracing\BrokerTracing), by the
-         | three publisher beans AND by the relay, so a shipped adapter cannot slip past it — the relay
+         | four publisher beans AND by the relay, so a shipped adapter cannot slip past it — the relay
          | applies it whether you name the adapter by its alias (`rabbitmq`) or by its own class-string.
          | A downstream of your OWN, bound under `firefly.eda.relay.downstream` or named by a publisher
          | class this framework ships no adapter for, is yours to construct and therefore yours to gate:
@@ -2486,6 +2553,20 @@ return [
 
     'messaging' => [
         'provider' => env('FIREFLY_MESSAGING_PROVIDER', 'memory'),
+
+        /*
+         | Where a #[MessageListener(deadLetterTopic: …)] message goes once its retries are exhausted.
+         | 'memory' keeps it in the process (lost when it exits); 'database' writes it to
+         | firefly_messaging_dead_letters on `connection` (UNSET = the default connection), the raw value
+         | base64-encoded — run `php artisan migrate` — and
+         | `php artisan firefly:messaging:dead-letters:replay` republishes it to its original topic.
+         |
+         | Defaults: store 'memory', connection unset.
+        */
+        'dead-letter' => [
+            'store' => env('FIREFLY_MESSAGING_DEAD_LETTER_STORE', 'memory'),
+            // 'connection' => 'mysql',
+        ],
 
         // 'queue' => [
         //     'connection' => 'redis',

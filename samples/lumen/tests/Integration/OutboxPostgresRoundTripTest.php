@@ -7,6 +7,7 @@ namespace Lumen\Tests\Integration;
 use Firefly\Cqrs\Command\CommandBus;
 use Firefly\Cqrs\Query\QueryBus;
 use Firefly\Eda\Postgres\Outbox\OutboxSchema;
+use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Lumen\Application\Command\Deposit;
@@ -63,6 +64,6 @@ it('writes the transfer outbox row atomically on real Postgres and the consumer 
             ->count())->toBe(1)
         ->and(DB::table(OutboxSchema::TABLE)->count())->toBe($total); // never re-inserted
 })->skip(
-    ! extension_loaded('pdo_pgsql') || getenv('FIREFLY_PG_DSN') === false,
-    'Set FIREFLY_PG_DSN (and pdo_pgsql) to run the @group integration lumen Postgres outbox round-trip.',
+    ! OutboxPostgresIntegrationTestCase::postgresAvailable(),
+    (string) IntegrationDsn::skipReason('pgsql'),
 )->group('integration');

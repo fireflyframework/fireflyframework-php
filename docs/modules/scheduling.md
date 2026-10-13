@@ -33,6 +33,8 @@ always wins):
 |---|---|---|---|
 | *(unset)* / `none` | `NoneLock` | `firefly/scheduling` | **The default.** Every `tryAcquire()` succeeds and `release()` is a no-op — correct for a single-instance deployment (the only "node" always wins) and for a bare skeleton with no lock infrastructure, but provides **no real mutual exclusion** across nodes. |
 | `cache` | `CacheLock` | `firefly/scheduling` | Wraps Laravel's atomic `Cache::lock()`. Works over any lock-capable driver (`database`, `redis`, `memcached`, and `array` for tests). The `null` cache driver grants **no-op** locks (every acquire "succeeds" with no real exclusion, same as `NoneLock`); `array` is **per-process only** — it does not coordinate across separate PHP-FPM workers or hosts. Production multi-node deployments need `database` or `redis`. |
+| `database` | `DatabaseLeaseLock` | `firefly/scheduling-database` | A lease row per lock name on any database connection; the TTL is honoured on every driver. See [Scheduling Database Locks](scheduling-database.md). |
+| `mysql` | `MySqlNamedLock` | `firefly/scheduling-database` | MySQL/MariaDB `GET_LOCK`, session-scoped, no TTL. |
 | `postgres` | `PgAdvisoryLock` | `firefly/scheduling-postgres` | Session-scoped Postgres advisory lock (see below). Included in the root library; requires a PostgreSQL connection and `ext-pdo_pgsql`. |
 
 `CacheLock::tryAcquire()` throws a `ConfigurationException` up front if the configured cache store isn't a
@@ -235,7 +237,9 @@ there would abort the whole `schedule:run` for that minute rather than skip one 
 
 | Key | Default | Meaning |
 |---|---|---|
-| `firefly.scheduling.lock.provider` | `'none'` | The `DistributedLock` backend a locked task uses: `none`, `cache`, or `postgres` (needs `firefly/scheduling-postgres`) — see [The `DistributedLock` port](#the-distributedlock-port). |
+| `firefly.scheduling.lock.provider` | `'none'` | The `DistributedLock` backend a locked task uses: `none`, `cache`, `database`, `mysql` (both need `firefly/scheduling-database`) or `postgres` (needs `firefly/scheduling-postgres`) — see [The `DistributedLock` port](#the-distributedlock-port). |
+| `firefly.scheduling.lock.database.connection` | the default connection | The connection `DatabaseLeaseLock` writes its lease rows on. |
+| `firefly.scheduling.lock.mysql.connection` | the default connection | The MySQL or MariaDB connection `MySqlNamedLock` takes its named locks on. |
 | `firefly.scheduling.initial-delay.enabled` | `true` | Apply `#[Scheduled(initialDelay:)]`. `false` **refuses to boot** an application whose manifest carries one, rather than accepting the parameter and ignoring it. |
 | `firefly.scheduling.initial-delay.store` | `''` | Cache store the anchor lives in; `''` is the default store. Must be shared across processes (redis/memcached/database) wherever the scheduler is cron-driven. |
 | `firefly.scheduling.initial-delay.release` | `''` | Names this deployment, so every release arms its own window. Empty keeps the permanent anchor — one window per cache key, for the life of the key. |

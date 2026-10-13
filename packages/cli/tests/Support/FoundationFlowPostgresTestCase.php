@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Cli\Tests\Support;
 
+use Firefly\Testing\Integration\IntegrationDsn;
 use Firefly\Testing\Integration\RequiresDocker;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Foundation\Application;
@@ -14,8 +15,8 @@ use stdClass;
  * The @group integration variant of the Foundation harness: boots the SAME cached-path persistence slice
  * (WidgetRepository derived query + FoundationWriter #[Transactional] commit) but against REAL Postgres instead of
  * sqlite :memory:. Docker-gated via RequiresDocker (skips when Docker is absent). The Postgres backend is described
- * by FIREFLY_PG_DSN (host=…;port=…;dbname=…;user=…;password=…) — the exact opt-in mechanism scheduling-postgres'
- * PgAdvisoryLockIntegrationTest uses — wrapped in a duck-typed container and mapped into the Laravel `testing`
+ * by FIREFLY_PG_DSN (host=…;port=…;dbname=…;user=…;password=…) — parsed by firefly/testing's IntegrationDsn, the one
+ * parser every integration suite shares — wrapped in a duck-typed container and mapped into the Laravel `testing`
  * connection through firefly/testing's fireflyConfigFor() @ServiceConnection helper (the same shape a
  * testcontainers container exposes, so dropping in testcontainers/testcontainers later is a one-line swap). Only
  * the DB connection differs from the sqlite pass; every other layer boots identically.
@@ -80,15 +81,9 @@ abstract class FoundationFlowPostgresTestCase extends FoundationFlowTestCase
      */
     private function resolvePostgres(): object
     {
-        $dsn = getenv('FIREFLY_PG_DSN');
-        if (! is_string($dsn) || $dsn === '') {
+        $parts = IntegrationDsn::parts(IntegrationDsn::PGSQL);
+        if ($parts === null) {
             $this->markTestSkipped('Set FIREFLY_PG_DSN (host=…;port=…;dbname=…;user=…;password=…) to run the @group integration Postgres pass.');
-        }
-
-        $parts = [];
-        foreach (explode(';', $dsn) as $kv) {
-            [$key, $value] = array_pad(explode('=', $kv, 2), 2, '');
-            $parts[$key] = $value;
         }
 
         return new class($parts)

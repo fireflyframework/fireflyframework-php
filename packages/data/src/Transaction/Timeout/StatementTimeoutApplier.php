@@ -35,6 +35,11 @@ use Throwable;
  *   sqlite         PDO::ATTR_TIMEOUT = <s>, the busy timeout — the only knob sqlite has (a statement that is
  *                  merely slow is not interruptible). PDO cannot read the attribute back, so the restore goes
  *                  to the connection's configured `busy_timeout` (ms) or PDO_SQLITE's own 60 s default.
+ *   sqlsrv         SET LOCK_TIMEOUT <ms> — how long a statement waits for a lock before failing with error 1222
+ *                  (translated to CannotAcquireLockException). SQL Server has no server-side knob that interrupts a
+ *                  statement that is merely slow, so a lock wait is the part of the budget the database can enforce.
+ *                  The setting is SESSION-scoped, so the previous value (@@LOCK_TIMEOUT, -1 = wait forever by
+ *                  default) is read first and put back afterwards, exactly like the mysql variables.
  *   anything else  nothing.
  *
  * Every statement is best-effort, exactly like the isolation SET: a driver that refuses it does not fail the
@@ -58,6 +63,7 @@ final class StatementTimeoutApplier
                 'mysql' => $this->isMaria($connection) ? $this->mariadb($connection, $seconds) : $this->mysql($connection, $seconds),
                 'mariadb' => $this->mariadb($connection, $seconds),
                 'sqlite' => $this->sqlite($connection, $seconds),
+                'sqlsrv' => $this->sqlsrv($connection, $seconds),
                 default => $noop,
             };
         } catch (Throwable) {
@@ -155,6 +161,44 @@ final class StatementTimeoutApplier
         return static function () use ($pdo, $restoreTo): void {
             try {
                 $pdo->setAttribute(PDO::ATTR_TIMEOUT, $restoreTo);
+            } catch (Throwable) {
+                // Best-effort, see the class docblock.
+            }
+        };
+    }
+
+    /**
+     * @return Closure(): void
+     */
+    private function sqlsrv(Connection $connection, int $seconds): Closure
+    {
+        $noop = static function (): void {};
+
+        try {
+            $row = $connection->selectOne('select @@lock_timeout as value');
+            // unprepared(), never statement(): pdo_sqlsrv runs a prepared statement through sp_prepexec, and SQL Server
+            // restores a SET made inside it when that call returns, so the session would keep waiting forever.
+            /** @var literal-string $set an integer formatted by %d: nothing but digits reaches the batch */
+            $set = sprintf('set lock_timeout %d', $seconds * 1000);
+            $connection->unprepared($set);
+        } catch (Throwable) {
+            return $noop;
+        }
+
+        $previous = is_object($row) ? (get_object_vars($row)['value'] ?? null) : null;
+
+        if (! is_numeric($previous)) {
+            // Nothing came back (pretend(), a server that answers nothing): there is no value to put back.
+            return $noop;
+        }
+
+        $restore = (int) $previous;
+
+        return static function () use ($connection, $restore): void {
+            try {
+                /** @var literal-string $reset an integer formatted by %d */
+                $reset = sprintf('set lock_timeout %d', $restore);
+                $connection->unprepared($reset);
             } catch (Throwable) {
                 // Best-effort, see the class docblock.
             }
