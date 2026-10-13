@@ -32,6 +32,7 @@
         "firefly/data": "*@dev",
         "firefly/domain": "*@dev",
         "firefly/eda": "*@dev",
+        "firefly/eda-database": "*@dev",
         "firefly/kernel": "*@dev",
         "illuminate/console": "^13.0",
         "illuminate/contracts": "^13.0",

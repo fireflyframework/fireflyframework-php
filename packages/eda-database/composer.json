@@ -1,0 +1,64 @@
+{
+    "name": "firefly/eda-database",
+    "description": "LaraFly eda database adapter: a GENUINE same-transaction firefly_eda_outbox on any Laravel database connection (PostgreSQL, MySQL, MariaDB, SQL Server, SQLite), claimed by leases through an OutboxClaimStrategy port (SKIP LOCKED, READPAST or a portable optimistic lease, chosen from the server's capabilities) so any number of consumers and relays can run concurrently; an in-process consumer for #[EventListener] handlers and an OPTIONAL firefly:outbox:relay to a downstream broker. Auto-configured behind firefly.eda.provider=database.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        {
+            "name": "Firefly Software Solutions Inc.",
+            "homepage": "https://github.com/fireflyframework"
+        }
+    ],
+    "keywords": [
+        "firefly",
+        "laravel",
+        "outbox",
+        "database"
+    ],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/eda-database"
+    },
+    "require": {
+        "php": "^8.3",
+        "firefly/actuator": "*@dev",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/cqrs": "*@dev",
+        "firefly/data": "*@dev",
+        "firefly/domain": "*@dev",
+        "firefly/eda": "*@dev",
+        "firefly/kernel": "*@dev",
+        "illuminate/console": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/database": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Eda\\Database\\EdaDatabaseServiceProvider"
+            ]
+        },
+        "branch-alias": {
+            "dev-main": "26.x-dev"
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Firefly\\Eda\\Database\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Firefly\\Eda\\Database\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "stable",
+    "config": {
+        "sort-packages": true
+    }
+}

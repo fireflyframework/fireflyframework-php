@@ -38,6 +38,7 @@
         "illuminate/support": "^13.0"
     },
     "require-dev": {
+        "firefly/eda-database": "*@dev",
         "firefly/eda-postgres": "*@dev",
         "firefly/testing": "*@dev",
         "orchestra/testbench": "^11.1",

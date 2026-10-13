@@ -1066,7 +1066,7 @@ Full flag reference and generated-file contents: [CLI](docs/cli.md).
 
 One published library, `fireflyframework/larafly`, contains the components under `packages/*` and the bundled
 application skeleton. Its `replace` entries satisfy component requirements at the framework's version;
-component names remain useful module boundaries, with their own test suites. The 33
+component names remain useful module boundaries, with their own test suites. The 35
 [module guides](docs/modules/) below group them by concern:
 
 | Group | Module | Package(s) |
@@ -1082,12 +1082,14 @@ component names remain useful module boundaries, with their own test suites. The
 | Web & API | [OpenAPI](docs/modules/openapi.md) — OpenAPI 3.1 generated from the compiled manifests, `firefly:openapi`, official Swagger UI from your own origin | `firefly/openapi` |
 | Resilience & Scheduling | [Resilience](docs/modules/resilience.md) — retry, circuit breaker, bulkhead, timeout, rate limiter, fallback | `firefly/resilience` |
 | Resilience & Scheduling | [Scheduling](docs/modules/scheduling.md) — `#[Scheduled]` + distributed locks (cache or Postgres advisory) | `firefly/scheduling`, `firefly/scheduling-postgres` |
+| Resilience & Scheduling | [Scheduling Database Locks](docs/modules/scheduling-database.md) — lease-table and MySQL named-lock `DistributedLock` providers | `firefly/scheduling-database` |
 | Data & Domain | [Domain (DDD)](docs/modules/domain.md) — `Entity`, `ValueObject`, `AggregateRoot`, `DomainEvent` | `firefly/domain` |
 | Data & Domain | [Data & Repositories](docs/modules/data.md) — CRUD/paging ports, derived queries, query by example, `#[Modifying]`/`#[Projection]`/`#[Lock]`/`#[EntityGraph]`, slices, exception translation | `firefly/data` |
 | Data & Domain | [Relational Data](docs/modules/data-relational.md) — `EloquentRepository`, soft-delete, auditing, optimistic and pessimistic locking | `firefly/data` |
 | Data & Domain | [Transactions](docs/modules/transactional.md) — `#[Transactional]`, propagation, isolation, timeouts, `#[TransactionalEventListener]` | `firefly/data` |
 | Eventing & Messaging | [Event-Driven Architecture](docs/modules/eda.md) — `EventPublisher`, `#[EventListener]`, retry/DLQ | `firefly/eda` |
 | Eventing & Messaging | [EDA Brokers](docs/modules/eda-brokers.md) — RabbitMQ/Postgres/Kafka adapters, the same-tx outbox | `firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka` |
+| Eventing & Messaging | [EDA Database Outbox](docs/modules/eda-database.md) — the portable same-transaction outbox on every database, concurrent consumers | `firefly/eda-database` |
 | Eventing & Messaging | [Messaging](docs/modules/messaging.md) — the lower-level raw-bytes broker layer | `firefly/messaging` |
 | CQRS | [CQRS](docs/modules/cqrs.md) — `CommandBus`/`QueryBus`, the domain→integration-event bridge | `firefly/cqrs` |
 | Security | [Security](docs/modules/security.md) — principal model, `HttpSecurity`, `#[PreAuthorize]`, JWT/OAuth2 | `firefly/security` |
