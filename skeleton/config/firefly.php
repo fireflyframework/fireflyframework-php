@@ -3058,4 +3058,83 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Event sourcing — firefly/eventsourcing
+    |--------------------------------------------------------------------------
+    |
+    | Events are the source of truth: an aggregate's state is the replay of its stream. See
+    | docs/modules/eventsourcing.md.
+    |
+    */
+
+    'eventsourcing' => [
+
+        /*
+         | Where events live: `memory` (this process only, the default) or `database` (portable tables on
+         | `connection`, null = the default connection; run the migration, --tag=firefly-eventsourcing-migrations
+         | to publish it). Concurrent appends to one aggregate are refused with a 409 ConcurrencyException except
+         | the first; the global stream every projection follows is numbered in COMMIT order, so a reader never
+         | skips an event that committed late. `batch-size` caps one numbering round and the default page.
+         | Defaults: memory, null, 500.
+        */
+        'store' => [
+            'provider' => env('FIREFLY_EVENTSOURCING_STORE', 'memory'),
+            'connection' => env('FIREFLY_EVENTSOURCING_DB_CONNECTION'),
+            'batch-size' => 500,
+        ],
+
+        /*
+         | Snapshots of aggregates that implement SnapshotAware: one each time the version crosses a multiple of
+         | `threshold` (0 = never), the newest `keep-count` kept. `store` is memory or database; null follows
+         | store.provider. A snapshot that cannot be written is logged and the append stands.
+         | Defaults: true, null, 50, 3.
+        */
+        'snapshot' => [
+            'enabled' => env('FIREFLY_EVENTSOURCING_SNAPSHOT_ENABLED', true),
+            'store' => env('FIREFLY_EVENTSOURCING_SNAPSHOT_STORE'),
+            'threshold' => (int) env('FIREFLY_EVENTSOURCING_SNAPSHOT_THRESHOLD', 50),
+            'keep-count' => 3,
+        ],
+
+        /*
+         | Projections follow the global stream from a checkpoint (`checkpoint-store`: memory or database, null
+         | follows store.provider), `batch-size` events per transaction, under a `lease-ttl` lease on the
+         | firefly.scheduling.lock.provider DistributedLock so one node advances each projection (keep a batch
+         | well under the lease). Live mode (php artisan firefly:eventsourcing:projections:run) sleeps
+         | `poll-interval` when idle. The `eventsourcing` health component turns DOWN when a projection lags more
+         | than `max-lag` events (0 = never). Defaults: null, 100, 30s, 1s, 0.
+        */
+        'projection' => [
+            'checkpoint-store' => env('FIREFLY_EVENTSOURCING_CHECKPOINT_STORE'),
+            'batch-size' => 100,
+            'lease-ttl' => '30s',
+            'poll-interval' => '1s',
+            'max-lag' => 0,
+        ],
+
+        /*
+         | Publish every appended event to firefly/eda on `destination`. Under firefly.eda.provider database or
+         | postgres the outbox row is written IN the append's transaction (the event store and the outbox must
+         | share a connection, or the boot is refused); under any other provider the events are published after
+         | commit, and a rolled-back append publishes nothing. Aggregate types in `exclude-aggregate-types` are
+         | never published. Defaults: false, eventsourcing.events, ['orchestration.execution'].
+        */
+        'publish' => [
+            'enabled' => env('FIREFLY_EVENTSOURCING_PUBLISH_ENABLED', false),
+            'destination' => env('FIREFLY_EVENTSOURCING_PUBLISH_DESTINATION', 'eventsourcing.events'),
+            'exclude-aggregate-types' => ['orchestration.execution'],
+        ],
+
+        // Stamp every event with the TenantResolver bean's tenant and refuse to load another tenant's stream
+        // (projections still read every tenant). Default: false.
+        'tenancy' => ['enabled' => env('FIREFLY_EVENTSOURCING_TENANCY_ENABLED', false)],
+
+        // Stamp the authenticated Laravel user's id into every event's metadata (x-user-id). Default: true.
+        'metadata' => ['capture-user' => true],
+
+        // The `eventsourcing` health component: the store, the global position and every projection's lag.
+        'health' => ['enabled' => true],
+    ],
+
 ];
