@@ -28,6 +28,19 @@ return [
                     0 => 'Firefly\\Config\\Config',
                 ],
             ],
+            1 => [
+                'method' => 'webhookIdempotencyStore',
+                'returns' => 'Firefly\\Webhooks\\Idempotency\\WebhookIdempotencyStore',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Webhooks\\WebhooksSettings',
+                    1 => 'Illuminate\\Container\\Container',
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [

@@ -35,6 +35,25 @@ return [
                     ],
                 ],
             ],
+            1 => [
+                'method' => 'webhookIdempotencyStore',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.webhooks.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Webhooks\\Idempotency\\WebhookIdempotencyStore',
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
 ];
