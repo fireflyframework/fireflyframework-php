@@ -2,7 +2,7 @@
 
 # CQRS: Comandos y Consultas {.chtitle}
 
-Al terminar este capítulo conocerás la forma de los dos buses de `firefly/cqrs` (`CommandBus::send` / `QueryBus::ask`), cómo `#[CommandHandler]`/`#[QueryHandler]` registran un manejador como bean de DI y como destino de despacho a la vez — con el tipo de mensaje manejado *inferido* del propio parámetro `handle()` del manejador —, exactamente qué aspecto tiene la tubería acotada que ejecuta cada bus, cómo la excepción propia de un manejador llega hasta quien lo llama envuelta en una `CommandProcessingException`/`QueryProcessingException`, y cómo `HandlerScanner` compila el descubrimiento de manejadores en un manifiesto que `firefly:cache` escribe justo al lado de los manifiestos de componentes y rutas que ya conociste en los Capítulos 2 y 4.
+Al terminar este capítulo conocerás la forma de los dos buses de `firefly/cqrs` (`CommandBus::send` / `QueryBus::ask`), cómo `#[CommandHandler]`/`#[QueryHandler]` registran un manejador como bean de DI y como destino de despacho a la vez — con el tipo de mensaje manejado *inferido* del propio parámetro `handle()` del manejador —, exactamente qué aspecto tiene la tubería acotada que ejecuta cada bus, cómo la excepción propia de un manejador llega hasta quien lo llama envuelta en una `CommandProcessingException`/`QueryProcessingException`, cómo `#[CachedQuery]` guarda en caché la respuesta de una consulta y `#[InvalidatesQuery]` la retira cuando se confirma el evento que la deja obsoleta, y cómo `HandlerScanner` compila el descubrimiento de manejadores en un manifiesto que `firefly:cache` escribe justo al lado de los manifiestos de componentes y rutas que ya conociste en los Capítulos 2 y 4.
 
 !!! note "Término nuevo: CQRS"
     **Command Query Responsibility Segregation** (segregación de responsabilidad entre comandos y consultas) trata las escrituras y las lecturas como dos tipos distintos de mensaje con dos caminos de despacho distintos — un **comando** es una intención de cambiar el modelo de escritura y devuelve como mucho un id o un recuento; una **consulta** es una lectura pura que nunca muta nada. `firefly/cqrs` le da a cada uno su propio bus, su propio atributo de manejador y su propia tubería, así que los dos nunca se mezclan por accidente en un mismo punto de llamada.
@@ -473,6 +473,84 @@ El tipo exterior te dice *qué operación del bus* falló; el tipo interior — 
 
 ---
 
+## Cachear consultas: `#[CachedQuery]` y `#[InvalidatesQuery]`
+
+La tabla de la tubería de arriba nombra una etapa de caché de consultas que, por defecto, siempre falla. Fijar `firefly.cqrs.query.cache.provider=cache` cambia `NoOpQueryCache` por `CacheQueryCache`, que guarda la respuesta de una consulta en un almacén de caché de Laravel, y dos atributos deciden qué se guarda en caché y qué lo deja obsoleto. La lectura del saldo de Lumen es la candidata natural — todas las pantallas del monedero la piden, y solo cambia cuando se mueve dinero:
+
+<!-- source: samples/lumen/src/Application/Query/GetBalance.php -->
+```php
+#[CachedQuery(ttl: 60)]
+final readonly class GetBalance
+{
+    public function __construct(public string $walletId) {}
+}
+```
+
+La clave es el propio valor de la consulta. `CacheQueryCache` la deriva de la clase de la consulta y de sus propiedades públicas, así que dos objetos `GetBalance('w-1')` comparten una entrada y `GetBalance('w-2')` tiene la suya. Una respuesta `null` — un monedero desconocido — nunca se guarda; una consulta con estado privado o protegido no se puede convertir en clave y simplemente se ejecuta sin caché; y una caché que falla se registra en el log y se esquiva, porque una caché puede hacer más rápida una consulta, pero nunca debe hacerla fallar. `ttl: 60` acota cuánto vive una entrada y, si falta, se usa `firefly.cqrs.query.cache_ttl`; `group:` (por defecto, la clase de la consulta) nombra el conjunto que una sola expulsión puede vaciar de golpe.
+
+La otra mitad le corresponde al evento. Un saldo en caché es incorrecto en el momento en que se confirma un depósito, y el evento es lo único que lo sabe, así que la regla se escribe en la clase del evento:
+
+<!-- source: samples/lumen/src/Domain/Event/FundsDeposited.php -->
+```php
+#[PublishDomainEvent('wallet.events')]
+#[InvalidatesQuery(GetBalance::class, with: ['walletId' => 'walletId'])]
+final readonly class FundsDeposited extends DomainEvent
+{
+    public function __construct(
+        public string $walletId,
+        public int $amountMinor,
+        public string $currency,
+        public int $balanceMinor,
+    ) {
+        parent::__construct();
+    }
+}
+```
+
+`with:` asigna cada propiedad pública de la consulta a una propiedad del evento, de modo que la expulsión retira exactamente una entrada: la del monedero que cambió. `HandlerScanner` rechaza un mapa que nombre una propiedad desconocida o que se deje una fuera — en tiempo de `firefly:cache`, no en producción, porque un mapa erróneo derivaría una clave que ninguna entrada tiene y fallaría en silencio. La expulsión se ejecuta cuando el evento se despacha tras confirmarse su transacción, así que un depósito revertido no expulsa nada, y se ejecuta de nuevo, emparejada por tipo de evento, cuando el mismo evento llega por el bus de eventos desde otro proceso. Si omites `with:`, se va el grupo entero; si escribes `key: 'statement:{account}'`, se expulsa en su lugar la plantilla de clave propia de una consulta `Cacheable`. `FundsWithdrawn` lleva el mismo atributo.
+
+El ejemplo demuestra el comportamiento que importa, con la caché activada en `LumenQueryCacheTestCase` (`cache.default=array`, `provider=cache`) y en ningún otro sitio:
+
+<!-- source: samples/lumen/tests/Application/QueryCacheTest.php -->
+```php
+    expect($queries->ask(new GetBalance($id)))->toBe(1000);
+
+    // Changed behind the bus's back: the cached answer does not see it.
+    DB::table('wallets')->where('id', $id)->update(['balance_minor' => 5000]);
+    expect($queries->ask(new GetBalance($id)))->toBe(1000);
+
+    // A committed deposit raises FundsDeposited, whose #[InvalidatesQuery] evicts exactly this wallet's balance.
+    $commands->send(new Deposit($id, 500));
+    expect($queries->ask(new GetBalance($id)))->toBe(5500);
+```
+
+La segunda respuesta es la de la caché — la fila cambió por debajo y no se enteró, que es todo el sentido de una caché y todo su riesgo. El depósito expulsa la entrada, y la siguiente lectura vuelve a ser la de la base de datos: 5000 más 500. El mismo fichero demuestra que un depósito en el monedero A deja en paz el saldo en caché del monedero B, y que una retirada expulsa igual que un depósito.
+
+Los grupos se expulsan por **generaciones**, no por etiquetas de caché, así que la expulsión funciona en todos los almacenes, `file` y `database` incluidos: una entrada expulsada deja de ser alcanzable al instante y caduca con su TTL, y por eso merece la pena fijar uno. La configuración de referencia trae el bloque comentado:
+
+<!-- source: skeleton/config/firefly.php -->
+```php
+// 'query' => [
+//     'cache_ttl' => 60,
+//     'cache' => [
+//         'provider' => env('FIREFLY_CQRS_QUERY_CACHE', 'none'),
+//         'store' => env('FIREFLY_CQRS_QUERY_CACHE_STORE', ''),
+//         'prefix' => 'firefly:cqrs:',
+//         'invalidation' => [
+//             'ledger.closed' => [App\Ledger\LedgerTotals::class],
+//         ],
+//     ],
+// ],
+```
+
+!!! warning "La clave es el objeto valor"
+    Una consulta cuya respuesta depende del inquilino o del usuario autenticado debe llevarlos como propiedades públicas. `GetBalance` es segura porque el id del monedero es la pregunta entera; una consulta `MyWallets` sin propiedad `ownerId` le daría a cada usuario la lista del primero.
+
+!!! note "Por qué un evento de dominio nombra una consulta"
+    `FundsDeposited` ahora importa `GetBalance`, una clase de la capa de aplicación, del mismo modo que ya lleva `#[PublishDomainEvent]`. El framework pone la regla ahí a propósito — el evento es quien sabe lo que deja obsoleto — y con ello se gana la expulsión precisa, de un solo monedero. La alternativa, `firefly.cqrs.query.cache.invalidation` (tipo de evento ⇒ clases de consulta, para eventos de los que este proceso no tiene clase), mantiene limpio el dominio y expulsa el saldo de todos los monederos en cada depósito.
+
+---
+
 ## Compilado, no reflexionado: `HandlerScanner` → `HandlerManifest` → `firefly:cache`
 
 `HandlerScanner` es el **único** punto de reflexión en `packages/cqrs/src` (la misma invariante forzada por grep que el Capítulo 6 describió para `firefly/domain`). Recorre una vez las raíces PSR-4 de la aplicación, resuelve cada `#[CommandHandler]`/`#[QueryHandler]` (ejecutando exactamente la inferencia de `messageType()` que acabas de leer) en un `HandlerDescriptor`, y entrega la lista completa a `HandlerManifestCompiler`, que la `var_export()`a en un archivo PHP de array plano — la misma técnica sin reflexión que el Capítulo 2 introdujo para el manifiesto de componentes y el Capítulo 3 para `#[ConfigProperties]`.
@@ -498,6 +576,7 @@ Equivócate en esto en una aplicación — añade un manejador, olvida volver a 
 | `#[CommandHandler]` / `#[QueryHandler]` | Especializan `#[Component]` — un solo atributo registra el manejador como bean de DI **y** como destino de despacho |
 | Inferencia del tipo de mensaje | `HandlerScanner` lee el único parámetro de `handle()` a menos que se dé una cadena de clase explícita |
 | La tubería acotada | correlacionar → validar → autorizar → (obtener de caché, solo consultas) → resolver e invocar → (guardar en caché, solo consultas) → métricas |
+| `#[CachedQuery]` / `#[InvalidatesQuery]` | Guarda la respuesta de una consulta por valor en un almacén de caché de Laravel (`firefly.cqrs.query.cache.provider=cache`); el evento que la deja obsoleta expulsa una entrada (`with:`) o un grupo tras confirmarse |
 | `CommandProcessingException` / `QueryProcessingException` | Envoltorios que preservan la categoría; el fallo original siempre es alcanzable vía `getPrevious()` |
 | `HandlerRegistry` | Una clase de comando/consulta se mapea a exactamente un manejador — un registro duplicado falla ruidosamente en tiempo de cableado |
 | `HandlerScanner` → `HandlerManifest` | El único punto de reflexión; compilado por `firefly:cache` (uno de trece pares escáner/compilador) en un manifiesto sin reflexión |
@@ -509,3 +588,4 @@ Equivócate en esto en una aplicación — añade un manejador, olvida volver a 
 1. **Provoca `CommandHandlerNotFoundException`.** En una copia de trabajo del proyecto (no en el paquete distribuido `samples/lumen`), define una nueva clase de comando sin ningún `#[CommandHandler]` en toda la aplicación, despáchala a través de `CommandBus::send()`, y confirma que obtienes una `CommandHandlerNotFoundException` sin envolver en nada (la lanza directamente el registro, antes de que el propio bloque `catch` del bus pudiera envolver el fallo de un manejador).
 2. **Fuerza un `handle()` ambiguo.** Dale a una clase `#[QueryHandler]` un método `handle()` con dos parámetros (o un parámetro tipado `object`) y ejecuta `php artisan firefly:cache`. Confirma que falla ruidosamente con `CqrsConfigurationException` nombrando la clase y el método exactos, en vez de omitir el manejador silenciosamente.
 3. **Lee el manifiesto compilado.** Tras ejecutar `firefly:cache` en un proyecto con `OpenWalletHandler` y `GetBalanceHandler` presentes, abre `bootstrap/cache/firefly/handlers.php` y encuentra ambas entradas. Empareja el campo `kind` de cada array (`'command'` o `'query'`) con el enum `HandlerKind` que describió este capítulo.
+4. **Rompe una expulsión a propósito.** En una copia de trabajo del proyecto, borra la línea `#[InvalidatesQuery]` de `FundsWithdrawn` y ejecuta `samples/lumen/tests/Application/QueryCacheTest.php`. Confirma que solo falla la prueba de la retirada, con el saldo antiguo, y restaura la línea.
