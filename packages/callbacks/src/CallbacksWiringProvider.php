@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Callbacks;
 
+use Firefly\Callbacks\Boot\CallbacksWiringPass;
 use Firefly\Config\Config;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
@@ -22,7 +23,7 @@ final class CallbacksWiringProvider extends FireflyServiceProvider
      */
     public function passes(): array
     {
-        return [];
+        return [new CallbacksWiringPass];
     }
 
     public function boot(): void

@@ -73,6 +73,82 @@ return [
                     ],
                 ],
             ],
+            3 => [
+                'method' => 'callbackSender',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.callbacks.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Callbacks\\Delivery\\CallbackSender',
+                        ],
+                    ],
+                ],
+            ],
+            4 => [
+                'method' => 'callbackSigner',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.callbacks.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Callbacks\\Delivery\\CallbackSigner',
+                        ],
+                    ],
+                ],
+            ],
+            5 => [
+                'method' => 'callbackDeliverer',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.callbacks.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Callbacks\\Delivery\\CallbackDeliverer',
+                        ],
+                    ],
+                ],
+            ],
+            6 => [
+                'method' => 'callbackDispatcher',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.callbacks.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Callbacks\\Delivery\\CallbackDispatcher',
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
 ];

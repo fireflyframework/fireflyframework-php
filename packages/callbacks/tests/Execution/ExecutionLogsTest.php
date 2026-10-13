@@ -12,6 +12,7 @@ use Firefly\Callbacks\Execution\InMemoryExecutionLog;
 use Firefly\Callbacks\Schema\CallbackSchema;
 use Firefly\Callbacks\Subscription\CallbackSubscription;
 use Firefly\Eda\EventEnvelope;
+use Firefly\Resilience\ResilienceServiceProvider;
 use Illuminate\Database\Capsule\Manager as Capsule;
 
 function w4ExecutionsSqlite(): DatabaseExecutionLog
@@ -117,7 +118,11 @@ it('keeps the last error short enough to store', function () {
 });
 
 it('binds the memory log by default through the boot pipeline', function () {
-    $app = fireflyApplication(config: ['firefly' => ['callbacks' => ['enabled' => true]]], providers: [CallbacksServiceProvider::class, CallbacksWiringProvider::class]);
+    $app = fireflyApplication(
+        config: ['firefly' => ['callbacks' => ['enabled' => true], 'resilience' => ['method' => ['enabled' => false]]]],
+        providers: [ResilienceServiceProvider::class, CallbacksServiceProvider::class, CallbacksWiringProvider::class],
+        needs: ['cache'],
+    );
 
     expect($app->make(ExecutionLog::class))->toBeInstanceOf(InMemoryExecutionLog::class);
 });
