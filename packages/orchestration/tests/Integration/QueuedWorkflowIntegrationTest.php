@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 
 uses(QueuedWorkflowIntegrationTestCase::class);
 
-it('queues an ASYNC workflow on the database queue, runs it in a worker and ignores a redelivery', function (string $server): void {
+it('queues an ASYNC workflow on the database queue, runs it in a worker and ignores a redelivery', function (string $lane): void {
     /** @var QueuedWorkflowIntegrationTestCase $this */
     $workflows = $this->app()->make(WorkflowEngine::class);
     $ledger = $this->app()->make(Ledger::class);
@@ -22,7 +22,7 @@ it('queues an ASYNC workflow on the database queue, runs it in a worker and igno
     $started = $workflows->start('statement', ['account' => 'acc-ü'], correlationId: 'stmt-it');
     $queued = DB::table(QueuedWorkflowCapstoneTestCase::JOBS_TABLE)->pluck('queue')->all();
 
-    expect(DB::connection()->getDriverName())->toBe(IntegrationDatabase::servers()[$server][0])
+    expect(DB::connection()->getDriverName())->toBe(IntegrationDatabase::driver($lane))
         ->and($started->status)->toBe(ExecutionStatus::Pending)
         ->and($queued)->toBe(['workflows']);
 
@@ -40,4 +40,4 @@ it('queues an ASYNC workflow on the database queue, runs it in a worker and igno
         ->and(DB::table(QueuedWorkflowCapstoneTestCase::JOBS_TABLE)->count())->toBe(0)
         ->and($workflows->find('stmt-it')?->toArray())->toBe($finished?->toArray())
         ->and($ledger->lines)->toBe(['hook start statement', 'render acc-ü', 'deliver acc-ü']);
-})->with(array_keys(IntegrationDatabase::servers()))->group('integration');
+})->with(IntegrationDatabase::lanes())->group('integration');

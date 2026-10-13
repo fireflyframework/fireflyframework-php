@@ -20,9 +20,11 @@ $arguments = array_values(array_map(static fn (mixed $argument): string => is_sc
 
 if (str_starts_with($target, 'sqlite:')) {
     $connection = IntegrationDatabase::sqlite(substr($target, 7));
+} elseif (str_starts_with($target, 'lane:')) {
+    $connection = IntegrationDatabase::connection(substr($target, 5));
 } else {
-    [$driver, $variable] = explode('|', $target, 2) + ['', ''];
-    $connection = IntegrationDatabase::connection($driver, $variable);
+    fwrite(STDERR, "unknown target [{$target}]\n");
+    exit(1);
 }
 
 $engines = TestEngines::create(persistence: new DatabaseExecutionPersistenceProvider($connection), deadLetters: new DatabaseDeadLetterStore($connection));

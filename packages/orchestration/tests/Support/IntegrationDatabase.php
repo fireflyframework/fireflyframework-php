@@ -5,83 +5,75 @@ declare(strict_types=1);
 namespace Firefly\Orchestration\Tests\Support;
 
 use Firefly\Orchestration\Persistence\OrchestrationSchema;
+use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Database\Capsule\Manager;
 use Illuminate\Database\Connection;
-use RuntimeException;
 
 /**
- * Real database connections for the integration lane, from the program's DSN variables
- * (`host=…;port=…;dbname=…;user=…;password=…`). A missing variable or PDO driver SKIPS, never fails. W1 moves
- * this parsing into packages/testing; until this branch merges it, it lives here (spec decision D16).
- * fresh() drops and recreates the three orchestration tables only — never a database.
+ * Real database connections for the orchestration integration tests, one per lane of the CI matrix
+ * (IntegrationDsn::lanes(): the four servers plus a sqlite FILE). Every DSN is read by firefly/testing's
+ * IntegrationDsn, so a lane whose variable or PDO driver is missing skips with IntegrationDsn::skipReason(), and a
+ * CI job that exports only its own DSN runs exactly its own lane (and sqlite). fresh() drops and recreates the three
+ * orchestration tables only — never a database.
  */
 final class IntegrationDatabase
 {
-    /** @return array<string, array{0: string, 1: string, 2: string}> */
-    public static function servers(): array
+    /** @return list<string> every lane of the integration matrix */
+    public static function lanes(): array
     {
-        return [
-            'PostgreSQL' => ['pgsql', 'FIREFLY_PG_DSN', 'pdo_pgsql'],
-            'MySQL' => ['mysql', 'FIREFLY_MYSQL_DSN', 'pdo_mysql'],
-            'MariaDB' => ['mariadb', 'FIREFLY_MARIADB_DSN', 'pdo_mysql'],
-            'SQL Server' => ['sqlsrv', 'FIREFLY_SQLSRV_DSN', 'pdo_sqlsrv'],
-        ];
-    }
-
-    public static function skipReason(string $variable, string $extension): ?string
-    {
-        $dsn = getenv($variable);
-        if (! is_string($dsn) || $dsn === '') {
-            return "Set {$variable} to an isolated server.";
-        }
-
-        return extension_loaded($extension) ? null : "The {$extension} extension is not loaded.";
-    }
-
-    public static function connection(string $driver, string $variable): Connection
-    {
-        $capsule = new Manager;
-        $capsule->addConnection(self::config($driver, $variable), $variable);
-
-        return $capsule->getConnection($variable);
+        return IntegrationDsn::lanes();
     }
 
     /**
-     * The Laravel connection config for one server — what connection() opens, and what a booted capstone sets
-     * under `database.connections.*` to run the real pipeline against that server.
+     * The lanes that are a separate server process with row-level locking — what a test of two concurrent sessions
+     * interleaving inside one open transaction needs. sqlite has one writer per database file, so a second session's
+     * write while the first holds its transaction is not an interleaving there, only a wait.
+     *
+     * @return list<string>
+     */
+    public static function serverLanes(): array
+    {
+        return array_values(array_filter(IntegrationDsn::lanes(), static fn (string $lane): bool => $lane !== 'sqlite'));
+    }
+
+    public static function skipReason(string $lane): ?string
+    {
+        return IntegrationDsn::skipReason($lane);
+    }
+
+    /** The Laravel driver name a connection on $lane reports. */
+    public static function driver(string $lane): string
+    {
+        return IntegrationDsn::DATABASES[$lane]['driver'];
+    }
+
+    public static function connection(string $lane): Connection
+    {
+        return IntegrationDsn::connect($lane, 'orchestration-'.$lane, self::overrides($lane));
+    }
+
+    /**
+     * The Laravel connection config for one lane — what connection() opens, and what a booted capstone sets under
+     * `database.connections.*` to run the real pipeline against that server.
      *
      * @return array<string, mixed>
      */
-    public static function config(string $driver, string $variable): array
+    public static function config(string $lane): array
     {
-        $dsn = getenv($variable);
-        if (! is_string($dsn) || $dsn === '') {
-            throw new RuntimeException("{$variable} is not set.");
-        }
-
-        $parts = [];
-        foreach (explode(';', $dsn) as $pair) {
-            [$key, $value] = array_pad(explode('=', $pair, 2), 2, '');
-            $parts[trim($key)] = trim($value);
-        }
-
-        $config = [
-            'driver' => $driver,
-            'host' => $parts['host'] ?? '127.0.0.1',
-            'port' => (int) ($parts['port'] ?? 0),
-            'database' => $parts['dbname'] ?? '',
-            'username' => $parts['user'] ?? '',
-            'password' => $parts['password'] ?? '',
-            'prefix' => '',
-        ];
-
-        return $config + match ($driver) {
-            'pgsql' => ['charset' => 'utf8', 'search_path' => 'public', 'sslmode' => 'prefer'],
-            'sqlsrv' => ['charset' => 'utf8', 'trust_server_certificate' => true],
-            default => ['charset' => 'utf8mb4', 'collation' => 'utf8mb4_unicode_ci'],
-        };
+        return IntegrationDsn::connectionConfig($lane, self::overrides($lane));
     }
 
+    /**
+     * What CrashScenarios::crash() hands the child process so it opens the same database: the sqlite lane's file as
+     * `sqlite:<path>` (the form the unit-level crash test uses too), a server lane as `lane:<lane>` — the child
+     * inherits the environment, so it reads the same DSN.
+     */
+    public static function crashTarget(string $lane): string
+    {
+        return $lane === 'sqlite' ? 'sqlite:'.IntegrationDsn::sqlitePath('orchestration') : 'lane:'.$lane;
+    }
+
+    /** An in-process sqlite database for the unit tests (`:memory:` unless a file is named). */
     public static function sqlite(string $database = ':memory:'): Connection
     {
         $capsule = new Manager;
@@ -96,5 +88,16 @@ final class IntegrationDatabase
         OrchestrationSchema::create($connection->getSchemaBuilder());
 
         return $connection;
+    }
+
+    /**
+     * The sqlite lane's one file per process, shared by every connection a test opens — and by the crash process
+     * CrashScenarios spawns, which is handed the same path.
+     *
+     * @return array<string, mixed>
+     */
+    private static function overrides(string $lane): array
+    {
+        return $lane === 'sqlite' ? ['database' => IntegrationDsn::sqlitePath('orchestration')] : [];
     }
 }

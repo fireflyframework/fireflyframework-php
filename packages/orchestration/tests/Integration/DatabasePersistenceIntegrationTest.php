@@ -8,27 +8,49 @@ use Firefly\Orchestration\Persistence\OrchestrationSchema;
 use Firefly\Orchestration\Tests\Support\ExecutionPersistenceContract;
 use Firefly\Orchestration\Tests\Support\IntegrationDatabase;
 
-foreach (IntegrationDatabase::servers() as $server => [$driver, $variable, $extension]) {
+foreach (IntegrationDatabase::lanes() as $lane) {
     foreach (ExecutionPersistenceContract::cases() as $case => $assert) {
-        it("{$server} database persistence {$case}", function () use ($assert, $driver, $variable): void {
-            $connection = IntegrationDatabase::fresh(IntegrationDatabase::connection($driver, $variable));
+        it("{$lane} database persistence {$case}", function () use ($assert, $lane): void {
+            $connection = IntegrationDatabase::fresh(IntegrationDatabase::connection($lane));
             try {
                 $assert(new DatabaseExecutionPersistenceProvider($connection));
             } finally {
                 $connection->disconnect();
             }
-        })->group('integration')->skip(IntegrationDatabase::skipReason($variable, $extension) !== null, (string) IntegrationDatabase::skipReason($variable, $extension));
+        })->group('integration')->skip(IntegrationDatabase::skipReason($lane) !== null, (string) IntegrationDatabase::skipReason($lane));
     }
 
-    it("saves two new executions with search attributes from two workers at once without a gap-lock wait on {$server}", function () use ($driver, $variable): void {
-        $first = IntegrationDatabase::fresh(IntegrationDatabase::connection($driver, $variable));
-        $second = IntegrationDatabase::connection($driver, $variable);
+    it("keeps full-width ids, names and search attributes and refuses wider ones on {$lane}", function () use ($lane): void {
+        $connection = IntegrationDatabase::fresh(IntegrationDatabase::connection($lane));
+        try {
+            $provider = new DatabaseExecutionPersistenceProvider($connection);
+            $id = str_repeat('i', 64);
+            $state = ExecutionPersistenceContract::state($id, overrides: ['executionName' => str_repeat('ñ', 191), 'searchAttributes' => [str_repeat('k', 128) => str_repeat('é', 191)]]);
+
+            $provider->save($state);
+
+            expect($provider->findById($id)?->toArray())->toBe($state->toArray())
+                ->and(ExecutionPersistenceContract::ids($provider->findBySearchAttributes([str_repeat('k', 128) => str_repeat('é', 191)])))->toBe([$id])
+                ->and(fn () => $provider->save(ExecutionPersistenceContract::state('wide', overrides: ['searchAttributes' => ['customer' => str_repeat('é', 192)]])))->toThrow(OrchestrationException::class, 'searchAttributes.customer')
+                ->and($connection->table(OrchestrationSchema::EXECUTIONS)->count())->toBe(1);
+        } finally {
+            $connection->disconnect();
+        }
+    })->group('integration')->skip(IntegrationDatabase::skipReason($lane) !== null, (string) IntegrationDatabase::skipReason($lane));
+}
+
+// The interleaving below needs a server with row-level locking; sqlite has one writer per file, so there it is only a wait.
+foreach (IntegrationDatabase::serverLanes() as $lane) {
+    it("saves two new executions with search attributes from two workers at once without a gap-lock wait on {$lane}", function () use ($lane): void {
+        $first = IntegrationDatabase::fresh(IntegrationDatabase::connection($lane));
+        $second = IntegrationDatabase::connection($lane);
         try {
             // A lock wait (the first half of the MySQL/MariaDB deadlock) surfaces in one second instead of hanging.
-            match ($driver) {
+            match ($lane) {
                 'mysql', 'mariadb' => $second->statement('SET SESSION innodb_lock_wait_timeout = 1'),
                 'pgsql' => $second->statement("SET lock_timeout = '1s'"),
-                'sqlsrv' => $second->statement('SET LOCK_TIMEOUT 1000'),
+                // A prepared SET is undone when its statement ends on SQL Server, so it is sent unprepared there.
+                'sqlsrv' => $second->unprepared('SET LOCK_TIMEOUT 1000'),
                 default => null,
             };
             $one = new DatabaseExecutionPersistenceProvider($first);
@@ -59,23 +81,5 @@ foreach (IntegrationDatabase::servers() as $server => [$driver, $variable, $exte
             $first->disconnect();
             $second->disconnect();
         }
-    })->group('integration')->skip(IntegrationDatabase::skipReason($variable, $extension) !== null, (string) IntegrationDatabase::skipReason($variable, $extension));
-
-    it("keeps full-width ids, names and search attributes and refuses wider ones on {$server}", function () use ($driver, $variable): void {
-        $connection = IntegrationDatabase::fresh(IntegrationDatabase::connection($driver, $variable));
-        try {
-            $provider = new DatabaseExecutionPersistenceProvider($connection);
-            $id = str_repeat('i', 64);
-            $state = ExecutionPersistenceContract::state($id, overrides: ['executionName' => str_repeat('ñ', 191), 'searchAttributes' => [str_repeat('k', 128) => str_repeat('é', 191)]]);
-
-            $provider->save($state);
-
-            expect($provider->findById($id)?->toArray())->toBe($state->toArray())
-                ->and(ExecutionPersistenceContract::ids($provider->findBySearchAttributes([str_repeat('k', 128) => str_repeat('é', 191)])))->toBe([$id])
-                ->and(fn () => $provider->save(ExecutionPersistenceContract::state('wide', overrides: ['searchAttributes' => ['customer' => str_repeat('é', 192)]])))->toThrow(OrchestrationException::class, 'searchAttributes.customer')
-                ->and($connection->table(OrchestrationSchema::EXECUTIONS)->count())->toBe(1);
-        } finally {
-            $connection->disconnect();
-        }
-    })->group('integration')->skip(IntegrationDatabase::skipReason($variable, $extension) !== null, (string) IntegrationDatabase::skipReason($variable, $extension));
+    })->group('integration')->skip(IntegrationDatabase::skipReason($lane) !== null, (string) IntegrationDatabase::skipReason($lane));
 }

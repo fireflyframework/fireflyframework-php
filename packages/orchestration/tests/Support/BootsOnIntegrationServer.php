@@ -8,17 +8,16 @@ use Illuminate\Contracts\Config\Repository;
 
 /**
  * Boots an orchestration capstone against a REAL server: the test's dataset names one of
- * IntegrationDatabase::servers(), and that server becomes the application's default connection — so the
+ * IntegrationDatabase::lanes(), and that lane's database becomes the application's default connection — so the
  * execution checkpoints, the dead letters, the search attributes and (for the queued capstone) the `database`
- * queue's jobs table all live on it, exactly as in a deployed application. A server whose DSN variable or PDO
- * driver is missing SKIPS before the application boots.
+ * queue's jobs table all live on it, exactly as in a deployed application. A lane whose DSN variable or PDO driver
+ * is missing SKIPS, with IntegrationDsn's reason, before the application boots.
  */
 trait BootsOnIntegrationServer
 {
     protected function setUp(): void
     {
-        [, $variable, $extension] = $this->server();
-        $reason = IntegrationDatabase::skipReason($variable, $extension);
+        $reason = IntegrationDatabase::skipReason($this->lane());
         if ($reason !== null) {
             $this->markTestSkipped($reason);
         }
@@ -30,22 +29,19 @@ trait BootsOnIntegrationServer
     {
         parent::resolveApplicationConfiguration($app);
 
-        [$driver, $variable] = $this->server();
         /** @var Repository $config */
         $config = $app->make('config');
-        $config->set('database.connections.orchestration-it', IntegrationDatabase::config($driver, $variable));
+        $config->set('database.connections.orchestration-it', IntegrationDatabase::config($this->lane()));
         $config->set('database.default', 'orchestration-it');
     }
 
-    /** @return array{0: string, 1: string, 2: string} */
-    private function server(): array
+    private function lane(): string
     {
-        $name = $this->providedData()[0] ?? null;
-        $servers = IntegrationDatabase::servers();
-        if (! is_string($name) || ! isset($servers[$name])) {
-            throw new \LogicException('An orchestration integration test needs a dataset naming one of IntegrationDatabase::servers().');
+        $lane = $this->providedData()[0] ?? null;
+        if (! is_string($lane) || ! in_array($lane, IntegrationDatabase::lanes(), true)) {
+            throw new \LogicException('An orchestration integration test needs a dataset naming one of IntegrationDatabase::lanes().');
         }
 
-        return $servers[$name];
+        return $lane;
     }
 }

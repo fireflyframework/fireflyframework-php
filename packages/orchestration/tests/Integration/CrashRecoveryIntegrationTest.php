@@ -9,15 +9,15 @@ use Firefly\Orchestration\Tests\Support\CrashScenarios;
 use Firefly\Orchestration\Tests\Support\IntegrationDatabase;
 use Firefly\Orchestration\Tests\Support\TestEngines;
 
-foreach (IntegrationDatabase::servers() as $server => [$driver, $variable, $extension]) {
+foreach (IntegrationDatabase::lanes() as $lane) {
     foreach (['resume' => ['reserve', 'charge'], 'compensate' => ['reserve', 'release']] as $action => $expected) {
-        it("recovers a saga killed mid-step on {$server} with action {$action}", function () use ($driver, $variable, $action, $expected): void {
-            $connection = IntegrationDatabase::fresh(IntegrationDatabase::connection($driver, $variable));
+        it("recovers a saga killed mid-step on {$lane} with action {$action}", function () use ($lane, $action, $expected): void {
+            $connection = IntegrationDatabase::fresh(IntegrationDatabase::connection($lane));
             $marks = sys_get_temp_dir().'/firefly-orchestration-crash-'.bin2hex(random_bytes(6)).'.marks';
             $correlationId = "crash-{$action}-".bin2hex(random_bytes(4));
 
             try {
-                expect(CrashScenarios::crash("{$driver}|{$variable}", 'saga', $correlationId, $marks))->toBe(70);
+                expect(CrashScenarios::crash(IntegrationDatabase::crashTarget($lane), 'saga', $correlationId, $marks))->toBe(70);
 
                 $engines = TestEngines::create(['recovery' => ['action' => $action, 'stale-threshold' => '1m']], new DatabaseExecutionPersistenceProvider($connection), new DatabaseDeadLetterStore($connection));
                 CrashScenarios::register($engines, $marks, crash: false);
@@ -29,6 +29,6 @@ foreach (IntegrationDatabase::servers() as $server => [$driver, $variable, $exte
             } finally {
                 $connection->disconnect();
             }
-        })->group('integration')->skip(IntegrationDatabase::skipReason($variable, $extension) !== null, (string) IntegrationDatabase::skipReason($variable, $extension));
+        })->group('integration')->skip(IntegrationDatabase::skipReason($lane) !== null, (string) IntegrationDatabase::skipReason($lane));
     }
 }
