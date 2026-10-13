@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Firefly\Orchestration\Core\Exception\InvalidExecutionStateException;
 use Firefly\Orchestration\Core\ExecutionContext;
 use Firefly\Orchestration\Core\ExecutionStatus;
 use Firefly\Orchestration\Core\StepStatus;
@@ -137,3 +138,31 @@ it('times a workflow out at its deadline, waits included', function (): void {
         ->and(ExecutionState::instant($waiting->wakeAt ?? new DateTimeImmutable))->toBe('2026-10-12T10:00:01.000000+00:00')
         ->and($engines->workflows->find('w-5')?->status)->toBe(ExecutionStatus::TimedOut);
 });
+
+it('refuses to start a workflow under a correlation id that is already taken, and leaves that execution alone', function (TriggerMode $mode): void {
+    $engines = TestEngines::create();
+    $runs = 0;
+    $engines->workflowRegistry->register(WorkflowBuilder::workflow('once')->triggerMode($mode)
+        ->step('wait')->waitForSignal('go')->add()
+        ->step('work')->dependsOn('wait')->handler(static function () use (&$runs): string {
+            $runs++;
+
+            return 'worked';
+        })->add()
+        ->build());
+    $engines->workflows->start('once', correlationId: 'w-dup');
+    $engines->dispatcher->runAll($engines->workflows);
+    $engines->workflows->signal('w-dup', 'go');
+    $before = $engines->workflows->find('w-dup');
+
+    expect(fn () => $engines->workflows->start('once', correlationId: 'w-dup'))
+        ->toThrow(InvalidExecutionStateException::class, 'already exists');
+
+    expect($before?->status)->toBe(ExecutionStatus::Completed)
+        ->and($engines->workflows->find('w-dup')?->toArray())->toBe($before?->toArray())
+        ->and($engines->dispatcher->dispatched)->toBe([])
+        ->and($runs)->toBe(1);
+})->with([
+    'sync' => [TriggerMode::Sync],
+    'async' => [TriggerMode::Async],
+]);

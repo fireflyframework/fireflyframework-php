@@ -81,7 +81,20 @@ final class WorkflowExecutor
                     }
                 }
 
-                if ($step->child !== null && $context->child($stepId) !== null) {
+                $childId = $step->child === null ? null : $context->child($stepId);
+                if ($step->child !== null && $childId !== null) {
+                    // The child's own wake-up (WorkflowEngine::notifyParent) can be missed: the parent was
+                    // SUSPENDED when the child finished, or its lock was busy. So every drive of a parent still
+                    // waiting on a child looks at the child's persisted state first, and settles the step itself.
+                    $child = $this->settledChild($childId);
+                    if ($child !== null) {
+                        $this->completeChild($workflow, $context, $stepId, $child);
+                        if ($context->stepStatus($stepId)->isFailure()) {
+                            return WorkflowRunOutcome::failed($stepId, $context->stepError($stepId) ?? new OrchestrationException("Workflow [{$workflow->id}] step [{$stepId}] failed."));
+                        }
+
+                        continue;
+                    }
                     if ($context->timerFired("{$stepId}:child-timeout", $now)) {
                         $context->removeTimer("{$stepId}:child-timeout");
 
@@ -211,7 +224,11 @@ final class WorkflowExecutor
         return $this->invoker->invoke($workflow->id, $step->id, $step->invocation, $step->options, $context, $input, $input);
     }
 
-    private function failed(WorkflowDefinition $workflow, ExecutionContext $context, string $stepId, Throwable $error): WorkflowRunOutcome
+    /**
+     * Records `$error` as the failure of `$stepId` and returns the FAILED outcome the engine settles (compensate,
+     * dead-letter, FAILED); the engine calls it too when a child step's child cannot even be started.
+     */
+    public function failed(WorkflowDefinition $workflow, ExecutionContext $context, string $stepId, Throwable $error): WorkflowRunOutcome
     {
         $context->setStepStatus($stepId, $error instanceof TimeoutException ? StepStatus::TimedOut : StepStatus::Failed);
         $context->putStepError($stepId, $error);
@@ -219,6 +236,27 @@ final class WorkflowExecutor
         $this->support->publish($this->support->lifecycle, OrchestrationEvent::stepFailed($workflow->id, $context->correlationId, ExecutionPattern::Workflow, $stepId, $error, $this->support->now()));
 
         return WorkflowRunOutcome::failed($stepId, $error);
+    }
+
+    /**
+     * The final run of child `$childId` once it is terminal, following its continue-as-new chain (a run that
+     * continued as new is COMPLETED, but the child is only finished when the last run of the chain is); null
+     * while the child is still going, or when its row is gone.
+     */
+    private function settledChild(string $childId): ?ExecutionState
+    {
+        $seen = [];
+        $state = $this->support->persistence->findById($childId);
+        while ($state !== null && $state->isTerminal()) {
+            $next = $state->variables['continuedAs'] ?? null;
+            if (! is_string($next) || $next === '' || isset($seen[$next])) {
+                return $state;
+            }
+            $seen[$next] = true;
+            $state = $this->support->persistence->findById($next);
+        }
+
+        return null;
     }
 
     /** @return array<string, mixed> */

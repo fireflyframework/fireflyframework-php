@@ -42,6 +42,7 @@ use Firefly\Orchestration\Workflow\Registry\WorkflowRegistry;
 use Firefly\Resilience\CircuitBreaker;
 use Firefly\Resilience\ResilienceRegistry;
 use Firefly\Resilience\Store\InMemoryResilienceStore;
+use Firefly\Scheduling\Lock\DistributedLock;
 use Firefly\Scheduling\Lock\NoneLock;
 use Firefly\Testing\Double\RecordingEventPublisher;
 use Illuminate\Config\Repository;
@@ -105,7 +106,7 @@ final class TestEngines
      * @param  array<string, mixed>  $config
      * @param  array<string, mixed>  $resilience
      */
-    private function __construct(array $config, ?ExecutionPersistenceProvider $persistence, ?DeadLetterStore $deadLetters, array $resilience)
+    private function __construct(array $config, ?ExecutionPersistenceProvider $persistence, ?DeadLetterStore $deadLetters, array $resilience, ?DistributedLock $lock)
     {
         $this->container = new Container;
         $this->settings = OrchestrationSettings::fromConfig(new Config(new Repository(['firefly' => ['orchestration' => $config]])));
@@ -141,7 +142,7 @@ final class TestEngines
             tracing: $tracing,
             callbacks: new CallbackInvoker($this->container, $this->logger),
             clock: $this->clock,
-            lock: new ExecutionLock(new NoneLock, $this->settings->lock->ttl, $this->settings->lock->wait),
+            lock: new ExecutionLock($lock ?? new NoneLock, $this->settings->lock->ttl, $this->settings->lock->wait),
             admission: new ExecutionAdmission($this->persistence, $this->settings->backpressure, $breaker),
             logger: $this->logger,
         );
@@ -180,9 +181,10 @@ final class TestEngines
     /**
      * @param  array<string, mixed>  $config
      * @param  array<string, mixed>  $resilience  the `firefly.resilience` section (named retry and breaker instances)
+     * @param  DistributedLock|null  $lock  the lock backend under ExecutionLock (NoneLock by default)
      */
-    public static function create(array $config = [], ?ExecutionPersistenceProvider $persistence = null, ?DeadLetterStore $deadLetters = null, array $resilience = []): self
+    public static function create(array $config = [], ?ExecutionPersistenceProvider $persistence = null, ?DeadLetterStore $deadLetters = null, array $resilience = [], ?DistributedLock $lock = null): self
     {
-        return new self($config, $persistence, $deadLetters, $resilience);
+        return new self($config, $persistence, $deadLetters, $resilience, $lock);
     }
 }

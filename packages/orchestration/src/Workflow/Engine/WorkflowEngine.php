@@ -79,23 +79,29 @@ final class WorkflowEngine
         $definition = is_string($workflow) ? $this->registry->get($workflow) : $workflow;
         $context = ExecutionContext::start(ExecutionPattern::Workflow, $definition->id, $input, $headers, $correlationId, $this->support->now());
         $context->setParentCorrelationId($parentCorrelationId);
+        $this->refuseExisting($context->correlationId);
 
         return $this->support->admission->admit(
             $definition->id,
             function () use ($definition, $context): ExecutionState {
                 if ($definition->triggerMode === TriggerMode::Async) {
+                    $this->refuseExisting($context->correlationId);
                     $pending = $this->support->checkpoint($context, ExecutionStatus::Pending);
                     $this->dispatcher->dispatch($context->correlationId);
 
                     return $this->support->persistence->findById($context->correlationId) ?? $pending;
                 }
 
-                return $this->support->lock->synchronized($context->correlationId, fn (): ExecutionState => $this->support->tracing->traceExecution(
-                    $definition->id,
-                    ExecutionPattern::Workflow,
-                    $context->correlationId,
-                    fn (): ExecutionState => $this->begin($definition, $context),
-                ));
+                return $this->support->lock->synchronized($context->correlationId, function () use ($definition, $context): ExecutionState {
+                    $this->refuseExisting($context->correlationId);
+
+                    return $this->support->tracing->traceExecution(
+                        $definition->id,
+                        ExecutionPattern::Workflow,
+                        $context->correlationId,
+                        fn (): ExecutionState => $this->begin($definition, $context),
+                    );
+                });
             },
             static fn (ExecutionState $state): bool => ! in_array($state->status, [ExecutionStatus::Failed, ExecutionStatus::TimedOut], true),
         );
@@ -329,8 +335,18 @@ final class WorkflowEngine
             while (true) {
                 $outcome = $this->executor->run($workflow, $context);
 
-                if ($outcome->kind === WorkflowRunOutcome::CHILD && $this->startChild($workflow, $context, (string) $outcome->stepId, $outcome->childInput)) {
-                    continue;
+                if ($outcome->kind === WorkflowRunOutcome::CHILD) {
+                    $stepId = (string) $outcome->stepId;
+                    try {
+                        if ($this->startChild($workflow, $context, $stepId, $outcome->childInput)) {
+                            continue;
+                        }
+                    } catch (Throwable $error) {
+                        // The child could not be started at all (its definition is gone, the pattern is disabled,
+                        // admission refused it, the ASYNC dispatch failed): that is this step failing, so the
+                        // parent compensates, dead-letters and ends FAILED instead of staying RUNNING.
+                        $outcome = $this->executor->failed($workflow, $context, $stepId, $error);
+                    }
                 }
 
                 return match ($outcome->kind) {
@@ -358,7 +374,23 @@ final class WorkflowEngine
             return true;
         }
 
-        $childState = $this->start($child->workflowId, $input, $context->headers(), null, $context->correlationId);
+        // The child is a chain of its own: the parent's continue-as-new origin must not leak into it, or the
+        // child's completion would be matched against the parent's original run id instead of its own.
+        $headers = $context->headers();
+        unset($headers[self::CONTINUED_FROM_HEADER]);
+
+        $childId = Str::uuid()->toString();
+        try {
+            $childState = $this->start($child->workflowId, $input, $headers, $childId, $context->correlationId);
+        } catch (Throwable $error) {
+            // A child that got as far as its first checkpoint (an ASYNC dispatch that failed) is recorded, so
+            // the parent's failure cancels it rather than leaving it PENDING with nobody waiting for it.
+            if ($this->support->persistence->findById($childId) !== null) {
+                $context->setChild($stepId, $childId);
+            }
+
+            throw $error;
+        }
         $context->setChild($stepId, $childState->correlationId);
         $this->support->events->onChildWorkflowStarted($workflow->id, $context->correlationId, $child->workflowId, $childState->correlationId);
 
@@ -452,6 +484,26 @@ final class WorkflowEngine
             return;
         }
 
+        try {
+            $this->wakeParent($parentId, $child);
+        } catch (ExecutionLockedException $locked) {
+            if ($locked->correlationId !== $parentId) {
+                throw $locked;
+            }
+            // The child is already checkpointed terminal; failing it now would only fail its job, and a redelivery
+            // is a no-op. Whoever holds the parent is driving it (a signal, the tick, a resume), and every drive of
+            // a parent waiting on a child reads the child's persisted state first (WorkflowExecutor), so that
+            // drive, or the next one, settles the step this wake-up could not.
+            $this->support->logger->warning("Workflow execution [{$child->correlationId}] finished but could not wake its parent [{$parentId}]: {$locked->getMessage()}", [
+                'exception' => $locked,
+                'correlationId' => $child->correlationId,
+                'parentCorrelationId' => $parentId,
+            ]);
+        }
+    }
+
+    private function wakeParent(string $parentId, ExecutionState $child): void
+    {
         $this->support->lock->synchronized($parentId, function () use ($parentId, $child): void {
             $parent = $this->support->persistence->findById($parentId);
             if ($parent === null || $parent->status !== ExecutionStatus::Waiting) {
@@ -498,6 +550,19 @@ final class WorkflowEngine
             if ($child !== null && ! $child->isTerminal()) {
                 $this->cancel($childId);
             }
+        }
+    }
+
+    /**
+     * The first checkpoint is an upsert, so starting with a correlation id that is already taken would reset that
+     * execution to RUNNING and run every step again (SagaEngine and TccEngine refuse it the same way).
+     * Continue-as-new always takes a fresh id.
+     */
+    private function refuseExisting(string $correlationId): void
+    {
+        $state = $this->support->persistence->findById($correlationId);
+        if ($state !== null) {
+            throw new InvalidExecutionStateException("Execution [{$correlationId}] already exists ({$state->pattern->value} {$state->executionName}, {$state->status->value}); signal(), resume() or cancel() it instead of starting it again.");
         }
     }
 
