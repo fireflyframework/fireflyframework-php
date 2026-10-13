@@ -29,8 +29,9 @@ use Throwable;
  *  - GROUPED_PARALLEL: reverse layer order, declaration order inside a layer (sequential: spec decision D2).
  *  - RETRY_WITH_BACKOFF: reverse completion order with the step's compensation retry/backoff/timeout.
  *  - CIRCUIT_BREAKER: reverse completion order through a firefly/resilience breaker per saga; a failed
- *    `compensationCritical` step, or an open breaker, stops the sweep and leaves the rest DONE (logged) for
- *    recovery or an operator.
+ *    `compensationCritical` step, or an open breaker, stops the sweep and throws a CompensationException
+ *    naming the step that stopped it and the steps left DONE. Nothing re-runs them automatically: the
+ *    execution ends with that message as its reason, for an operator to act on.
  *  - BEST_EFFORT: reverse completion order, every compensation attempted, FAIL_SAGA ignored.
  *
  * The error handler's RETRY answer re-runs the compensation after the step's compensation backoff (under
@@ -97,20 +98,28 @@ final class SagaCompensator
     }
 
     /**
+     * Compensates in reverse completion order through the saga's breaker. When the breaker refuses a step (or
+     * opens during the sweep), or a `compensationCritical` step fails, the sweep stops and a
+     * CompensationException names the step that stopped it and the steps left DONE. The engine records that
+     * message as the execution's reason, so a FAILED or CANCELLED saga never claims a compensation it did not
+     * finish.
+     *
      * @param  list<string>  $reversed
      */
     private function throughBreaker(SagaDefinition $saga, ExecutionContext $context, array $reversed): void
     {
         $breaker = $this->breaker($saga->name);
         $left = [];
-        $open = false;
+        $stoppedAt = null;
+        $critical = false;
+        $lastError = null;
 
         foreach ($reversed as $stepId) {
             $step = $saga->steps[$stepId];
             if ($step->compensation === null) {
                 continue;
             }
-            if ($open) {
+            if ($stoppedAt !== null) {
                 $left[] = $stepId;
 
                 continue;
@@ -118,8 +127,9 @@ final class SagaCompensator
 
             try {
                 $error = $this->attempt($saga, $context, $stepId, new StepOptions(timeoutMs: $step->compensationOptions()->timeoutMs), $breaker);
-            } catch (CircuitBreakerOpenException) {
-                $open = true;
+            } catch (CircuitBreakerOpenException $refused) {
+                $stoppedAt = $stepId;
+                $lastError ??= $refused;
                 $left[] = $stepId;
 
                 continue;
@@ -128,8 +138,15 @@ final class SagaCompensator
             if ($error === null) {
                 continue;
             }
-            if ($step->compensationCritical || ($breaker !== null && $breaker->state() === 'open')) {
-                $open = true;
+            $lastError = $error;
+            if ($step->compensationCritical) {
+                $stoppedAt = $stepId;
+                $critical = true;
+
+                continue;
+            }
+            if ($breaker !== null && $breaker->state() === 'open') {
+                $stoppedAt = $stepId;
 
                 continue;
             }
@@ -137,15 +154,28 @@ final class SagaCompensator
             // The handler's retries go through the same breaker: they count towards its failure threshold, and a
             // retry it refuses — or one that opens it — stops the sweep like any other open circuit.
             if ($this->onFailure($saga, $context, $stepId, $error, honourFailSaga: true, breaker: $breaker)) {
-                $open = true;
+                $stoppedAt = $stepId;
+                $lastError = $context->compensationError($stepId) ?? $error;
             }
         }
 
-        if ($left !== []) {
-            $this->support->logger->warning("Saga [{$saga->name}] opened its compensation circuit and left [".implode(', ', $left).'] uncompensated; they stay DONE for recovery or an operator.', [
-                'correlationId' => $context->correlationId,
-            ]);
+        if ($stoppedAt === null) {
+            return;
         }
+
+        $message = $critical
+            ? "Saga [{$saga->name}] stopped compensating at critical step [{$stoppedAt}]"
+            : "Saga [{$saga->name}] opened its compensation circuit at step [{$stoppedAt}]";
+        if ($left !== []) {
+            $message .= '; ['.implode(', ', $left).'] left uncompensated';
+        }
+
+        // Every compensated step was already checkpointed under COMPENSATING; the steps left stay DONE, and the
+        // exception ends the execution with this message as its reason, so an operator sees what to undo.
+        $this->support->logger->warning($message.'.', ['correlationId' => $context->correlationId]);
+        $this->support->checkpoint($context, ExecutionStatus::Compensating);
+
+        throw new CompensationException($message.($lastError === null ? '.' : ": {$lastError->getMessage()}"), $lastError);
     }
 
     /** Runs one compensation; returns its error, or null when it succeeded. Throws only when `$breaker` refused admission. */

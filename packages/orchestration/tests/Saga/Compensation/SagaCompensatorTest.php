@@ -64,6 +64,18 @@ function orchestrationCompensationSaga(array $steps, array $failing, array &$log
     return $builder->build();
 }
 
+/** Runs `$compensate`, which must stop the sweep, and returns the CompensationException it threw. */
+function orchestrationCompensationStopped(Closure $compensate): CompensationException
+{
+    try {
+        $compensate();
+    } catch (CompensationException $stopped) {
+        return $stopped;
+    }
+
+    throw new RuntimeException('Expected the compensation sweep to stop with a CompensationException.');
+}
+
 /** @param list<string> $completed */
 function orchestrationCompletedContext(SagaDefinition $saga, array $completed): ExecutionContext
 {
@@ -158,18 +170,46 @@ it('lets a handler mark a failed compensation as compensated', function (): void
     expect($context->stepStatus('a'))->toBe(StepStatus::Compensated);
 });
 
-it('CIRCUIT_BREAKER stops compensating after a critical step fails and leaves the rest for recovery', function (): void {
+it('CIRCUIT_BREAKER stops compensating after a critical step fails and throws naming the steps left', function (): void {
     $log = [];
     $logger = new RecordingLogger;
     $saga = orchestrationCompensationSaga(['a' => [], 'b' => ['a'], 'c' => ['b']], ['c' => PHP_INT_MAX], $log, critical: ['c']);
     $context = orchestrationCompletedContext($saga, ['a', 'b', 'c']);
+    $handler = new class implements CompensationErrorHandler
+    {
+        public int $calls = 0;
 
-    orchestrationCompensator(CompensationPolicy::CircuitBreaker, new DefaultCompensationErrorHandler, logger: $logger)->compensate($saga, $context);
+        public function handle(string $sagaName, string $stepId, Throwable $error, int $attempt): CompensationErrorResult
+        {
+            $this->calls++;
 
-    expect($log)->toBe(['c'])
+            return CompensationErrorResult::Continue;
+        }
+    };
+
+    $stopped = orchestrationCompensationStopped(fn () => orchestrationCompensator(CompensationPolicy::CircuitBreaker, $handler, logger: $logger)->compensate($saga, $context));
+
+    expect($stopped->getMessage())->toBe('Saga [order] stopped compensating at critical step [c]; [b, a] left uncompensated: cannot undo c')
+        ->and($stopped->getPrevious())->toBeInstanceOf(RuntimeException::class)
+        ->and($handler->calls)->toBe(0)
+        ->and($log)->toBe(['c'])
+        ->and($context->stepStatus('c'))->toBe(StepStatus::CompensationFailed)
         ->and($context->stepStatus('b'))->toBe(StepStatus::Done)
         ->and($context->stepStatus('a'))->toBe(StepStatus::Done)
-        ->and(implode("\n", $logger->messages('warning')))->toContain('left [b, a] uncompensated');
+        ->and(implode("\n", $logger->messages('warning')))->toContain('[b, a] left uncompensated');
+});
+
+it('CIRCUIT_BREAKER still throws when the critical step that failed was the last one to undo', function (): void {
+    $log = [];
+    $saga = orchestrationCompensationSaga(['a' => [], 'b' => ['a']], ['a' => PHP_INT_MAX], $log, critical: ['a']);
+    $context = orchestrationCompletedContext($saga, ['a', 'b']);
+
+    $stopped = orchestrationCompensationStopped(fn () => orchestrationCompensator(CompensationPolicy::CircuitBreaker, new DefaultCompensationErrorHandler)->compensate($saga, $context));
+
+    expect($stopped->getMessage())->toBe('Saga [order] stopped compensating at critical step [a]: cannot undo a')
+        ->and($log)->toBe(['b', 'a'])
+        ->and($context->stepStatus('b'))->toBe(StepStatus::Compensated)
+        ->and($context->stepStatus('a'))->toBe(StepStatus::CompensationFailed);
 });
 
 it('CIRCUIT_BREAKER shares a firefly/resilience breaker per saga across executions', function (): void {
@@ -178,9 +218,10 @@ it('CIRCUIT_BREAKER shares a firefly/resilience breaker per saga across executio
     $saga = orchestrationCompensationSaga(['a' => [], 'b' => ['a'], 'c' => ['b']], ['c' => PHP_INT_MAX], $log);
     $context = orchestrationCompletedContext($saga, ['a', 'b', 'c']);
 
-    orchestrationCompensator(CompensationPolicy::CircuitBreaker, new DefaultCompensationErrorHandler, resilience: $resilience)->compensate($saga, $context);
+    $stopped = orchestrationCompensationStopped(fn () => orchestrationCompensator(CompensationPolicy::CircuitBreaker, new DefaultCompensationErrorHandler, resilience: $resilience)->compensate($saga, $context));
 
-    expect($log)->toBe(['c'])->and($context->stepStatus('b'))->toBe(StepStatus::Done);
+    expect($stopped->getMessage())->toBe('Saga [order] opened its compensation circuit at step [c]; [b, a] left uncompensated: cannot undo c')
+        ->and($log)->toBe(['c'])->and($context->stepStatus('b'))->toBe(StepStatus::Done);
 });
 
 it('BEST_EFFORT attempts every compensation even when the handler would fail the saga', function (): void {
@@ -262,15 +303,17 @@ it('CIRCUIT_BREAKER refuses the next execution of the same saga while its breake
     $resilience = ResilienceRegistry::fromConfig(new Config(new Repository(['firefly' => ['resilience' => ['circuit-breaker' => ['orchestration-compensation-order' => ['failure-threshold' => 1]]]]])), new InMemoryResilienceStore);
     $saga = orchestrationCompensationSaga(['a' => [], 'b' => ['a']], ['b' => PHP_INT_MAX], $log);
 
-    orchestrationCompensator(CompensationPolicy::CircuitBreaker, new DefaultCompensationErrorHandler, resilience: $resilience)->compensate($saga, orchestrationCompletedContext($saga, ['a', 'b']));
+    orchestrationCompensationStopped(fn () => orchestrationCompensator(CompensationPolicy::CircuitBreaker, new DefaultCompensationErrorHandler, resilience: $resilience)->compensate($saga, orchestrationCompletedContext($saga, ['a', 'b'])));
     $log = [];
     $second = orchestrationCompletedContext($saga, ['a', 'b']);
-    orchestrationCompensator(CompensationPolicy::CircuitBreaker, new DefaultCompensationErrorHandler, logger: $logger, resilience: $resilience)->compensate($saga, $second);
+    $stopped = orchestrationCompensationStopped(fn () => orchestrationCompensator(CompensationPolicy::CircuitBreaker, new DefaultCompensationErrorHandler, logger: $logger, resilience: $resilience)->compensate($saga, $second));
 
-    expect($log)->toBe([])
+    expect($stopped->getMessage())->toStartWith('Saga [order] opened its compensation circuit at step [b]; [b, a] left uncompensated')
+        ->and($stopped->getPrevious())->toBeInstanceOf(CircuitBreakerOpenException::class)
+        ->and($log)->toBe([])
         ->and($second->stepStatus('b'))->toBe(StepStatus::Done)
         ->and($second->stepStatus('a'))->toBe(StepStatus::Done)
-        ->and(implode("\n", $logger->messages('warning')))->toContain('left [b, a] uncompensated');
+        ->and(implode("\n", $logger->messages('warning')))->toContain('[b, a] left uncompensated');
 });
 
 it('CIRCUIT_BREAKER runs the handler retries through the saga breaker and stops the sweep once they open it', function (): void {
@@ -280,17 +323,18 @@ it('CIRCUIT_BREAKER runs the handler retries through the saga breaker and stops 
     $saga = orchestrationCompensationSaga(['a' => [], 'b' => ['a'], 'c' => ['b']], ['c' => PHP_INT_MAX], $log);
     $context = orchestrationCompletedContext($saga, ['a', 'b', 'c']);
 
-    orchestrationCompensator(CompensationPolicy::CircuitBreaker, new RetryWithBackoffCompensationErrorHandler(3), logger: $logger, resilience: $resilience)->compensate($saga, $context);
+    $stopped = orchestrationCompensationStopped(fn () => orchestrationCompensator(CompensationPolicy::CircuitBreaker, new RetryWithBackoffCompensationErrorHandler(3), logger: $logger, resilience: $resilience)->compensate($saga, $context));
 
     // The first try and ONE retry reach the breaker's threshold of two; the remaining two retries the handler
     // asked for never hit the failing dependency, and the sweep leaves b and a for recovery.
-    expect($log)->toBe(['c', 'c'])
+    expect($stopped->getMessage())->toBe('Saga [order] opened its compensation circuit at step [c]; [b, a] left uncompensated: cannot undo c')
+        ->and($log)->toBe(['c', 'c'])
         ->and($context->attempts('c:compensate'))->toBe(2)
         ->and($resilience->circuitBreaker('orchestration-compensation-order')->state())->toBe('open')
         ->and($context->stepStatus('c'))->toBe(StepStatus::CompensationFailed)
         ->and($context->stepStatus('b'))->toBe(StepStatus::Done)
         ->and($context->stepStatus('a'))->toBe(StepStatus::Done)
-        ->and(implode("\n", $logger->messages('warning')))->toContain('left [b, a] uncompensated');
+        ->and(implode("\n", $logger->messages('warning')))->toContain('[b, a] left uncompensated');
 });
 
 it('CIRCUIT_BREAKER counts a handler retry that succeeds as a breaker success and carries on', function (): void {
