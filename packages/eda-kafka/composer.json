@@ -1,6 +1,6 @@
 {
     "name": "firefly/eda-kafka",
-    "description": "LaraFly eda Kafka adapter: a KafkaEventPublisher + consumer over the OPTIONAL ext-rdkafka (suggest + extension_loaded guard — never a hard require), auto-configured behind firefly.eda.provider=kafka, with a DLT topic for exhausted retries and a KafkaHealthIndicator.",
+    "description": "LaraFly eda Kafka adapter: a KafkaEventPublisher + consumer over the OPTIONAL ext-rdkafka (suggest + extension_loaded guard — never a hard require), auto-configured behind firefly.eda.provider=kafka, with a DLT topic for exhausted retries and a KafkaHealthIndicator; also the Kafka adapter for firefly/messaging (firefly.messaging.provider=kafka).",
     "type": "library",
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
@@ -28,9 +28,11 @@
         "firefly/context": "*@dev",
         "firefly/eda": "*@dev",
         "firefly/kernel": "*@dev",
+        "firefly/messaging": "*@dev",
         "illuminate/console": "^13.0",
         "illuminate/contracts": "^13.0",
-        "illuminate/support": "^13.0"
+        "illuminate/support": "^13.0",
+        "psr/log": "^3.0"
     },
     "suggest": {
         "ext-rdkafka": "Required ONLY to activate the Kafka adapter (firefly.eda.provider=kafka). Needs librdkafka >= 1.5.3. Absent = the adapter is inert; the default gate + non-Kafka consumers never need it."

@@ -78,4 +78,30 @@ return [
         'beanConditions' => [
         ],
     ],
+    2 => [
+        'class' => 'Firefly\\Eda\\Kafka\\Messaging\\KafkaMessagingAutoConfiguration',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+        ],
+        'beanConditions' => [
+            0 => [
+                'method' => 'messageBroker',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.messaging.provider',
+                            1 => 'kafka',
+                            2 => false,
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ],
 ];

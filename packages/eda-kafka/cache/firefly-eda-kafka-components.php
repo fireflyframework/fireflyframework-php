@@ -75,4 +75,33 @@ return [
         'dependencies' => [
         ],
     ],
+    2 => [
+        'class' => 'Firefly\\Eda\\Kafka\\Messaging\\KafkaMessagingAutoConfiguration',
+        'stereotype' => 'configuration',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 900,
+        'qualifier' => null,
+        'interfaces' => [
+        ],
+        'beans' => [
+            0 => [
+                'method' => 'messageBroker',
+                'returns' => 'Firefly\\Messaging\\MessageBrokerPort',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Illuminate\\Container\\Container',
+                ],
+            ],
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
 ];

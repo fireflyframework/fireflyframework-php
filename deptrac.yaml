@@ -276,7 +276,10 @@ deptrac:
     # SchedulingPostgres/EdaRabbitmq/EdaPostgres precedent) so the core eda package stays free of the rdkafka
     # dependency. It reads Config indirectly via #[ConditionalOnProperty], carries Container/Context attributes,
     # extends AutoConfigure's base, implements Eda's EventPublisher, and supplies an Actuator HealthIndicator. It
-    # is depended on by NONE.
+    # is depended on by NONE. The => Messaging edge is the raw-bytes messaging adapter (src/Messaging):
+    # KafkaMessageBroker implements Messaging's ListenerContainerBroker over this package's own
+    # KafkaConsumerFactory/KafkaProducerFactory, so the two transports share one librdkafka wiring. Core Messaging
+    # still has no edge to or from Eda.
     EdaKafka:
       - Kernel
       - Container
@@ -285,6 +288,7 @@ deptrac:
       - AutoConfigure
       - Eda
       - Actuator
+      - Messaging
 
     # Messaging is a lower-level raw-bytes transport leaf capability: a MessageBrokerPort + in-memory/queue adapters,
     # a #[MessageListener] scanner/manifest, and a bytes-aware retry/DLQ. It reads Config, reuses Kernel infra
