@@ -248,6 +248,52 @@ return [
                     ],
                 ],
             ],
+            10 => [
+                'method' => 'orchestrationMetrics',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Orchestration\\Event\\OrchestrationMetrics',
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.metrics.enabled',
+                            1 => 'true',
+                            2 => true,
+                        ],
+                    ],
+                ],
+            ],
+            11 => [
+                'method' => 'orchestrationTracing',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Orchestration\\Event\\OrchestrationTracing',
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.tracing.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    2 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.observability.tracing.orchestration.enabled',
+                            1 => 'true',
+                            2 => true,
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
     3 => [

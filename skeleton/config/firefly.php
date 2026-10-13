@@ -1966,6 +1966,16 @@ return [
             'eda' => [
                 'enabled' => true,
             ],
+
+            /*
+             | INTERNAL spans around every saga, TCC and workflow execution (`saga checkout`) and each of
+             | their steps (`checkout.charge`). Also needs firefly.orchestration.tracing.enabled.
+             |
+             | Default: true.
+            */
+            'orchestration' => [
+                'enabled' => true,
+            ],
         ],
     ],
 

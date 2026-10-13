@@ -439,6 +439,9 @@ deptrac:
     #
     # The => FeatureFlags edge is one class (src/FeatureFlags): MeterRegistryFeatureFlagMetrics backs the
     # FeatureFlagMetrics port with feature_flag_evaluations_total{flag, variant, reason} — the CqrsMetrics seam.
+    #
+    # The => Orchestration edge is one folder (src/Orchestration): the meter-registry OrchestrationMetrics and
+    # the Tracer-backed OrchestrationTracing — the same seam direction as Cqrs, Eda and FeatureFlags.
     Observability:
       - Kernel
       - Container
@@ -452,6 +455,7 @@ deptrac:
       - Resilience
       - Data
       - FeatureFlags
+      - Orchestration
 
     # Admin is the browser front-end for Actuator: it renders the SAME ActuatorEndpoint beans the JSON surface
     # serves, resolved in-process from Actuator's registry rather than fetched over HTTP (=> Actuator), mounts
