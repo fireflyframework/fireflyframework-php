@@ -158,7 +158,10 @@ in `src/` **and** in `src-es/` carries either a `source:` marker naming the
 repository file it was excerpted from — compared line for line by the
 repository's own documentation guard — or an `illustrative:` marker saying it is
 the reader's own code, which is the kind `php -l` checks. Both editions build to
-`book/dist/` as PDF + EPUB.
+`book/dist/` as PDF + EPUB. Chapters 8A and 9A walk the code W1, W2 and W4
+added to Lumen — `CardTopUpListener`, the partner callbacks, `PayoutSaga` and
+`SimulatedBankGateway` — and every listing of that code is a `source:` excerpt
+of the file the sample's own tests run.
 
 **The two editions are the same book, line for line.** Every chapter file has
 the same sections in the same order at the same line numbers, and every `php`

@@ -49,7 +49,7 @@ Las escrituras y las lecturas viajan por dos caminos separados. Un `#[CommandHan
 
 ### 4. Arquitectura orientada a eventos, con un outbox genuino
 
-Un agregado emite eventos de dominio que describen lo que ocurrió; tras una confirmación, esos eventos pueden proyectarse en el mismo proceso o conectarse hacia afuera al `EventPublisher`, respaldado por bróker, de `firefly/eda` — en memoria para las pruebas, una cola de Laravel para entrega asíncrona, o un bróker de mensajes real (Kafka, RabbitMQ, o `LISTEN`/`NOTIFY` de Postgres) para entrega entre servicios. El adaptador de Postgres en particular escribe la fila del outbox en la *misma* transacción de base de datos que el propio agregado, de modo que un evento nunca puede registrarse sin que la escritura que describe se haya confirmado realmente.
+Un agregado emite eventos de dominio que describen lo que ocurrió; tras una confirmación, esos eventos pueden proyectarse en el mismo proceso o conectarse hacia afuera al `EventPublisher`, respaldado por bróker, de `firefly/eda` — en memoria para las pruebas, una cola de Laravel para entrega asíncrona, o un broker de mensajería real (Kafka o RabbitMQ) para la entrega entre servicios. El outbox de base de datos escribe la fila del evento en la *misma* transacción de base de datos que el propio agregado — en PostgreSQL, MySQL, MariaDB, SQL Server o SQLite, con `LISTEN`/`NOTIFY` como extra de PostgreSQL —, así que un evento nunca puede quedar registrado sin que la escritura que describe se haya confirmado de verdad. Cuando una operación abarca más de un sistema, las sagas, el TCC y los workflows duraderos toman el relevo donde termina una sola transacción.
 
 ### 5. Seguridad
 

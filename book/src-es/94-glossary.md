@@ -24,21 +24,31 @@
 
 **BootPass** — Una única unidad ordenada de trabajo en tiempo de arranque — escaneo, evaluación de condiciones, registro de beans, montaje de rutas — ejecutada por el `FireflyKernel` en una `BootPhase` específica. `ActuatorRouteRegistrar` y `MeterBindingsPass` son ambos `BootPass` (Capítulos 2, 11).
 
+**Callback (outbound webhook)** — Una petición HTTP que LaraFly envía a un suscriptor cuando ocurre en el bus un evento que el suscriptor pidió: firmada con `X-Firefly-Timestamp` y `X-Firefly-Signature`, reintentada con espera creciente, protegida por un circuit breaker por endpoint y anotada en un registro de ejecuciones reproducible. La distribuye `firefly/callbacks` (Capítulo 8A).
+
 **Circuit breaker** — Un patrón de resiliencia que salta a un estado abierto tras un umbral de fallos consecutivos contra una dependencia, cortocircuitando llamadas posteriores hasta que la dependencia haya tenido tiempo de recuperarse. El `MeterBindingsPass` de `firefly/observability` expone el estado en vivo de cada breaker configurado como un gauge `resilience_circuit_breaker_state{name}` (Capítulo 11).
+
+**Claim strategy** — Cómo elige un consumidor del outbox una fila sin que otro consumidor elija la misma: `skip-locked` (PostgreSQL, MySQL 8.0.1+, MariaDB 10.6+), `read-past` (SQL Server) o la portable `optimistic-lease`, elegida por `auto` a partir de la versión que declara el servidor (Capítulo 8).
 
 **Command (CQRS)** — Un objeto que expresa una única intención de escritura — "retirar fondos", "abrir una wallet" — despachado a través del `CommandBus` a exactamente un `#[CommandHandler]`. Los comandos pueden ser denegados antes de llegar siquiera a su handler por un `CommandAuthorizer` (Capítulos 7, 10).
 
 **CommandBus** — El pipeline que recibe un `Command`, lo pasa por una secuencia acotada de etapas (correlacionar → validar → autorizar → invocar → métricas), y lo enruta a su único `#[CommandHandler]` registrado (Capítulo 7).
 
+**Compensation** — La acción que deshace semánticamente un paso completado de una saga — un reembolso para un cobro, una cancelación para una transferencia enviada. Las compensaciones se ejecutan de la más reciente a la más antigua cuando falla un paso posterior; no revierten nada, añaden el efecto contrario (Capítulo 9A).
+
 **Component** — El atributo de estereotipo genérico para un bean gestionado que no encaja en los roles más específicos `#[Service]`/`#[Repository]`/`#[Configuration]`. Todos los estereotipos son equivalentes para el contenedor; la distinción es para los lectores humanos y las herramientas (Capítulo 2).
 
 **Condition (`#[ConditionalOn*]`)** — Un atributo (`#[ConditionalOnProperty]`, `#[ConditionalOnBean]`, `#[ConditionalOnMissingBean]`) evaluado durante la pasada de condiciones del pipeline de arranque para decidir si una definición de bean sobrevive. El `#[ConditionalOnProperty(matchIfMissing: true)]` de `DbHealthIndicator` es lo que lo mantiene activo por defecto; lo que evita un `DOWN` sorpresa en una aplicación sin base de datos es otra interfaz, `ConditionalHealthIndicator::available()` (Capítulos 2, 11).
+
+**Dead letter** — Un evento o mensaje que agotó sus reintentos, conservado en vez de perdido para poder inspeccionarlo y reproducirlo: en memoria o en `firefly_eda_dead_letters` para el bus de eventos (`firefly:eda:dead-letters:replay`), en sus propias tablas para la mensajería y la orquestación; una fila `FAILED` del outbox es la carta muerta del outbox (Capítulos 8, 8A, 9A).
 
 **Deptrac** — El linter estático de fronteras de arquitectura (`deptrac/deptrac`) que hace cumplir qué paquete puede depender de cuál, como capas declaradas en `deptrac.yaml`. Un recuento de `0` violaciones es parte de la propia definición de terminado de este libro para el código de cada capítulo (Capítulos 2, 11, 13).
 
 **Domain event** — Un registro inmutable de un hecho de negocio que ya ha ocurrido — "wallet abierta", "fondos retirados" — registrado por una raíz de agregado y publicado, tras un commit exitoso, a través de un `ApplicationEventPublisher` (Capítulos 6, 8, 9).
 
 **DTO (Data Transfer Object)** — Un objeto sencillo que transporta datos a través de una frontera de capa — un cuerpo de petición, un subárbol de configuración enlazado con `#[ConfigProperties]` — sin exponer tipos de dominio internos (Capítulos 3, 4).
+
+**Durable workflow** — Una orquestación que puede esperar — una señal, un temporizador — a través de peticiones y procesos, porque cada frontera de paso escribe un punto de control desde el que se reanuda (`#[Workflow]`, `#[WaitForSignal]`, `#[WaitForTimer]`) (Capítulo 9A).
 
 **Entity** — Un objeto de dominio con una identidad estable que persiste a través de los cambios de estado. El `make:firefly-entity` de LaraFly andamia una clase que extiende `Firefly\Domain\Entity` — no hay ningún atributo `#[Entity]` (Capítulos 6, 13).
 
@@ -56,6 +66,8 @@
 
 **Integration event** — Un evento de dominio que ha cruzado la frontera desde el modelo de dominio en-proceso hacia el bus de EDA respaldado por broker, mediante el puente protegido de después-del-commit presentado junto a CQRS. No es el mismo objeto, ni la misma superficie, que el evento de dominio que lo produjo (Capítulos 7, 8, 9).
 
+**Integration lane** — Un backend real contra el que corre el grupo de pruebas `integration` — PostgreSQL, MySQL, MariaDB, SQL Server, un fichero SQLite o los brokers — seleccionado por su variable de DSN a través de `IntegrationDsn`; CI ejecuta un job por carril (Capítulo 12).
+
 **JWT (JSON Web Token)** — Un token portador firmado y caducable que `JwtService` emite y valida. El `JwtService` de LaraFly se niega a arrancar en absoluto con un secreto de firma débil o de marcador de posición, y se niega a aceptar cualquier token que carezca de su claim `exp`, por muy válida que sea su firma (Capítulo 10).
 
 **Manifest** — Una instantánea compilada y cacheable de todo lo que un escáner encontró — rutas, handlers de CQRS, listeners de eventos, reglas de seguridad, métodos transaccionales — escrita en `bootstrap/cache/firefly/` por `firefly:cache` y vuelta a cargar en el arranque sin ninguna reflexión (Capítulos 2, 13).
@@ -64,7 +76,9 @@
 
 **Method security** — Autorización declarada por atributos (`#[PreAuthorize]`, `#[Secured]`, `#[RolesAllowed]`) hecha cumplir en el bus de CQRS y en el despachador de controladores por un evaluador de expresiones de lista blanca cerrada que nunca llama a `eval()` (Capítulo 10).
 
-**Outbox pattern** — Una técnica para publicar un evento de dominio de forma fiable junto a la escritura de base de datos que lo produjo: ambos se escriben en la misma transacción local, eliminando la necesidad de un commit de dos fases entre la base de datos y el broker de mensajes (Capítulos 8, 9).
+**Outbox lease** — La reclamación que un consumidor del outbox mantiene sobre una fila: `claimed_by` y `claimed_until`, confirmados antes de que corra ningún listener. Mientras vive el arrendamiento ningún otro consumidor toma la fila; cuando termina, la fila de un consumidor caído se entrega de nuevo (Capítulo 8).
+
+**Outbox pattern** — Una técnica para publicar un evento de dominio de forma fiable junto a la escritura de base de datos que lo produjo: ambos se escriben en la misma transacción local, eliminando la necesidad de un commit de dos fases entre la base de datos y el broker de mensajes (Capítulos 8, 9; `firefly.eda.provider=database` en cualquier base de datos).
 
 **Pest expectation** — Un matcher personalizado `expect()->extend(...)` que `firefly/testing` instala — `toHavePublished`, `toHaveHandledCommand`, `toBeUp`, `toHaveRecordedMetric`, `toBeProblemDetails` — registrado una vez desde el `tests/Pest.php` raíz del monorepo (Capítulo 12).
 
@@ -86,6 +100,8 @@
 
 **Repository** — Una abstracción similar a una colección sobre la persistencia, que permite al código de aplicación cargar y guardar agregados o entidades sin ningún SQL propio. `CrudRepository` es la base tipada que extiende cada repositorio de dominio (Capítulo 5).
 
+**Saga** — Una operación de negocio hecha de transacciones locales que se confirman cada una por su cuenta, con una compensación para cada paso que cambió algo; un fallo deshace los pasos completados en vez de revertirlos (`#[Saga]`, `#[SagaStep]`) (Capítulo 9A).
+
 **Secure by default** — La postura operativa de LaraFly allí donde aplica: un endpoint de actuator es inalcanzable (404) hasta que se expone explícitamente, una regla de URL de `HttpSecurity` deniega cualquier cosa sin coincidencia, y un secreto JWT que parece débil se niega a arrancar en absoluto — el sistema falla cerrado, no abierto (Capítulos 10, 11).
 
 **SecurityContext** / **SecurityContextHolder** — Una instantánea inmutable del `Authentication` actual, mantenida por petición por un accesor estático respaldado por la propia fachada `Context` de Laravel. Cada filtro de autenticación la limpia en un bloque `finally` de modo que el principal de una petición nunca pueda filtrarse a la siguiente (Capítulo 10).
@@ -96,10 +112,14 @@
 
 **Stereotype** — Un atributo que a la vez registra una clase como bean y señala su rol arquitectónico — `#[Service]`, `#[Repository]`, `#[Component]`, `#[Configuration]`, `#[RestController]`. Cada estereotipo es una especialización del `#[Component]` base (Capítulo 2).
 
+**TCC (Try-Confirm-Cancel)** — Un patrón de orquestación en el que cada participante primero reserva (*try*), y solo cuando todos los intentos tuvieron éxito se confirman todos; si falla cualquier intento, se cancela a cada participante que lo intentó (`#[Tcc]`, `#[TccParticipant]`) (Capítulo 9A).
+
 **Testcontainers** — Una biblioteca que arranca contenedores Docker reales para pruebas de integración y los desmonta después. El trait `RequiresDocker` y el helper `fireflyConfigFor()` de `firefly/testing` hacen que una prueba respaldada por testcontainers sea opcional y segura para CI incluso sin Docker presente (Capítulo 12).
 
 **Transactional (`#[Transactional]`)** — Un atributo de clase/método que declara propagación (`REQUIRED`, `REQUIRES_NEW`, `NESTED`, …), aislamiento, solo-lectura y reglas de rollback — hecho cumplir por un proxy generado en lugar de una clausura manual `DB::transaction()` (Capítulo 9).
 
 **Value object** — Un objeto de dominio inmutable identificado por su valor en lugar de por un campo de identidad; dos objetos de valor son iguales si todos sus campos son iguales. `Money` — un importe entero en unidades menores más una `Currency` — es el objeto de valor canónico de Lumen (Capítulo 6).
+
+**Webhook** — Una petición HTTP que un sistema envía a otro para avisar de que algo ocurrió. `firefly/webhooks` las recibe en `POST /webhooks/{provider}`, verifica la firma, deduplica las reentregas y las publica en el bus de eventos (Capítulo 8A).
 
 **Zero-reflection boot** — El estado que una aplicación alcanza una vez que `firefly:cache` ha ejecutado: cada manifiesto se carga desde un archivo PHP precompilado bajo `bootstrap/cache/firefly/`, de modo que ningún atributo, clase o método vuelve a someterse a reflexión en tiempo de petición (Capítulo 13).

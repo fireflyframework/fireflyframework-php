@@ -49,7 +49,7 @@ Writes and reads travel two separate paths. A `#[CommandHandler]` handles one wr
 
 ### 4. Event-driven architecture, with a genuine outbox
 
-An aggregate raises domain events describing what happened; after a commit, those events can be projected in-process or bridged out to `firefly/eda`'s broker-backed `EventPublisher` — in-memory for tests, a Laravel queue for async delivery, or a real message broker (Kafka, RabbitMQ, or Postgres `LISTEN`/`NOTIFY`) for cross-service delivery. The Postgres adapter in particular writes the outbox row in the *same* database transaction as the aggregate itself, so an event can never be recorded without the write it describes actually having committed.
+An aggregate raises domain events describing what happened; after a commit, those events can be projected in-process or bridged out to `firefly/eda`'s broker-backed `EventPublisher` — in-memory for tests, a Laravel queue for async delivery, or a real message broker (Kafka or RabbitMQ) for cross-service delivery. The database outbox writes the event's row in the *same* database transaction as the aggregate itself — on PostgreSQL, MySQL, MariaDB, SQL Server or SQLite, with `LISTEN`/`NOTIFY` as a PostgreSQL bonus — so an event can never be recorded without the write it describes actually having committed. When one operation spans more than one system, sagas, TCC and durable workflows take over where a single transaction ends.
 
 ### 5. Security
 
