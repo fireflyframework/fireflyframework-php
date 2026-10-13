@@ -2963,10 +2963,12 @@ return [
 
         /*
          | Where execution checkpoints live: `memory` (this process only — the default), `cache` (the Laravel
-         | cache store `cache-store` names, null = the default store; `key-prefix`, optional `key-ttl`) or
+         | cache store `cache-store` names, null = the default store; `key-prefix`, optional `key-ttl`),
          | `database` (three portable tables on `connection`, null = the default; run the migration,
-         | --tag=firefly-orchestration-migrations to publish it). Terminal executions older than
-         | `retention-period` are deleted by the recovery sweep, which runs every `cleanup-interval`.
+         | --tag=firefly-orchestration-migrations to publish it) or `event-sourced` (firefly/eventsourcing: each
+         | execution an event-sourced aggregate in the firefly.eventsourcing.store event store, these tables its
+         | read model on that store's connection). Terminal executions older than `retention-period` are
+         | deleted by the recovery sweep, which runs every `cleanup-interval`.
          | Defaults: memory, orchestration:, forever, P7D, 1h.
         */
         'persistence' => [
