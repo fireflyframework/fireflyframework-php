@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace Firefly\Eda\Postgres;
 
+use Firefly\Eda\Database\EdaDatabaseBootServiceProvider;
 use Firefly\Eda\Postgres\Console\OutboxRelayCommand;
 use Illuminate\Support\ServiceProvider;
 
-/** Ships the outbox migration + (Task 5) the OPTIONAL firefly:outbox:relay command via auto-discovery — no frozen edit. */
+/**
+ * Ships the outbox migrations (firefly/eda-database's, the one outbox table) and the OPTIONAL firefly:outbox:relay
+ * command under provider=postgres via auto-discovery.
+ */
 final class EdaPostgresBootServiceProvider extends ServiceProvider
 {
     public function boot(): void
@@ -16,7 +20,7 @@ final class EdaPostgresBootServiceProvider extends ServiceProvider
             return;
         }
 
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        $this->loadMigrationsFrom(EdaDatabaseBootServiceProvider::MIGRATIONS);
 
         if ($this->app->runningInConsole()) {
             $this->commands([OutboxRelayCommand::class]);

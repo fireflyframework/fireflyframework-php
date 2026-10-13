@@ -256,6 +256,7 @@
                 "Firefly\\Security\\OAuth2\\Server\\SecurityOAuth2ServerWiringProvider",
                 "Firefly\\Cli\\CliServiceProvider",
                 "Firefly\\Eda\\Database\\EdaDatabaseServiceProvider",
+                "Firefly\\Eda\\Database\\EdaDatabaseBootServiceProvider",
                 "Firefly\\Eda\\Kafka\\EdaKafkaServiceProvider",
                 "Firefly\\Eda\\Postgres\\EdaPostgresServiceProvider",
                 "Firefly\\Eda\\Postgres\\EdaPostgresBootServiceProvider",

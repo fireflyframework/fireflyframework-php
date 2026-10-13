@@ -40,7 +40,8 @@
     "extra": {
         "laravel": {
             "providers": [
-                "Firefly\\Eda\\Database\\EdaDatabaseServiceProvider"
+                "Firefly\\Eda\\Database\\EdaDatabaseServiceProvider",
+                "Firefly\\Eda\\Database\\EdaDatabaseBootServiceProvider"
             ]
         },
         "branch-alias": {
