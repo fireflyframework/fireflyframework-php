@@ -113,7 +113,7 @@ book/
   src/                         # EN manuscript (Markdown)
     00-front/                   # title/copyright/dedication/preface/conventions
     00-quickstart.md             # "Build Lumen step by step" quick start
-    01..13a-*.md                 # the eighteen chapters, 4A, 8A, 9A, 10A and 13A included (Parts I-IV)
+    01..13a-*.md                 # the nineteen chapters, 4A, 8A, 9A, 9B, 10A and 13A included (Parts I-IV)
     90-appendix-a-laravel.md      # Laravel -> LaraFly cheat-sheet
     94-glossary.md                # glossary
   src-es/                        # ES manuscript, same structure/filenames
@@ -139,7 +139,7 @@ book/
 ## Manuscript status
 
 The manuscript is **structurally complete** in both languages: a five-file front
-matter, a "Build Lumen step by step" quick start, eighteen chapters across four
+matter, a "Build Lumen step by step" quick start, nineteen chapters across four
 parts —
 
 - **Part I — Foundations**: Why LaraFly, Dependency Injection & Auto-Configuration,
@@ -148,7 +148,7 @@ parts —
   Domain-Driven Design
 - **Part III — Coordinating & Securing the Application**: CQRS, Event-Driven
   Architecture & the Transactional Outbox, Webhooks and Callbacks, Transactions & the `#[Transactional]`
-  proxy, Sagas, TCC and Durable Workflows, Security, OAuth2 and OpenID Connect
+  proxy, Sagas, TCC and Durable Workflows, Event Sourcing, Security, OAuth2 and OpenID Connect
 - **Part IV — Observability, Testing & Delivery**: Observability/Actuator,
   Testing, the CLI & the Zero-Reflection Cache, Feature Flags
 
