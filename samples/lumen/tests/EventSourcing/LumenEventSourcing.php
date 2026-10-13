@@ -21,6 +21,7 @@ use Illuminate\Support\ServiceProvider;
 use LogicException;
 use Lumen\Application\Command\Deposit;
 use Lumen\Application\Command\OpenWallet;
+use Lumen\Application\Loan\GrantLoan;
 use Lumen\Domain\Currency;
 
 /**
@@ -92,6 +93,17 @@ trait LumenEventSourcing
         }
         if ($balanceMinor > 0) {
             $this->commands()->send(new Deposit($id, $balanceMinor));
+        }
+
+        return $id;
+    }
+
+    /** Grants a loan of $principalMinor into $walletId through the bus and returns the loan id. */
+    public function grantLoan(string $walletId, int $principalMinor): string
+    {
+        $id = $this->commands()->send(new GrantLoan($walletId, $principalMinor));
+        if (! is_string($id)) {
+            throw new LogicException('GrantLoan answers the new loan id.');
         }
 
         return $id;
