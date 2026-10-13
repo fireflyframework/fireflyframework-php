@@ -123,15 +123,16 @@ it('refuses to key a query that carries a generator or another Traversable, inst
 it('keys a Traversable collection by its JSON form, which carries its values', function () {
     $collection = static fn (array $items): object => new class($items) implements IteratorAggregate, JsonSerializable
     {
-        /** @param list<int> $items */
+        /** @param array<array-key, mixed> $items */
         public function __construct(private array $items) {}
 
+        /** @return ArrayIterator<array-key, mixed> */
         public function getIterator(): ArrayIterator
         {
             return new ArrayIterator($this->items);
         }
 
-        /** @return list<int> */
+        /** @return array<array-key, mixed> */
         public function jsonSerialize(): array
         {
             return $this->items;
