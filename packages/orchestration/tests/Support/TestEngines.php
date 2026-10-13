@@ -12,7 +12,9 @@ use Firefly\Orchestration\Core\EngineSupport;
 use Firefly\Orchestration\Core\ExecutionAdmission;
 use Firefly\Orchestration\Core\ExecutionLock;
 use Firefly\Orchestration\Core\InvocationRunner;
+use Firefly\Orchestration\Core\Orchestrator;
 use Firefly\Orchestration\Core\StepInvoker;
+use Firefly\Orchestration\Dlq\DeadLetterRetrier;
 use Firefly\Orchestration\Dlq\DeadLetterService;
 use Firefly\Orchestration\Dlq\DeadLetterStore;
 use Firefly\Orchestration\Dlq\MemoryDeadLetterStore;
@@ -33,6 +35,10 @@ use Firefly\Orchestration\Tcc\Composition\TccCompositor;
 use Firefly\Orchestration\Tcc\Engine\TccEngine;
 use Firefly\Orchestration\Tcc\Engine\TccExecutionOrchestrator;
 use Firefly\Orchestration\Tcc\Registry\TccRegistry;
+use Firefly\Orchestration\Workflow\Engine\WaitEvaluator;
+use Firefly\Orchestration\Workflow\Engine\WorkflowEngine;
+use Firefly\Orchestration\Workflow\Engine\WorkflowExecutor;
+use Firefly\Orchestration\Workflow\Registry\WorkflowRegistry;
 use Firefly\Resilience\CircuitBreaker;
 use Firefly\Resilience\ResilienceRegistry;
 use Firefly\Resilience\Store\InMemoryResilienceStore;
@@ -84,6 +90,16 @@ final class TestEngines
     public readonly TccEngine $tccs;
 
     public readonly TccCompositor $tccCompositor;
+
+    public readonly WorkflowRegistry $workflowRegistry;
+
+    public readonly RecordingWorkflowDispatcher $dispatcher;
+
+    public readonly WorkflowEngine $workflows;
+
+    public readonly Orchestrator $orchestrator;
+
+    public readonly DeadLetterRetrier $retrier;
 
     /**
      * @param  array<string, mixed>  $config
@@ -145,6 +161,20 @@ final class TestEngines
         $this->tccRegistry = new TccRegistry;
         $this->tccs = new TccEngine($this->tccRegistry, new TccExecutionOrchestrator($this->invoker, $this->support, $this->settings->tcc), $this->support, $this->settings->tcc);
         $this->tccCompositor = new TccCompositor($this->tccs, $this->events, $this->conditions, new CompositionDataFlowManager, $this->settings->tcc, $resilienceRegistry, $resilienceStore);
+
+        $this->workflowRegistry = new WorkflowRegistry;
+        $this->dispatcher = new RecordingWorkflowDispatcher;
+        $this->workflows = new WorkflowEngine(
+            $this->workflowRegistry,
+            new WorkflowExecutor($this->invoker, $this->support, $this->conditions, new WaitEvaluator($this->events)),
+            $this->support,
+            $this->settings->workflow,
+            $this->dispatcher,
+            $this->container,
+            $this->settings->backpressure->batchSize,
+        );
+        $this->orchestrator = new Orchestrator($this->sagas, $this->tccs, $this->workflows, $this->persistence);
+        $this->retrier = new DeadLetterRetrier($this->support->deadLetters, $this->orchestrator);
     }
 
     /**
