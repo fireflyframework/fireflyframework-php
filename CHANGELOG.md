@@ -6,6 +6,26 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ### Added
 
+- **CQRS query cache (`firefly.cqrs.query.cache.provider=cache`).** `CacheQueryCache` on any Laravel cache store:
+  `#[CachedQuery(ttl:, group:)]` on a query class caches its results under a key derived from the query value
+  object; `#[InvalidatesQuery]` on an event class evicts one entry or a whole group when the event commits in
+  process or arrives over firefly/eda (`firefly.cqrs.query.cache.invalidation` covers events with no local class).
+  Groups are generations, so eviction works on file and database stores too. The default stays `none`.
+- **Kafka and RabbitMQ for `firefly/messaging` (`firefly.messaging.provider=kafka|rabbitmq`).** Listener
+  containers in `firefly/eda-kafka` and `firefly/eda-rabbitmq`, built on their client factories, with retries and
+  exponential back-off (`firefly.messaging.listener.retry.*`), dead-letter topics / a dead-letter exchange with
+  diagnostic headers (`firefly.messaging.listener.dead-letter.enabled`), at-least-once commits, real consumer
+  groups, and `php artisan firefly:messaging:consume`.
+- **Health indicators for cache stores, queue connections and Redis** (`firefly.management.endpoint.health.
+  {cache,queue,redis}.enabled`, all off by default).
+- **`firefly/webhooks`.** `POST /webhooks/{provider}` per configured provider: HMAC, Stripe, GitHub, Twilio or
+  no signature, a replay window, atomic idempotency on memory, the cache or a portable `firefly_webhook_receipts`
+  table, publishing to firefly/eda as `webhook.{provider}.{type}`, problem+json refusals, `firefly:webhooks:prune`.
+- **`firefly/callbacks`.** Subscriptions on memory or `firefly_callback_subscriptions`; deliveries of matching
+  firefly/eda events as HMAC-SHA256-signed POSTs (`X-Firefly-Timestamp`, `X-Firefly-Signature`), retries with
+  back-off, a circuit breaker per endpoint through firefly/resilience, an execution log on memory or
+  `firefly_callback_executions`, `firefly:callbacks:list` and `firefly:callbacks:replay`.
+- **`firefly.resilience.store.provider`** — `cache` (default) or `memory`.
 - **Orchestration (`firefly/orchestration`):** sagas with five compensation policies, compensation error
   handlers, a builder DSL and saga composition; TCC with ordered participants, per-phase timeouts and
   retries and TCC composition; and durable workflows with dependencies, conditions, signals, timers,
@@ -60,6 +80,11 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ### Changed
 
+- **A resilience store without atomic locks now refuses to boot** (`ConfigurationException`
+  `RESILIENCE_STORE_LOCKLESS`) instead of silently running breaker, rate-limiter and bulkhead transitions without
+  a critical section. Set `firefly.resilience.store.allow-lockless=true` to accept the race explicitly. A
+  `CacheResilienceStore` constructed by hand over such a store throws from `withLock()` unless built with
+  `allowLockless: true`.
 - **`firefly/eda-postgres` is the database outbox plus `pg_notify`/`LISTEN`.** `PostgresEventPublisher`,
   `PostgresEventConsumer` and its `OutboxPreCommitHook` now extend the `firefly/eda-database` classes;
   `provider=postgres` reads the `firefly.eda.database.*` keys, with every `firefly.eda.postgres.*` key kept as an
@@ -68,6 +93,10 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ### Fixed
 
+- **`firefly:callbacks:replay` honors deactivation and endpoint changes.** The deliverer refuses an inactive
+  subscription on every path (replay needs `--include-inactive`, which the output reports), and every delivery goes
+  to the subscription's current URL — checked against `http.require-https` / `http.allowed-hosts` — instead of the
+  URL stored on the execution, recording the change.
 - **Concurrent consumers could deliver an outbox row twice.** The Postgres consumer's `FOR UPDATE SKIP LOCKED` ran
   outside any transaction, so its lock ended with the statement; on other drivers the claim was an unlocked read.
   Every claim is now a lease committed before delivery.

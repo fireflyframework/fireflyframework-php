@@ -163,12 +163,14 @@ final class ManifestCacheWriter
             $files[] = $dir.'/'.FireflyCachePaths::CONSTRAINTS,
         );
 
-        // cqrs — 3-arg write (handlers + destinations + path) (SPECIAL).
+        // cqrs — handlers + destinations + path, then the query-cache policies and invalidation rules (SPECIAL).
         $handlers = (new HandlerScanner)->scan($psr4);
         (new HandlerManifestCompiler)->write(
             $handlers['handlers'],
             $handlers['destinations'],
             $files[] = $dir.'/'.FireflyCachePaths::HANDLERS,
+            $handlers['cachedQueries'],
+            $handlers['invalidations'],
         );
 
         // eda

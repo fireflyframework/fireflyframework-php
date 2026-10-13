@@ -40,6 +40,16 @@ their own `EventPublisher` + `EventConsumer` pair from `#[Order(900)]` autoconfi
 `#[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: '<broker>')]`-gated, so with any other
 provider selected the whole package resolves nothing and requires nothing.
 
+## The same packages carry the messaging adapters
+
+`firefly/eda-kafka` and `firefly/eda-rabbitmq` also bind `firefly/messaging`'s raw-bytes `MessageBrokerPort` when
+`firefly.messaging.provider` is `kafka` or `rabbitmq` — `KafkaMessageBroker` on this package's
+`KafkaConsumerFactory`/`KafkaProducerFactory`, `RabbitMqMessageBroker` on its `RabbitMqConnectionFactory` — so the
+two transports share one client stack: messaging's Kafka brokers default to `firefly.eda.kafka.brokers`, and its
+RabbitMQ connection is `firefly.eda.rabbitmq.*`. The two provider keys are
+independent: an application can publish events to Kafka and messages to RabbitMQ. See
+[Messaging](messaging.md#kafka-and-rabbitmq).
+
 ## Config keys
 
 ### RabbitMQ (`firefly/eda-rabbitmq`)

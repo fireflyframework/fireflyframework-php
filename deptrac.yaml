@@ -110,6 +110,14 @@ deptrac:
       collectors:
         - type: directory
           value: packages/feature-flags/src/.*
+    - name: Webhooks
+      collectors:
+        - type: directory
+          value: packages/webhooks/src/.*
+    - name: Callbacks
+      collectors:
+        - type: directory
+          value: packages/callbacks/src/.*
     - name: Orchestration
       collectors:
         - type: directory
@@ -266,7 +274,10 @@ deptrac:
     # broker its own package, the SchedulingPostgres precedent) so the core eda package stays free of the
     # php-amqplib dependency. It reads Config indirectly via #[ConditionalOnProperty], carries Container/Context
     # attributes, extends AutoConfigure's base, implements Eda's EventPublisher, and supplies an Actuator
-    # HealthIndicator. It is depended on by NONE.
+    # HealthIndicator. It is depended on by NONE. The => Messaging edge is the raw-bytes messaging adapter
+    # (src/Messaging): RabbitMqMessageBroker implements Messaging's ListenerContainerBroker over this package's
+    # RabbitMqConnectionFactory, so both transports share one connection configuration. Core Messaging still has no
+    # edge to or from Eda.
     EdaRabbitmq:
       - Kernel
       - Container
@@ -275,6 +286,7 @@ deptrac:
       - AutoConfigure
       - Eda
       - Actuator
+      - Messaging
 
     # EdaPostgres is the GENUINE same-transaction Postgres OUTBOX adapter for Eda's EventPublisher port: its own
     # package (every broker its own package, the SchedulingPostgres precedent) so the core eda package stays free of
@@ -321,7 +333,10 @@ deptrac:
     # SchedulingPostgres/EdaRabbitmq/EdaPostgres precedent) so the core eda package stays free of the rdkafka
     # dependency. It reads Config indirectly via #[ConditionalOnProperty], carries Container/Context attributes,
     # extends AutoConfigure's base, implements Eda's EventPublisher, and supplies an Actuator HealthIndicator. It
-    # is depended on by NONE.
+    # is depended on by NONE. The => Messaging edge is the raw-bytes messaging adapter (src/Messaging):
+    # KafkaMessageBroker implements Messaging's ListenerContainerBroker over this package's own
+    # KafkaConsumerFactory/KafkaProducerFactory, so the two transports share one librdkafka wiring. Core Messaging
+    # still has no edge to or from Eda.
     EdaKafka:
       - Kernel
       - Container
@@ -330,6 +345,7 @@ deptrac:
       - AutoConfigure
       - Eda
       - Actuator
+      - Messaging
 
     # Messaging is a lower-level raw-bytes transport leaf capability: a MessageBrokerPort + in-memory/queue adapters,
     # a #[MessageListener] scanner/manifest, and a bytes-aware retry/DLQ. It reads Config, reuses Kernel infra
@@ -541,6 +557,36 @@ deptrac:
       - Data
       - Web
       - Actuator
+      - Resilience
+
+    # Webhooks is the inbound-webhook capability: an endpoint per provider mounted on the router by a BootPass
+    # (the FlagdSyncRouteRegistrar shape), signature validators, an idempotency store on the cache or any database
+    # connection (illuminate, unlayered), and a publish to Eda's EventPublisher (=> Eda). Every refusal is rendered
+    # by Web's ProblemDetailsRenderer (=> Web); replay windows parse through Resilience's Duration (=> Resilience,
+    # the Scheduling precedent). It reads Config, carries Container/Context attributes, extends AutoConfigure's base
+    # and reuses Kernel exceptions. NOTHING depends on it.
+    Webhooks:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Web
+      - Eda
+      - Resilience
+
+    # Callbacks is the outbound-webhook capability: a subscription registry and an execution log on memory or any
+    # database connection (illuminate, unlayered), deliveries over Laravel's HTTP client driven by Eda envelopes
+    # (=> Eda, through a BootPass subscription), and one circuit breaker per endpoint built from Resilience's
+    # CircuitBreaker over the bound ResilienceStore (=> Resilience). It reads Config, carries Container/Context
+    # attributes, extends AutoConfigure's base and reuses Kernel exceptions. NOTHING depends on it.
+    Callbacks:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Eda
       - Resilience
 
     # Orchestration is the saga / TCC / durable-workflow capability. It reads Config, carries Container/Context

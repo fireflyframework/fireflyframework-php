@@ -17,7 +17,8 @@ namespace Firefly\Admin\Tests\Support;
  * somewhere else — the exact bug the carrying exists to prevent, with nothing failing.
  *
  * So this case changes TWO things and nothing else, the same two AdminTablePagedCapstoneTestCase changes
- * for Routes. It OFFERS a page size of 2 — `firefly.admin.table.page-sizes`, seeded through
+ * for Routes (plus opting in the actuator's default-off health indicators, so the framework itself backs
+ * nothing off and the Backed-off side holds this fixture's rows alone). It OFFERS a page size of 2 — `firefly.admin.table.page-sizes`, seeded through
  * configOverrides() rather than set inside a test, because AdminSettings (and the TableSettings on it) is
  * built once by AdminRouteRegistrar during the boot passes and bound as an instance, so a `config()->set()`
  * from a test body arrives after the object that would have read it. And it grows the backed-off side to
@@ -38,6 +39,14 @@ abstract class AdminTableConditionsPagedCapstoneTestCase extends AdminTableCapst
         return [
             ...parent::configOverrides(),
             'firefly.admin.table.page-sizes' => '2,25,50',
+            // The actuator's opt-in cache, queue and Redis health indicators are #[ConditionalOnProperty]
+            // components that default OFF, so a bare testbench backs all three off — ambient rows on the very
+            // panel this case pins at exactly its five seeded rows, and a second `Redis` match for `?neg_q=`.
+            // Opting them in moves them to the Applied side, whose count this case never pins; nothing here
+            // asks them for a health check, so neither a cache, a queue nor a Redis server is needed.
+            'firefly.management.endpoint.health.cache.enabled' => 'true',
+            'firefly.management.endpoint.health.queue.enabled' => 'true',
+            'firefly.management.endpoint.health.redis.enabled' => 'true',
         ];
     }
 

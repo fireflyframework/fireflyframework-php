@@ -105,6 +105,25 @@ return [
                 ],
             ],
             8 => [
+                'method' => 'queryCacheInvalidator',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.cqrs.query.cache.provider',
+                            1 => 'cache',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Cqrs\\Cache\\QueryCacheInvalidator',
+                        ],
+                    ],
+                ],
+            ],
+            9 => [
                 'method' => 'commandEventPublisher',
                 'conditions' => [
                     0 => [
@@ -115,7 +134,7 @@ return [
                     ],
                 ],
             ],
-            9 => [
+            10 => [
                 'method' => 'domainEventBridge',
                 'conditions' => [
                     0 => [
@@ -126,7 +145,7 @@ return [
                     ],
                 ],
             ],
-            10 => [
+            11 => [
                 'method' => 'commandBus',
                 'conditions' => [
                     0 => [
@@ -137,7 +156,7 @@ return [
                     ],
                 ],
             ],
-            11 => [
+            12 => [
                 'method' => 'queryBus',
                 'conditions' => [
                     0 => [

@@ -850,6 +850,45 @@ return [
                 // ],
 
                 /*
+                 | Infrastructure indicators, all OFF BY DEFAULT: turning one on adds a component that can
+                 | be DOWN, and an existing application's /health must not change status because the
+                 | framework was upgraded.
+                 |
+                 | `cache` writes, reads back and forgets a random sentinel key (one-minute TTL) on each
+                 | Laravel cache store in `stores`; an empty list probes `cache.default`. `queue` asks each
+                 | Laravel queue connection in `connections` for size() of its default queue and publishes
+                 | the backlog as a detail; an empty list probes `queue.default`. `redis` sends PING on each
+                 | connection of Laravel's Redis manager in `connections` (phpredis or predis, whichever
+                 | `database.redis.client` names); an application with no `redis` binding gets no `redis`
+                 | component even with the key on. Any one store or connection DOWN makes its component
+                 | DOWN, naming it and the error.
+                 |
+                 | Each gate reads its own environment variable (FIREFLY_HEALTH_CACHE_ENABLED,
+                 | FIREFLY_HEALTH_QUEUE_ENABLED, FIREFLY_HEALTH_REDIS_ENABLED), so an operator can turn
+                 | one on without editing this file; the commented lines below are samples of the lists.
+                 |
+                 | Defaults: cache.enabled false, cache.stores [] (cache.default); queue.enabled false,
+                 | queue.connections [] (queue.default); redis.enabled false, redis.connections ['default'].
+                */
+                'cache' => [
+                    'enabled' => env('FIREFLY_HEALTH_CACHE_ENABLED', false),
+                    'stores' => [
+                        // 'redis', 'file',
+                    ],
+                ],
+                'queue' => [
+                    'enabled' => env('FIREFLY_HEALTH_QUEUE_ENABLED', false),
+                    'connections' => [
+                        // 'database',
+                    ],
+                ],
+                'redis' => [
+                    'enabled' => env('FIREFLY_HEALTH_REDIS_ENABLED', false),
+                    'connections' => ['default'],
+                    // 'connections' => ['default', 'cache'],
+                ],
+
+                /*
                  | Probe groups served at /actuator/health/{name} — CSV of indicator names. An UNSET
                  | group is a 404, so these must stay commented out until you mean them.
                  |
@@ -2091,9 +2130,23 @@ return [
          | availability zone can legitimately need tens of milliseconds.
          |
          | Default: 0.5 (500ms).
+         |
+         | provider — where breaker, limiter and bulkhead state lives. `cache` keeps it on Laravel's default
+         | cache store, so every FPM worker and queue process shares one view; `memory` keeps it in the
+         | process (tests, CLI, a single long-running worker). An application that binds its own
+         | ResilienceStore wins over both.
+         |
+         | allow-lockless — the `cache` provider needs a store with atomic locks (redis, database, file,
+         | memcached, dynamodb, array) so a transition is a real critical section. On a store without them
+         | (apc, session) the application refuses to boot with RESILIENCE_STORE_LOCKLESS; true accepts the
+         | race between workers instead, logging one warning per store.
+         |
+         | Default: provider 'cache', allow-lockless false.
         */
         'store' => [
             'lock-block-timeout' => '500ms',
+            'provider' => env('FIREFLY_RESILIENCE_STORE_PROVIDER', 'cache'),
+            'allow-lockless' => env('FIREFLY_RESILIENCE_STORE_ALLOW_LOCKLESS', false),
         ],
 
         /*
@@ -2349,13 +2402,36 @@ return [
         'event_failure_strategy' => 'log',
 
         /*
-         | Default TTL in seconds for #[Cacheable] query results that do not declare their own. UNSET
-         | means "no default TTL" — not zero — so leave it commented out unless you want one.
+         | The query cache.
          |
-         | Default: unset.
+         | `provider` 'none' (the default) keeps every query uncached; 'cache' stores the results of queries
+         | marked #[CachedQuery] (and of Cacheable queries) on the Laravel cache store `store` names ('' = the
+         | default store), under `prefix`. Any other provider refuses the boot. A #[CachedQuery] query's key is
+         | derived from its public properties, so equal value objects share an entry; `ttl:` on the attribute
+         | is its lifetime, falling back to `cache_ttl` (UNSET means "no TTL" — not zero — so leave it
+         | commented out unless you want one).
+         |
+         | With provider 'cache', #[InvalidatesQuery] on an event class evicts cached queries when that event
+         | is dispatched in process (a DomainEvent, after its transaction commits; nothing on rollback) or
+         | arrives as an EDA envelope of the same event type. An envelope evicts the ONE entry a `with` map
+         | names only when its payload values carry the query properties' declared types (JSON delivers an
+         | enum as its backing value, a date as an array); otherwise it evicts the group, with a warning.
+         | `invalidation` adds rules for events this process has no class for (another service's
+         | envelopes): `event type => [query classes]`, each evicting the whole group of the queries it
+         | lists. A malformed entry refuses the boot.
+         |
+         | Defaults: provider 'none', store '', prefix 'firefly:cqrs:', cache_ttl unset, invalidation [].
         */
         // 'query' => [
         //     'cache_ttl' => 60,
+        //     'cache' => [
+        //         'provider' => env('FIREFLY_CQRS_QUERY_CACHE', 'none'),
+        //         'store' => env('FIREFLY_CQRS_QUERY_CACHE_STORE', ''),
+        //         'prefix' => 'firefly:cqrs:',
+        //         'invalidation' => [
+        //             'ledger.closed' => [App\Ledger\LedgerTotals::class],
+        //         ],
+        //     ],
         // ],
     ],
 
@@ -2558,6 +2634,10 @@ return [
     | The point-to-point #[MessageListener] transport, independent of the event bus above.
     |   'memory' — in-process. The default.
     |   'queue'  — Laravel queue; both keys UNSET mean the application's own defaults.
+    |   'kafka'  — Kafka through firefly/eda-kafka (needs ext-rdkafka); a listener container driven by
+    |              `php artisan firefly:messaging:consume`, with the retry and dead-letter keys below.
+    |   'rabbitmq' — RabbitMQ through firefly/eda-rabbitmq, on the firefly.eda.rabbitmq.* connection; a
+    |              listener container consumed the same way, with the same retry and dead-letter keys.
     |
     */
 
@@ -2582,6 +2662,88 @@ return [
         //     'connection' => 'redis',
         //     'name' => 'messages',
         // ],
+
+        /*
+         | listener.retry — how a LISTENER CONTAINER broker (a MessageBrokerPort that implements
+         | ListenerContainerBroker and is driven by `php artisan firefly:messaging:consume`) retries one
+         | delivery before dead-lettering it. memory and queue keep the per-listener policy of
+         | #[MessageListener(retries:, retryDelay:)] and never read these keys.
+         |
+         | max-attempts — attempts per delivery, the first included; at least 1.
+         | initial-delay / multiplier / max-delay — exponential back-off: initial-delay after the first
+         | failure, times multiplier after each further one, capped at max-delay. Durations are seconds or
+         | '250ms' / '30s' / '5m' / '1h'; the multiplier is at least 1. A malformed value refuses the boot,
+         | naming the key.
+         |
+         | A listener that sets its own `retries: N > 0` overrides these with N + 1 attempts and a linear
+         | retryDelay back-off; its deadLetterTopic replaces the broker's default dead-letter route.
+         |
+         | Default: 5 attempts, 1s doubling, capped at 30s (PyFly's listener container).
+        */
+        'listener' => [
+            'retry' => [
+                'max-attempts' => env('FIREFLY_MESSAGING_LISTENER_RETRY_MAX_ATTEMPTS', 5),
+                'initial-delay' => env('FIREFLY_MESSAGING_LISTENER_RETRY_INITIAL_DELAY', '1s'),
+                'multiplier' => env('FIREFLY_MESSAGING_LISTENER_RETRY_MULTIPLIER', 2.0),
+                'max-delay' => env('FIREFLY_MESSAGING_LISTENER_RETRY_MAX_DELAY', '30s'),
+            ],
+
+            /*
+             | listener.dead-letter.enabled — what a listener container broker does with a delivery whose
+             | attempts ran out. true: it is published to the listener's own deadLetterTopic, or to the
+             | broker's default route (Kafka: `<topic><dlt-suffix>`; RabbitMQ: the queue is rejected without
+             | requeue and its dead-letter exchange moves it into `<queue>.dlq`), with x-original-topic, x-exception,
+             | x-exception-message and x-delivery-attempts headers, and only then acknowledged. false: it is
+             | logged and skipped — an explicit choice to lose it. A listener that names its own
+             | deadLetterTopic is always dead-lettered there (RabbitMQ declares and binds a durable
+             | `firefly.<deadLetterTopic>` parking queue for it unless a subscription already consumes that topic,
+             | so the direct exchange never drops the dead letter as unroutable).
+             |
+             | Default: true.
+            */
+            'dead-letter' => [
+                'enabled' => env('FIREFLY_MESSAGING_LISTENER_DEAD_LETTER_ENABLED', true),
+            ],
+        ],
+
+        /*
+         | kafka — read only when provider is 'kafka'. Nothing connects at boot: one consumer per consumer
+         | group is built on the first poll, the producer on the first publish, and publish() flushes before
+         | it returns. Offsets are committed by hand, after every listener of a record handled it or had it
+         | dead-lettered; a dead letter that cannot be produced stops the worker with the offset uncommitted.
+         |
+         | brokers — UNSET means the event bus's firefly.eda.kafka.brokers (else 127.0.0.1:9092), so one
+         | cluster serves both transports unless you split them.
+         | group-id — the consumer group of a #[MessageListener] that names none.
+         | dlt-suffix — the default dead-letter topic is the record's topic plus this suffix.
+         |
+         | Default: group-id 'firefly', dlt-suffix '.DLT'.
+        */
+        'kafka' => [
+            // 'brokers' => env('FIREFLY_MESSAGING_KAFKA_BROKERS', '127.0.0.1:9092'),
+            'group-id' => env('FIREFLY_MESSAGING_KAFKA_GROUP_ID', 'firefly'),
+            'dlt-suffix' => env('FIREFLY_MESSAGING_KAFKA_DLT_SUFFIX', '.DLT'),
+        ],
+
+        /*
+         | rabbitmq — read only when provider is 'rabbitmq'. The connection is the event bus's
+         | (firefly.eda.rabbitmq.host|port|user|password|vhost); nothing connects at boot. A topic is a
+         | routing key on one durable DIRECT exchange; each subscription consumes one durable queue (the
+         | listener's group, else `firefly.<topic>`) declared with this dead-letter exchange, so a rejected
+         | delivery lands in `<queue>.dlq`. Deliveries are acknowledged by hand after their listeners
+         | handled them, with a bounded prefetch.
+         |
+         | exchange — the exchange messages are published to and queues are bound on.
+         | dead-letter-exchange — '' means `<exchange>.dlx`.
+         | prefetch — unacknowledged deliveries the broker hands this worker at once.
+         |
+         | Default: exchange 'firefly.messages', dead-letter-exchange '' (= 'firefly.messages.dlx'), prefetch 10.
+        */
+        'rabbitmq' => [
+            'exchange' => env('FIREFLY_MESSAGING_RABBITMQ_EXCHANGE', 'firefly.messages'),
+            'dead-letter-exchange' => env('FIREFLY_MESSAGING_RABBITMQ_DEAD_LETTER_EXCHANGE', ''),
+            'prefetch' => env('FIREFLY_MESSAGING_RABBITMQ_PREFETCH', 10),
+        ],
     ],
 
     /*
@@ -2643,6 +2805,92 @@ return [
         // Serve this application's effective flag set to other services (bearer token required unless
         // allow-anonymous is true; enabling it without a token refuses the boot).
         // 'server' => ['enabled' => false, 'path' => '/feature-flags/flagd.json', 'token' => env('FIREFLY_FEATURE_FLAGS_SERVER_TOKEN', ''), 'allow-anonymous' => false],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Webhooks — firefly/webhooks
+    |--------------------------------------------------------------------------
+    |
+    | Inbound webhooks: POST {path}/{provider} for every provider below. A delivery is size-checked,
+    | signature-verified, held to the replay window when the provider signs a timestamp, deduplicated on its
+    | delivery id, and published to firefly/eda as `event-type` on `destination` (both templates over
+    | {provider} and {type}). Refusals answer problem+json. See docs/modules/webhooks.md.
+    |
+    | `validator`: hmac (default) | stripe | github | twilio | none. Each kind defaults its own header names;
+    | override any of signature-header, signature-prefix, algorithm (sha256), encoding (hex|base64),
+    | timestamp-header, tolerance, idempotency-header, idempotency-field, event-type-header, event-type-field,
+    | destination, public-url (Twilio behind a proxy). A signing kind without a secret refuses the boot.
+    |
+    | The idempotency `store` is 'cache' by default ('memory' forgets every PHP-FPM request; 'database' is the
+    | firefly_webhook_receipts table — `php artisan vendor:publish --tag=firefly-webhooks-migrations`, pruned by
+    | `php artisan firefly:webhooks:prune`).
+    |
+    | Defaults: enabled false, path 'webhooks', max-body-bytes 1048576, destination 'webhooks.{provider}',
+    | event-type 'webhook.{provider}.{type}', replay.tolerance '5m', idempotency.store 'cache',
+    | idempotency.ttl '24h', idempotency.cache-store '', idempotency.connection null, providers [].
+    |
+    */
+
+    'webhooks' => [
+        'enabled' => env('FIREFLY_WEBHOOKS_ENABLED', false),
+
+        // 'path' => 'webhooks',
+        // 'max-body-bytes' => 1048576,
+        // 'destination' => 'webhooks.{provider}',
+        // 'event-type' => 'webhook.{provider}.{type}',
+        // 'replay' => ['tolerance' => '5m'],
+        // 'idempotency' => [
+        //     'store' => env('FIREFLY_WEBHOOKS_IDEMPOTENCY_STORE', 'cache'),
+        //     'ttl' => '24h',
+        //     'cache-store' => '',
+        //     'connection' => null,
+        // ],
+        // 'providers' => [
+        //     'stripe' => ['validator' => 'stripe', 'secret' => env('STRIPE_WEBHOOK_SECRET')],
+        //     'github' => ['validator' => 'github', 'secret' => env('GITHUB_WEBHOOK_SECRET')],
+        //     'twilio' => ['validator' => 'twilio', 'secret' => env('TWILIO_AUTH_TOKEN'), 'public-url' => 'https://api.example.com/webhooks/twilio'],
+        //     'partner' => ['secret' => env('PARTNER_WEBHOOK_SECRET'), 'timestamp-header' => 'X-Firefly-Timestamp', 'signature-header' => 'X-Firefly-Signature', 'idempotency-header' => 'X-Firefly-Delivery'],
+        // ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Callbacks — firefly/callbacks
+    |--------------------------------------------------------------------------
+    |
+    | Outbound callbacks: every firefly/eda event whose type matches `event-types` is POSTed to each matching
+    | subscription, signed with `signature.timestamp-header` and `signature.header` (sha256 HMAC over
+    | "<timestamp>.<body>"), retried with exponential back-off on 408/429/5xx and transport errors, through a
+    | circuit breaker per endpoint, and recorded in the execution log. Attempts run where the event is consumed:
+    | use the queue or a broker eda provider so they run in workers. See docs/modules/callbacks.md.
+    |
+    | registry.store / log.store: 'memory' (subscriptions come from `subscriptions`) or 'database' (the
+    | firefly_callback_* tables — `php artisan vendor:publish --tag=firefly-callbacks-migrations`).
+    | `php artisan firefly:callbacks:list` and `php artisan firefly:callbacks:replay` read the log.
+    |
+    | Defaults: enabled false, event-types [], registry.store 'memory', log.store 'memory', connection null,
+    | subscriptions [], retry.max-attempts 3, retry.initial-delay '1s', retry.multiplier 2.0, retry.max-delay
+    | '30s', http.timeout '10s', http.require-https true, http.allowed-hosts [] (any), circuit-breaker.enabled
+    | true, circuit-breaker.failure-threshold 5, circuit-breaker.wait-duration-in-open '30s', signature.header
+    | 'X-Firefly-Signature', signature.timestamp-header 'X-Firefly-Timestamp'.
+    |
+    */
+
+    'callbacks' => [
+        'enabled' => env('FIREFLY_CALLBACKS_ENABLED', false),
+
+        // 'event-types' => ['order.*', 'invoice.paid'],
+        // 'registry' => ['store' => env('FIREFLY_CALLBACKS_REGISTRY', 'memory')],
+        // 'log' => ['store' => env('FIREFLY_CALLBACKS_LOG', 'memory')],
+        // 'connection' => null,
+        // 'subscriptions' => [
+        //     ['id' => 'partner-orders', 'url' => 'https://partner.example.com/hooks', 'event-types' => ['order.*'], 'secret' => env('PARTNER_CALLBACK_SECRET')],
+        // ],
+        // 'retry' => ['max-attempts' => 3, 'initial-delay' => '1s', 'multiplier' => 2.0, 'max-delay' => '30s'],
+        // 'http' => ['timeout' => '10s', 'require-https' => true, 'allowed-hosts' => ['example.com']],
+        // 'circuit-breaker' => ['enabled' => true, 'failure-threshold' => 5, 'wait-duration-in-open' => '30s'],
+        // 'signature' => ['header' => 'X-Firefly-Signature', 'timestamp-header' => 'X-Firefly-Timestamp'],
     ],
 
     /*

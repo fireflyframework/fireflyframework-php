@@ -105,6 +105,8 @@ final class ManifestCacheWriter
             $handlers['handlers'],
             $handlers['destinations'],
             $files[] = $dir.'/'.FireflyCachePaths::HANDLERS,
+            $handlers['cachedQueries'],
+            $handlers['invalidations'],
         );
 
         // eda

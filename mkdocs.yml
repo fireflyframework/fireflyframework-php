@@ -143,6 +143,8 @@ nav:
           - EDA Brokers: modules/eda-brokers.md
           - EDA Database Outbox: modules/eda-database.md
           - Messaging: modules/messaging.md
+          - Webhooks: modules/webhooks.md
+          - Callbacks: modules/callbacks.md
           - Orchestration: modules/orchestration.md
       - CQRS:
           - CQRS (Command/Query): modules/cqrs.md

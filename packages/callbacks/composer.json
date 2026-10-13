@@ -1,0 +1,65 @@
+{
+    "name": "firefly/callbacks",
+    "description": "LaraFly outbound callbacks: subscriptions on memory or any database connection, HMAC-SHA256-signed HTTP deliveries driven by firefly/eda events, retries with exponential back-off, a circuit breaker per endpoint through firefly/resilience, an execution log on memory or a database, and artisan commands to list and replay deliveries.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        {
+            "name": "Firefly Software Solutions Inc.",
+            "homepage": "https://github.com/fireflyframework"
+        }
+    ],
+    "keywords": [
+        "firefly",
+        "laravel",
+        "callbacks",
+        "webhooks"
+    ],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/callbacks"
+    },
+    "require": {
+        "php": "^8.3",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/eda": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/resilience": "*@dev",
+        "illuminate/console": "^13.0",
+        "illuminate/container": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/database": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/support": "^13.0",
+        "psr/log": "^3.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Callbacks\\CallbacksServiceProvider",
+                "Firefly\\Callbacks\\CallbacksWiringProvider"
+            ]
+        },
+        "branch-alias": {
+            "dev-main": "26.x-dev"
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Firefly\\Callbacks\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Firefly\\Callbacks\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "stable",
+    "config": {
+        "sort-packages": true
+    }
+}

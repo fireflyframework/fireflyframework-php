@@ -63,6 +63,27 @@ return [
         ],
     ],
     1 => [
+        'class' => 'Firefly\\Actuator\\Health\\CacheHealthIndicator',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.management.endpoint.health.cache.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    2 => [
         'class' => 'Firefly\\Actuator\\Health\\DbHealthIndicator',
         'postConstruct' => [
         ],
@@ -83,7 +104,49 @@ return [
         'beanConditions' => [
         ],
     ],
-    2 => [
+    3 => [
+        'class' => 'Firefly\\Actuator\\Health\\QueueHealthIndicator',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.management.endpoint.health.queue.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    4 => [
+        'class' => 'Firefly\\Actuator\\Health\\RedisHealthIndicator',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.management.endpoint.health.redis.enabled',
+                    1 => 'true',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+        ],
+    ],
+    5 => [
         'class' => 'Firefly\\Actuator\\Info\\RuntimeInfoContributor',
         'postConstruct' => [
         ],
@@ -104,7 +167,7 @@ return [
         'beanConditions' => [
         ],
     ],
-    3 => [
+    6 => [
         'class' => 'Firefly\\Actuator\\Introspection\\ScheduledTasksEndpoint',
         'postConstruct' => [
         ],

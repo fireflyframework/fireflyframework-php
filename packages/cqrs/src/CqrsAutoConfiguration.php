@@ -9,8 +9,13 @@ use Firefly\Container\Attributes\Bean;
 use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
+use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
+use Firefly\Cqrs\Cache\CacheQueryCache;
+use Firefly\Cqrs\Cache\InvalidationRule;
 use Firefly\Cqrs\Cache\NoOpQueryCache;
 use Firefly\Cqrs\Cache\QueryCache;
+use Firefly\Cqrs\Cache\QueryCacheInvalidator;
+use Firefly\Cqrs\Cache\QueryCachePolicies;
 use Firefly\Cqrs\Command\CommandBus;
 use Firefly\Cqrs\Command\DefaultCommandBus;
 use Firefly\Cqrs\Correlation\CorrelationContext;
@@ -19,6 +24,7 @@ use Firefly\Cqrs\Event\DomainEventBridge;
 use Firefly\Cqrs\Event\EdaCommandEventPublisher;
 use Firefly\Cqrs\Event\EventFailureStrategy;
 use Firefly\Cqrs\Event\NoOpEventPublisher;
+use Firefly\Cqrs\Exception\CqrsConfigurationException;
 use Firefly\Cqrs\Handler\HandlerManifest;
 use Firefly\Cqrs\Handler\HandlerRegistry;
 use Firefly\Cqrs\Metrics\CqrsMetrics;
@@ -34,6 +40,7 @@ use Firefly\Cqrs\Validation\MessageValidator;
 use Firefly\Eda\EventPublisher;
 use Firefly\Validation\Validator;
 use Illuminate\Container\Container;
+use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -110,11 +117,64 @@ final class CqrsAutoConfiguration
         return new NoOpCqrsTracing;
     }
 
+    /**
+     * firefly.cqrs.query.cache.provider: `none` (the default — the inert NoOpQueryCache) or `cache`, the
+     * CacheQueryCache on the Laravel cache store firefly.cqrs.query.cache.store names ('' = the default store),
+     * under the key prefix firefly.cqrs.query.cache.prefix. Anything else refuses the boot rather than silently
+     * running uncached. An application that binds its own QueryCache wins, as before.
+     */
     #[Bean]
     #[ConditionalOnMissingBean(QueryCache::class)]
-    public function queryCache(): QueryCache
+    public function queryCache(Config $config, Container $container): QueryCache
     {
-        return new NoOpQueryCache;
+        $provider = $config->string('firefly.cqrs.query.cache.provider', 'none');
+        if ($provider === 'none') {
+            return new NoOpQueryCache;
+        }
+
+        if ($provider !== 'cache') {
+            throw new CqrsConfigurationException("firefly.cqrs.query.cache.provider must be 'none' or 'cache', got '{$provider}'.");
+        }
+
+        /** @var CacheFactory $caches */
+        $caches = $container->make('cache');
+        $store = $config->string('firefly.cqrs.query.cache.store', '');
+
+        return new CacheQueryCache(
+            $caches->store($store === '' ? null : $store),
+            $config->string('firefly.cqrs.query.cache.prefix', CacheQueryCache::DEFAULT_PREFIX),
+            $this->logger($container),
+        );
+    }
+
+    /**
+     * The invalidator behind #[InvalidatesQuery], bound only with the real cache. Its rules are the compiled
+     * attribute rules plus firefly.cqrs.query.cache.invalidation — `event type => [query classes]` — for events this
+     * process has no class for (another service's envelope); those evict the queries' whole groups. A malformed
+     * entry refuses the boot.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.cqrs.query.cache.provider', havingValue: 'cache')]
+    #[ConditionalOnMissingBean(QueryCacheInvalidator::class)]
+    public function queryCacheInvalidator(QueryCache $cache, HandlerManifest $manifest, Config $config, Container $container): QueryCacheInvalidator
+    {
+        $rules = $manifest->invalidations();
+
+        foreach ($config->array('firefly.cqrs.query.cache.invalidation', []) as $eventType => $queries) {
+            if (! is_string($eventType) || ! is_array($queries)) {
+                throw new CqrsConfigurationException('firefly.cqrs.query.cache.invalidation must map an event type to a list of query classes.');
+            }
+
+            foreach ($queries as $query) {
+                if (! is_string($query) || ! class_exists($query)) {
+                    throw new CqrsConfigurationException("firefly.cqrs.query.cache.invalidation.{$eventType} names ".get_debug_type($query).' that is not a query class.');
+                }
+
+                $rules[] = new InvalidationRule('', $eventType, $query);
+            }
+        }
+
+        return new QueryCacheInvalidator($cache, QueryCachePolicies::fromManifest($manifest), $rules, $this->logger($container));
     }
 
     #[Bean]
@@ -141,7 +201,7 @@ final class CqrsAutoConfiguration
     public function domainEventBridge(CommandEventPublisher $publisher, Config $config, Container $container): DomainEventBridge
     {
         $strategy = EventFailureStrategy::tryFrom($config->string('firefly.cqrs.event_failure_strategy', 'log')) ?? EventFailureStrategy::Log;
-        $logger = $container->bound(LoggerInterface::class) ? $container->make(LoggerInterface::class) : null;
+        $logger = $this->logger($container);
 
         return new DomainEventBridge($publisher, $strategy, $logger);
     }
@@ -155,10 +215,20 @@ final class CqrsAutoConfiguration
 
     #[Bean]
     #[ConditionalOnMissingBean(QueryBus::class)]
-    public function queryBus(HandlerRegistry $registry, MessageValidator $validator, QueryAuthorizer $authorizer, CorrelationContext $correlation, CqrsMetrics $metrics, QueryCache $cache, Config $config, ?CqrsTracing $tracing = null): QueryBus
+    public function queryBus(HandlerRegistry $registry, MessageValidator $validator, QueryAuthorizer $authorizer, CorrelationContext $correlation, CqrsMetrics $metrics, QueryCache $cache, Config $config, ?CqrsTracing $tracing = null, ?HandlerManifest $manifest = null): QueryBus
     {
         $ttl = $config->has('firefly.cqrs.query.cache_ttl') ? $config->int('firefly.cqrs.query.cache_ttl') : null;
+        $policies = $manifest !== null ? QueryCachePolicies::fromManifest($manifest) : null;
 
-        return new DefaultQueryBus($registry, $validator, $authorizer, $correlation, $metrics, $cache, $ttl, $tracing);
+        return new DefaultQueryBus($registry, $validator, $authorizer, $correlation, $metrics, $cache, $ttl, $tracing, $policies);
+    }
+
+    private function logger(Container $container): ?LoggerInterface
+    {
+        if (! $container->bound(LoggerInterface::class)) {
+            return null;
+        }
+
+        return $container->make(LoggerInterface::class);
     }
 }

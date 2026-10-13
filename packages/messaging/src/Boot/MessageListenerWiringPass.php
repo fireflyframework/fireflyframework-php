@@ -8,6 +8,8 @@ use Closure;
 use Firefly\Context\Boot\BootContext;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\BootPhase;
+use Firefly\Messaging\Container\ListenerContainerBroker;
+use Firefly\Messaging\Container\ListenerOptions;
 use Firefly\Messaging\DeadLetter\DeadLetterStore;
 use Firefly\Messaging\DeadLetter\RetryingMessageHandler;
 use Firefly\Messaging\Listener\MessageListenerDescriptor;
@@ -23,6 +25,9 @@ use Illuminate\Container\Container;
  * DESCRIPTOR's OWN retries/retryDelay/deadLetterTopic (the per-listener policy, unlike eda's config-driven one) +
  * the bound DeadLetterStore, and resolves its target bean FRESH on every dispatch (never caching it). start() is
  * called last so the in-memory broker is publish-ready after boot (a no-op for the queue adapter).
+ *
+ * A ListenerContainerBroker (Kafka, RabbitMQ) is handed the BARE invoker plus the listener's ListenerOptions instead:
+ * its container owns retries and dead letters, so wrapping the listener here would retry every failure twice over.
  */
 final class MessageListenerWiringPass implements BootPass
 {
@@ -48,6 +53,12 @@ final class MessageListenerWiringPass implements BootPass
         $dlq = $container->make(DeadLetterStore::class);
 
         foreach ($manifest->all() as $descriptor) {
+            if ($broker instanceof ListenerContainerBroker) {
+                $broker->subscribeListener($descriptor->topic, $this->invoker($container, $descriptor), $descriptor->group, ListenerOptions::fromDescriptor($descriptor));
+
+                continue;
+            }
+
             $handler = RetryingMessageHandler::wrap(
                 $this->invoker($container, $descriptor),
                 $descriptor->retries,

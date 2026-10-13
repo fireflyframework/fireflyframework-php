@@ -25,6 +25,7 @@
         "firefly/actuator": "*@dev",
         "firefly/admin": "*@dev",
         "firefly/autoconfigure": "*@dev",
+        "firefly/callbacks": "*@dev",
         "firefly/cli": "*@dev",
         "firefly/config": "*@dev",
         "firefly/container": "*@dev",
@@ -48,7 +49,8 @@
         "firefly/security-oauth2-client": "*@dev",
         "firefly/security-oauth2-server": "*@dev",
         "firefly/validation": "*@dev",
-        "firefly/web": "*@dev"
+        "firefly/web": "*@dev",
+        "firefly/webhooks": "*@dev"
     },
     "extra": {
         "branch-alias": {

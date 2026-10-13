@@ -57,6 +57,8 @@ several of those example values are deliberately not the framework default (the 
     // …
     'store' => [
         'lock-block-timeout' => '500ms',
+        'provider' => env('FIREFLY_RESILIENCE_STORE_PROVIDER', 'cache'),
+        'allow-lockless' => env('FIREFLY_RESILIENCE_STORE_ALLOW_LOCKLESS', false),
     ],
     // …
     // 'retry' => [
@@ -371,6 +373,21 @@ injected `Illuminate\Contracts\Cache\Repository`. `ResilienceRegistry` itself is
 `resilience` config section still boots a working, empty registry — install the package and it's live with no
 required configuration.
 
+### Choosing the store
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `firefly.resilience.store.provider` | `cache` \| `memory` | `cache` | `cache` keeps the state on Laravel's default cache store, shared by every worker; `memory` keeps it in the process (`InMemoryResilienceStore`: tests, CLI, a single long-running worker). Anything else refuses to boot, naming the key. |
+| `firefly.resilience.store.allow-lockless` | bool | `false` | Lets the `cache` provider run on a store without atomic locks, accepting the race between workers. |
+
+The `cache` provider needs a store that implements `Illuminate\Contracts\Cache\LockProvider` (redis, database,
+file, memcached, dynamodb, array), because every breaker, limiter and bulkhead transition is a read-then-write
+that must be a real critical section. The store bean is an eager singleton, so on a store without locks (apc,
+session) the application refuses to **boot** with `ConfigurationException` `RESILIENCE_STORE_LOCKLESS` rather
+than over-admitting under the first burst of load. `allow-lockless=true` accepts the race instead: the store
+runs each section unlocked and logs one warning per store. A `CacheResilienceStore` constructed by hand over a
+lockless cache throws the same exception from `withLock()` unless it is built with `allowLockless: true`.
+
 ### The mutex wait budget
 
 `withLock()` separates two numbers that are easy to conflate:
@@ -416,9 +433,9 @@ These are carried-forward, documented limitations of the M7 shipment — not bug
   store to actually survive across FPM requests and stay race-free: `file`, `database`, and `redis` qualify.
   The `array` driver is **per-request** (each FPM request gets a fresh in-memory array), so breaker/limiter/
   bulkhead state resets every request — fine for tests and single-shot CLI runs, not for production
-  cross-request behaviour. The `null` cache driver's locks are no-ops (`withLock()` degrades to running the
-  callback without a critical section whenever the driver isn't a `LockProvider`), so it must not be used in
-  production for these patterns either.
+  cross-request behaviour. The `null` cache driver persists nothing and its locks are no-ops, so it must not
+  be used in production for these patterns either. A driver that is not a `LockProvider` at all is refused at
+  boot (see [Choosing the store](#choosing-the-store)).
 - **An idle record is reclaimed on the cache's schedule, not on a sweep the framework runs.** Every
   cache-backed pattern now writes its record with an expiry refreshed on every write — `idle-ttl` for
   [`CircuitBreaker`](#circuitbreaker) and [`RateLimiter`](#ratelimiter), `permit-ttl` for

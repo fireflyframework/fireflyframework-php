@@ -6,6 +6,8 @@ illuminate Router under `/actuator`, and a HAL index at `/actuator` listing ever
 first-party `HealthIndicator` SPI (`Ping`/`DiskSpace`/opt-in `Db`) feeds `/actuator/health` (+ liveness/
 readiness groups, 503 on DOWN), alongside `/actuator/info`, masked `/actuator/env`, `/actuator/beans`,
 `/actuator/conditions`, `/actuator/mappings`, `/actuator/loggers`, and `/actuator/scheduledtasks`.
+Opt-in `cache`, `queue` and `redis` health indicators probe each configured cache store, queue connection and
+Redis connection.
 Dependency-light, always-on, and secured entirely by `firefly/security`'s `HttpSecurity` config with zero
 code edge — and secure-by-default: `health`/`info` ship unexposed until configured, so an unconfigured
 endpoint 404s rather than leaking data.

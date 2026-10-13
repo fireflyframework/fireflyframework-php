@@ -9,6 +9,7 @@ use Firefly\Context\Boot\FireflyServiceProvider;
 use Firefly\Context\Scan\AppScan;
 use Firefly\Cqrs\Boot\CqrsHandlerWiringPass;
 use Firefly\Cqrs\Boot\DomainEventBridgeWiringPass;
+use Firefly\Cqrs\Boot\QueryCacheInvalidationWiringPass;
 use Firefly\Cqrs\Handler\HandlerManifest;
 use Firefly\Cqrs\Scanner\HandlerScanner;
 use Illuminate\Contracts\Container\Container;
@@ -18,7 +19,8 @@ use Illuminate\Contracts\Container\Container;
  * final register() records candidacy ONLY and never consumes passes(). So — exactly like EdaWiringProvider /
  * SchedulingWiringProvider — this plain FireflyServiceProvider contributes the wiring pass(es) via passes() and
  * resolves the HandlerManifest behind a bound() guard. Both this and CqrsServiceProvider are listed in
- * extra.laravel.providers. Task 12 adds DomainEventBridgeWiringPass to passes().
+ * extra.laravel.providers. It contributes the handler wiring, the domain-event bridge and the query-cache
+ * invalidation passes.
  *
  * The binding resolves its own manifest (compiled artifact first, then an in-process scan of firefly.scan.paths,
  * then empty) rather than binding an unconditional empty default. Previously only firefly/cli's
@@ -44,7 +46,7 @@ final class CqrsWiringProvider extends FireflyServiceProvider
 
                 $scanned = (new HandlerScanner)->scan($paths);
 
-                return new HandlerManifest($scanned['handlers'], $scanned['destinations']);
+                return new HandlerManifest($scanned['handlers'], $scanned['destinations'], $scanned['cachedQueries'], $scanned['invalidations']);
             });
         }
 
@@ -56,6 +58,6 @@ final class CqrsWiringProvider extends FireflyServiceProvider
      */
     public function passes(): array
     {
-        return [new CqrsHandlerWiringPass, new DomainEventBridgeWiringPass];
+        return [new CqrsHandlerWiringPass, new DomainEventBridgeWiringPass, new QueryCacheInvalidationWiringPass];
     }
 }

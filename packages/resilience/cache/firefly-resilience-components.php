@@ -44,6 +44,7 @@ return [
                 'dependencies' => [
                     0 => 'Illuminate\\Contracts\\Cache\\Repository',
                     1 => 'Firefly\\Config\\Config',
+                    2 => 'Psr\\Log\\LoggerInterface',
                 ],
             ],
             1 => [
