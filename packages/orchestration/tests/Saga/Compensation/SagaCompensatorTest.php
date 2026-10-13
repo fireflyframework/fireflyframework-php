@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Firefly\Config\Config;
+use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Kernel\Exception\Infrastructure\CircuitBreakerOpenException;
 use Firefly\Orchestration\Core\CompensationPolicy;
 use Firefly\Orchestration\Core\Exception\CompensationException;
@@ -304,4 +305,29 @@ it('CIRCUIT_BREAKER counts a handler retry that succeeds as a breaker success an
         ->and($context->stepStatus('b'))->toBe(StepStatus::Compensated)
         ->and($context->stepStatus('a'))->toBe(StepStatus::Compensated)
         ->and($resilience->circuitBreaker('orchestration-compensation-order')->state())->toBe('closed');
+});
+
+it('CIRCUIT_BREAKER refuses to run on the default breaker when the configured saga breaker is invalid', function (): void {
+    $log = [];
+    $resilience = ResilienceRegistry::fromConfig(new Config(new Repository(['firefly' => ['resilience' => ['circuit-breaker' => ['orchestration-compensation-order' => ['wait-duration-in-open' => 'two minutes']]]]])), new InMemoryResilienceStore);
+    $saga = orchestrationCompensationSaga(['a' => [], 'b' => ['a']], [], $log);
+    $context = orchestrationCompletedContext($saga, ['a', 'b']);
+    $compensator = new SagaCompensator(TestSupport::invoker(), TestSupport::engineSupport(), CompensationPolicy::CircuitBreaker, new DefaultCompensationErrorHandler, $resilience, new InMemoryResilienceStore);
+
+    expect(fn () => $compensator->compensate($saga, $context))->toThrow(ConfigurationException::class, 'Invalid duration [two minutes]')
+        ->and($log)->toBe([]);
+});
+
+it('CIRCUIT_BREAKER falls back to the default breaker only when no saga breaker is configured', function (): void {
+    $log = [];
+    $resilience = ResilienceRegistry::fromConfig(new Config(new Repository(['firefly' => ['resilience' => ['circuit-breaker' => ['payments' => ['failure-threshold' => 1]]]]])), new InMemoryResilienceStore);
+    $saga = orchestrationCompensationSaga(['a' => [], 'b' => ['a']], [], $log);
+    $context = orchestrationCompletedContext($saga, ['a', 'b']);
+    $compensator = new SagaCompensator(TestSupport::invoker(), TestSupport::engineSupport(), CompensationPolicy::CircuitBreaker, new DefaultCompensationErrorHandler, $resilience, new InMemoryResilienceStore);
+
+    $compensator->compensate($saga, $context);
+
+    expect($log)->toBe(['b', 'a'])
+        ->and($context->stepStatus('b'))->toBe(StepStatus::Compensated)
+        ->and($context->stepStatus('a'))->toBe(StepStatus::Compensated);
 });

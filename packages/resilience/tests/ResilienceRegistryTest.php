@@ -70,6 +70,18 @@ it('an empty resilience config still rejects unknown names cleanly', function ()
     expect(fn () => makeResilienceRegistry()->circuitBreaker('none'))->toThrow(ConfigurationException::class, '(none configured)');
 });
 
+it('reports whether a circuit breaker instance is configured without building it', function () {
+    // An instance with an invalid value still counts as configured: hasCircuitBreaker() never parses it, so a
+    // caller that falls back on "absent" cannot mistake a misconfiguration for a missing instance.
+    $reg = makeResilienceRegistry(['circuit-breaker' => ['payments' => [], 'broken' => ['wait-duration-in-open' => 'two minutes']]]);
+
+    expect($reg->hasCircuitBreaker('payments'))->toBeTrue()
+        ->and($reg->hasCircuitBreaker('broken'))->toBeTrue()
+        ->and($reg->hasCircuitBreaker('missing'))->toBeFalse()
+        ->and(makeResilienceRegistry()->hasCircuitBreaker('payments'))->toBeFalse()
+        ->and(fn () => $reg->circuitBreaker('broken'))->toThrow(ConfigurationException::class, 'Invalid duration [two minutes]');
+});
+
 it('wires the circuit breaker minimum-number-of-calls key through to the built instance', function () {
     // A registry key that never reaches the constructor is indistinguishable from a typo, so assert the
     // BEHAVIOUR the key buys rather than the object's shape: with a minimum of 3, two failures on a

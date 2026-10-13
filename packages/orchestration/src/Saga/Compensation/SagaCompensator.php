@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Firefly\Orchestration\Saga\Compensation;
 
-use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Kernel\Exception\Infrastructure\CircuitBreakerOpenException;
 use Firefly\Orchestration\Core\CompensationPolicy;
 use Firefly\Orchestration\Core\EngineSupport;
@@ -272,12 +271,12 @@ final class SagaCompensator
 
     private function breaker(string $sagaName): ?CircuitBreaker
     {
-        if ($this->resilience !== null) {
-            try {
-                return $this->resilience->circuitBreaker('orchestration-compensation-'.$sagaName);
-            } catch (ConfigurationException) {
-                // Not configured under firefly.resilience.circuit-breaker: fall through to the default breaker.
-            }
+        // Fall back to the default breaker only when firefly.resilience.circuit-breaker has no instance for this
+        // saga. A configured instance with an invalid value throws its ConfigurationException here instead of
+        // silently running on thresholds the operator never set.
+        $name = 'orchestration-compensation-'.$sagaName;
+        if ($this->resilience !== null && $this->resilience->hasCircuitBreaker($name)) {
+            return $this->resilience->circuitBreaker($name);
         }
 
         return $this->store === null ? null : new CircuitBreaker(
