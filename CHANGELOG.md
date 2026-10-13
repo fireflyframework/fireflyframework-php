@@ -4,6 +4,24 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+### Added
+
+- **Orchestration (`firefly/orchestration`):** sagas with five compensation policies, compensation error
+  handlers, a builder DSL and saga composition; TCC with ordered participants, per-phase timeouts and
+  retries and TCC composition; and durable workflows with dependencies, conditions, signals, timers,
+  wait-for-all/any, child workflows, continue-as-new, queries, suspend/resume, search attributes and queued
+  execution. Definitions are attribute-discovered, compiled by `firefly:cache` and validated at boot.
+- **Orchestration persistence and recovery:** checkpoints at every step through a `memory`, `cache` or
+  `database` store (PostgreSQL, MySQL, MariaDB, SQLite and SQL Server), a per-execution distributed lock, a
+  scheduled recovery sweep that reports, resumes or compensates stale executions, retention cleanup, and a
+  dead-letter queue with retry.
+- **Orchestration operations:** lifecycle and step events through `firefly/eda`, event-type triggers, cron and
+  fixed-rate schedules, the `orchestration` actuator endpoint and health component,
+  `php artisan firefly:orchestration:{list,show,signal,dlq,dlq:retry,tick}` and an opt-in REST surface.
+- **Observability:** `orchestration_executions_seconds`, `orchestration_steps_seconds`,
+  `orchestration_compensations_total` and `orchestration_dead_letters_total`, and INTERNAL spans per execution
+  and step behind `firefly.observability.tracing.orchestration.enabled`.
+
 ## [26.10.1] - 2026-10-06
 
 ### Added

@@ -28,11 +28,11 @@
 ## Module Guides
 
 Every module guide lives under [`modules/`](modules/), in the ten groups `mkdocs.yml`'s navigation and the
-site's own [Modules](modules.md) landing page use. All 33 are listed here, and neither the list nor the
+site's own [Modules](modules.md) landing page use. All 34 are listed here, and neither the list nor the
 number is maintained on trust: `tests/ModuleDocumentationTest.php` fails the build if a guide is missing
 from the navigation, from the table below, from the root `README.md`'s table, from `docs/index.md` or from
 the landing page, and `tests/SiteNavigationTest.php` reads that number off `docs/modules/*.md` itself, so a
-thirty-fourth guide turns this page red rather than quietly making it wrong.
+thirty-fifth guide turns this page red rather than quietly making it wrong.
 
 ### Foundation
 
@@ -76,6 +76,7 @@ thirty-fourth guide turns this page red rather than quietly making it wrong.
 | [Event-Driven Architecture](modules/eda.md) | `firefly/eda` — broker-backed `EventPublisher`, envelopes, retry/DLQ, in-memory + queue adapters |
 | [EDA Brokers](modules/eda-brokers.md) | Real broker adapters behind the `EventPublisher` port — RabbitMQ, Postgres LISTEN/NOTIFY, Kafka |
 | [Messaging](modules/messaging.md) | `firefly/messaging` — the lower-level raw-bytes `MessageBrokerPort`, `#[MessageListener]` |
+| [Orchestration](modules/orchestration.md) | `firefly/orchestration` — sagas, TCC and durable workflows with checkpoints, recovery and a dead-letter queue |
 
 ### CQRS
 
@@ -123,7 +124,7 @@ thirty-fourth guide turns this page red rather than quietly making it wrong.
 
 | Document | Description |
 |----------|-------------|
-| [Modules](modules.md) | The grouped index of all 33 module guides, and how a package wires itself |
+| [Modules](modules.md) | The grouped index of all 34 module guides, and how a package wires itself |
 | [CLI Reference](cli.md) | Every `firefly:*` command and `make:firefly-*` generator, including the four contributed by capability packages |
 | [Laravel Comparison](laravel-comparison.md) | Side-by-side concept mapping for developers coming from plain Laravel |
 | [Versioning](versioning.md) | CalVer (`YY.MM.Patch`), no `version` field, how Packagist derives releases from tags |

@@ -15,4 +15,6 @@ crashed process left behind. Failed executions are parked in a dead-letter queue
 lifecycle events publish through `firefly/eda`, the `orchestration` actuator endpoint and health component
 report what is running, and `php artisan firefly:orchestration:*` lists, shows, signals, ticks and retries.
 
+The guide is [docs/modules/orchestration.md](../../docs/modules/orchestration.md).
+
 Apache-2.0 © Firefly Software Solutions Inc.

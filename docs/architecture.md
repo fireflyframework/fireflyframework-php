@@ -268,10 +268,10 @@ onto every record beside the correlation and request ids, and `firefly.logging.s
 `json`, `ecs` or `logstash`, or empty for plain text — decides how a line is rendered, attached per channel
 at resolution time.
 
-Metrics and introspection are the actuator's. Sixteen `ActuatorEndpoint` implementations ship, discovered
+Metrics and introspection are the actuator's. Seventeen `ActuatorEndpoint` implementations ship, discovered
 into the `ActuatorRegistry` — health, info, env, beans, conditions, mappings, loggers, scheduledtasks, caches,
 configprops, metrics, prometheus, process, httpexchanges, oauth2clients when the authorization server is
-installed, and flags when feature flags are enabled — and the sensitive ones answer **404** until named in
+installed, flags when feature flags are enabled, and orchestration for sagas, TCCs and workflows — and the sensitive ones answer **404** until named in
 `firefly.management.endpoints.web.exposure.include`. `firefly/admin` renders those same beans server-side by
 resolving them **in-process from that registry**, never by fetching its own HTTP surface: one data path, and
 pages the JSON surface deliberately keeps unexposed. That is also why the dashboard's own URL is its entire

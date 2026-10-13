@@ -141,6 +141,7 @@ nav:
           - Event-Driven Architecture: modules/eda.md
           - EDA Brokers: modules/eda-brokers.md
           - Messaging: modules/messaging.md
+          - Orchestration: modules/orchestration.md
       - CQRS:
           - CQRS (Command/Query): modules/cqrs.md
       - Security:
