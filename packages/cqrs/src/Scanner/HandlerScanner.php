@@ -99,10 +99,8 @@ final class HandlerScanner
                 if ($rule->key !== null && ! is_subclass_of($rule->query, Cacheable::class)) {
                     throw new CqrsConfigurationException("#[InvalidatesQuery({$rule->query}::class)] on [{$class}] declares a key template, but [{$rule->query}] is keyed by value (QueryCacheKey); use a with map or no key to evict its group.");
                 }
-                if ($rule->with !== []) {
-                    $this->assertWithMapsQuery($class, $rule->query, $rule->with);
-                }
-                $invalidations[] = new InvalidationRule($class, $rule->eventType ?? $reflection->getShortName(), $rule->query, $rule->key, $rule->with);
+                $withTypes = $rule->with === [] ? [] : $this->assertWithMapsQuery($class, $rule->query, $rule->with);
+                $invalidations[] = new InvalidationRule($class, $rule->eventType ?? $reflection->getShortName(), $rule->query, $rule->key, $rule->with, $withTypes);
             }
         }
 
@@ -115,17 +113,22 @@ final class HandlerScanner
      * eviction silently misses. A query holding private or protected state is never keyed by value (QueryCacheKey
      * answers null), and a Cacheable query is keyed by its own cacheKey(), so `with` can match neither.
      *
+     * Answers each mapped property's declared type (see publicPropertiesOrFail()), which the invalidator needs to tell
+     * whether an EDA payload value can still rebuild the key once it has crossed a JSON broker.
+     *
      * @param  class-string  $queryClass
      * @param  array<string, string>  $with
+     * @return array<string, string> query property => declared type
      */
-    private function assertWithMapsQuery(string $eventClass, string $queryClass, array $with): void
+    private function assertWithMapsQuery(string $eventClass, string $queryClass, array $with): array
     {
         $where = "#[InvalidatesQuery({$queryClass}::class)] on [{$eventClass}]";
         if (is_subclass_of($queryClass, Cacheable::class)) {
             throw new CqrsConfigurationException("{$where} declares a with map, but the query is Cacheable and keyed by its own cacheKey(); use a key template instead.");
         }
 
-        $public = $this->publicPropertiesOrFail($queryClass, $where, 'declares a with map');
+        $types = $this->publicPropertiesOrFail($queryClass, $where, 'declares a with map');
+        $public = array_keys($types);
 
         $unknown = array_diff(array_keys($with), $public);
         if ($unknown !== []) {
@@ -136,6 +139,13 @@ final class HandlerScanner
         if ($unmapped !== []) {
             throw new CqrsConfigurationException("{$where} leaves [".implode(', ', $unmapped).'] unmapped; a with map names every public property of the query.');
         }
+
+        $mapped = [];
+        foreach (array_keys($with) as $property) {
+            $mapped[$property] = $types[$property];
+        }
+
+        return $mapped;
     }
 
     /**
@@ -143,8 +153,11 @@ final class HandlerScanner
      * and answers null for an object holding more, so a value-keyed query with private or protected state would never
      * be cached (#[CachedQuery] silently doing nothing) and no `with` map could name its entries.
      *
+     * Each name maps to its declared type: a single named type as written (`string`, `?int`, an enum or class name),
+     * or '' for an untyped property and a union or intersection type, which no payload value can be checked against.
+     *
      * @param  class-string  $queryClass
-     * @return list<string>
+     * @return array<string, string> property name => declared type
      */
     private function publicPropertiesOrFail(string $queryClass, string $where, string $what): array
     {
@@ -156,7 +169,10 @@ final class HandlerScanner
             if (! $property->isPublic()) {
                 throw new CqrsConfigurationException("{$where} {$what}, but [{$queryClass}::\${$property->getName()}] is not public; a query keyed by value holds only public state (or implements Cacheable to key itself).");
             }
-            $public[] = $property->getName();
+            $type = $property->getType();
+            $public[$property->getName()] = $type instanceof ReflectionNamedType
+                ? ($type->allowsNull() && ! in_array($type->getName(), ['null', 'mixed'], true) ? '?' : '').$type->getName()
+                : '';
         }
 
         return $public;

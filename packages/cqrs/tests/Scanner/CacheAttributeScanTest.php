@@ -14,6 +14,8 @@ use Firefly\Cqrs\Tests\CacheScannerBadFixtures\PrivateKeyedLedger;
 use Firefly\Cqrs\Tests\CacheScannerFixtures\EntryPosted;
 use Firefly\Cqrs\Tests\CacheScannerFixtures\LedgerBalance;
 use Firefly\Cqrs\Tests\CacheScannerFixtures\LedgerTotals;
+use Firefly\Cqrs\Tests\CapstoneFixtures\Ledger\LedgerTier;
+use Firefly\Cqrs\Tests\CapstoneFixtures\Ledger\TierBalance;
 
 it('compiles #[CachedQuery] into per-query policies with the class as the default group', function () {
     $result = (new HandlerScanner)->scan(['Firefly\\Cqrs\\Tests\\CacheScannerFixtures\\' => dirname(__DIR__).'/CacheScannerFixtures']);
@@ -28,11 +30,21 @@ it('compiles #[InvalidatesQuery] into rules keyed by the event class and its eve
     $result = (new HandlerScanner)->scan(['Firefly\\Cqrs\\Tests\\CacheScannerFixtures\\' => dirname(__DIR__).'/CacheScannerFixtures']);
 
     expect($result['invalidations'])->toEqual([
-        new InvalidationRule(EntryPosted::class, 'EntryPosted', LedgerBalance::class, null, ['account' => 'account']),
+        new InvalidationRule(EntryPosted::class, 'EntryPosted', LedgerBalance::class, null, ['account' => 'account'], ['account' => 'string']),
         new InvalidationRule(EntryPosted::class, 'ledger.entry-posted', LedgerTotals::class),
     ])
         ->and($result['invalidations'][1]->evictsGroup())->toBeTrue()
         ->and($result['invalidations'][0]->evictsGroup())->toBeFalse();
+});
+
+it('records the declared type of every query property a with map names, enums by class', function () {
+    $result = (new HandlerScanner)->scan(['Firefly\\Cqrs\\Tests\\CapstoneFixtures\\Ledger\\' => dirname(__DIR__).'/CapstoneFixtures/Ledger']);
+    $tier = array_values(array_filter($result['invalidations'], static fn (InvalidationRule $r): bool => $r->queryClass === TierBalance::class));
+
+    expect($tier)->toHaveCount(1)
+        ->and($tier[0]->withTypes)->toBe(['account' => 'string', 'tier' => LedgerTier::class])
+        ->and(InvalidationRule::fromArray($tier[0]->toArray()))->toEqual($tier[0])
+        ->and(InvalidationRule::fromArray(['eventClass' => '', 'eventType' => 'x', 'queryClass' => TierBalance::class, 'key' => null, 'with' => ['tier' => 'tier']])->withTypes)->toBe([]);
 });
 
 it('refuses a rule that names both a key template and a with map, and a TTL below one second', function () {

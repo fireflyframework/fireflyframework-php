@@ -2326,9 +2326,12 @@ return [
          |
          | With provider 'cache', #[InvalidatesQuery] on an event class evicts cached queries when that event
          | is dispatched in process (a DomainEvent, after its transaction commits; nothing on rollback) or
-         | arrives as an EDA envelope of the same event type. `invalidation` adds rules for events this
-         | process has no class for (another service's envelopes): `event type => [query classes]`, each
-         | evicting the whole group of the queries it lists. A malformed entry refuses the boot.
+         | arrives as an EDA envelope of the same event type. An envelope evicts the ONE entry a `with` map
+         | names only when its payload values carry the query properties' declared types (JSON delivers an
+         | enum as its backing value, a date as an array); otherwise it evicts the group, with a warning.
+         | `invalidation` adds rules for events this process has no class for (another service's
+         | envelopes): `event type => [query classes]`, each evicting the whole group of the queries it
+         | lists. A malformed entry refuses the boot.
          |
          | Defaults: provider 'none', store '', prefix 'firefly:cqrs:', cache_ttl unset, invalidation [].
         */

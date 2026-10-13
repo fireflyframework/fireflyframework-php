@@ -6,9 +6,12 @@ use Firefly\Cqrs\Cache\QueryCacheInvalidator;
 use Firefly\Cqrs\Tests\CapstoneFixtures\Ledger\AccountStatement;
 use Firefly\Cqrs\Tests\CapstoneFixtures\Ledger\HandlerCalls;
 use Firefly\Cqrs\Tests\CapstoneFixtures\Ledger\LedgerBalance;
+use Firefly\Cqrs\Tests\CapstoneFixtures\Ledger\LedgerTier;
 use Firefly\Cqrs\Tests\CapstoneFixtures\Ledger\LedgerTotals;
 use Firefly\Cqrs\Tests\CapstoneFixtures\Ledger\PostEntry;
 use Firefly\Cqrs\Tests\CapstoneFixtures\Ledger\RejectEntry;
+use Firefly\Cqrs\Tests\CapstoneFixtures\Ledger\TierBalance;
+use Firefly\Cqrs\Tests\CapstoneFixtures\Ledger\TierChanged;
 use Firefly\Cqrs\Tests\Support\CqrsCacheCapstoneTestCase;
 
 uses(CqrsCacheCapstoneTestCase::class);
@@ -72,4 +75,45 @@ it('applies the firefly.cqrs.query.cache.invalidation rules to events with no lo
 
     expect(HandlerCalls::of('totals'))->toBe(2)
         ->and($this->app()->make(QueryCacheInvalidator::class)->eventTypes())->toContain('EntryPosted', 'ledger.closed');
+});
+
+it('evicts exactly the one entry a scalar with map names when another process publishes the envelope', function () {
+    /** @var CqrsCacheCapstoneTestCase $this */
+    $queries = $this->queryBus();
+    $queries->ask(new LedgerBalance('alice'));
+    $queries->ask(new LedgerBalance('bob'));
+
+    $this->events->publish('ledger.events', 'EntryPosted', ['account' => 'alice', 'amount' => 1]);
+    $queries->ask(new LedgerBalance('alice'));
+    $queries->ask(new LedgerBalance('bob'));
+
+    expect(HandlerCalls::of('balance'))->toBe(3);
+});
+
+// The envelope carries the enum as 'gold' (what JSON makes of LedgerTier::Gold), which cannot rebuild the typed
+// digest the entry lives under: the group goes instead, so the stale alice entry stops serving.
+it('evicts the group when an envelope payload cannot rebuild an enum-typed with-map key', function () {
+    /** @var CqrsCacheCapstoneTestCase $this */
+    $queries = $this->queryBus();
+    $queries->ask(new TierBalance('alice', LedgerTier::Gold));
+    $queries->ask(new TierBalance('bob', LedgerTier::Silver));
+
+    $this->events->publish('ledger.events', 'TierChanged', ['account' => 'alice', 'tier' => 'gold']);
+    $queries->ask(new TierBalance('alice', LedgerTier::Gold));
+    $queries->ask(new TierBalance('bob', LedgerTier::Silver));
+
+    expect(HandlerCalls::of('tier'))->toBe(4);
+});
+
+it('evicts the one enum-typed entry in process, where the event carries the real case', function () {
+    /** @var CqrsCacheCapstoneTestCase $this */
+    $queries = $this->queryBus();
+    $queries->ask(new TierBalance('alice', LedgerTier::Gold));
+    $queries->ask(new TierBalance('bob', LedgerTier::Silver));
+
+    $this->app()->make('events')->dispatch(new TierChanged('alice', LedgerTier::Gold));
+    $queries->ask(new TierBalance('alice', LedgerTier::Gold));
+    $queries->ask(new TierBalance('bob', LedgerTier::Silver));
+
+    expect(HandlerCalls::of('tier'))->toBe(3);
 });

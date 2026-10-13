@@ -17,6 +17,15 @@ use Throwable;
  *   * onEnvelope() — an EDA envelope (another process's event, or this one's echoed by the domain bridge). Matched
  *     by EXACT event type; placeholders read its payload, dotted paths reaching into nested arrays.
  *
+ * A with-map key is a QueryCacheKey digest, and that digest is TYPED: an enum is written by case, a date as an
+ * instant, a value object by its class. An envelope from another process arrives JSON-decoded — the enum is now its
+ * backing scalar, the date a {date, timezone_type, timezone} array, the value object a plain array — so a key rebuilt
+ * from it would name an entry that does not exist and evict nothing. onEnvelope() therefore rebuilds a with-map key
+ * only when every payload value has the query property's declared type (HandlerScanner records it: an int may stand
+ * for a float, which is how JSON writes 5.0; an object passes only when it is already an instance, as on an
+ * in-memory bus) and otherwise evicts the group, warning once per rule. Key templates are unaffected: they only
+ * ever interpolate scalars, which survive JSON as they are.
+ *
  * Evicting twice is harmless, so an event that arrives both ways costs one extra delete. A rule whose placeholder
  * cannot be filled evicts the whole GROUP instead and logs why: an unfillable key would otherwise evict nothing and
  * leave the stale entry serving. With a cache that has no groups (an application's own QueryCache), key evictions
@@ -27,6 +36,9 @@ use Throwable;
 final class QueryCacheInvalidator
 {
     private bool $warnedGroupless = false;
+
+    /** @var array<string, true> rules whose envelope key could not be rebuilt, already warned about */
+    private array $warnedUntyped = [];
 
     /**
      * @param  list<InvalidationRule>  $rules
@@ -68,7 +80,7 @@ final class QueryCacheInvalidator
             }
 
             $values ??= self::publicProperties($event);
-            $evicted += $this->apply($rule, $values, $event::class);
+            $evicted += $this->apply($rule, $values, $event::class, false);
         }
 
         return $evicted;
@@ -80,7 +92,7 @@ final class QueryCacheInvalidator
 
         foreach ($this->rules as $rule) {
             if ($rule->eventType === $envelope->eventType) {
-                $evicted += $this->apply($rule, $envelope->payload, $envelope->eventType);
+                $evicted += $this->apply($rule, $envelope->payload, $envelope->eventType, true);
             }
         }
 
@@ -90,12 +102,12 @@ final class QueryCacheInvalidator
     /**
      * @param  array<array-key, mixed>  $values
      */
-    private function apply(InvalidationRule $rule, array $values, string $source): int
+    private function apply(InvalidationRule $rule, array $values, string $source, bool $fromEnvelope): int
     {
         $group = $this->policies->groupFor($rule->queryClass);
 
         try {
-            $key = $rule->evictsGroup() ? null : $this->keyFor($rule, $values, $source);
+            $key = $rule->evictsGroup() ? null : $this->keyFor($rule, $values, $source, $fromEnvelope);
 
             if ($key !== null) {
                 if ($this->cache instanceof GroupedQueryCache) {
@@ -129,7 +141,7 @@ final class QueryCacheInvalidator
     /**
      * @param  array<array-key, mixed>  $values
      */
-    private function keyFor(InvalidationRule $rule, array $values, string $source): ?string
+    private function keyFor(InvalidationRule $rule, array $values, string $source, bool $fromEnvelope): ?string
     {
         if ($rule->key !== null) {
             $missing = null;
@@ -160,10 +172,62 @@ final class QueryCacheInvalidator
 
                 return null;
             }
-            $properties[$queryProperty] = $values[$eventProperty];
+            $value = $values[$eventProperty];
+            if ($fromEnvelope) {
+                $type = $rule->withTypes[$queryProperty] ?? '';
+                if (! self::envelopeValueFits($type, $value)) {
+                    $this->warnUntypedOnce($rule, $source, $queryProperty, $eventProperty, $type, $value);
+
+                    return null;
+                }
+                if (ltrim($type, '?') === 'float' && is_int($value)) {
+                    $value = (float) $value;
+                }
+            }
+            $properties[$queryProperty] = $value;
         }
 
         return QueryCacheKey::fromProperties($rule->queryClass, $properties);
+    }
+
+    /**
+     * Whether an envelope payload value is exactly what the query property holds, so the digest it builds is the
+     * digest the cached entry was stored under. Unknown types ('' — untyped, a union, a rule built without types),
+     * mixed, array and every class or enum type the value is not already an instance of answer false.
+     */
+    private static function envelopeValueFits(string $type, mixed $value): bool
+    {
+        if ($type === '' || $type === 'mixed') {
+            return false;
+        }
+        if ($value === null) {
+            return str_starts_with($type, '?') || $type === 'null';
+        }
+
+        $base = ltrim($type, '?');
+
+        return match ($base) {
+            'string' => is_string($value),
+            'int' => is_int($value),
+            'float' => is_float($value) || is_int($value),
+            'bool' => is_bool($value),
+            'true' => $value === true,
+            'false' => $value === false,
+            'array', 'iterable', 'object', 'null', 'callable', 'static', 'self' => false,
+            default => $value instanceof $base,
+        };
+    }
+
+    private function warnUntypedOnce(InvalidationRule $rule, string $source, string $queryProperty, string $eventProperty, string $type, mixed $value): void
+    {
+        $id = $source."\0".$rule->queryClass."\0".$queryProperty;
+        if (isset($this->warnedUntyped[$id])) {
+            return;
+        }
+        $this->warnedUntyped[$id] = true;
+
+        $declared = $type === '' ? 'an unrecorded or non-scalar type' : "`{$type}`";
+        $this->logger?->warning("[{$source}] carries `{$eventProperty}` as ".get_debug_type($value).", which cannot rebuild {$declared} `{$queryProperty}` of [{$rule->queryClass}] after crossing a broker; evicting the whole group instead.");
     }
 
     /**

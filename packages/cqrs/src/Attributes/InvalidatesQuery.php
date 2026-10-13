@@ -21,7 +21,11 @@ use Attribute;
  *
  * An event published over EDA is matched by $eventType — default: the short class name, which is what
  * DomainEvent::eventType() returns — so another process's envelope evicts this process's cache too. A placeholder
- * the event cannot fill evicts the whole group instead: serving stale data is the failure worth preventing.
+ * the event cannot fill evicts the whole group instead: serving stale data is the failure worth preventing. The
+ * same holds for a `with` map whose query properties are not plain scalars: an envelope crossing a broker arrives
+ * JSON-decoded (an enum as its backing value, a date or value object as an array), which can no longer rebuild the
+ * typed key, so it evicts the group. Only in process, or with scalar-typed query properties, does an envelope
+ * evict exactly one entry.
  * PyFly's @cache_evict, moved to the event because the event is what knows what it makes stale.
  */
 #[Attribute(Attribute::TARGET_CLASS | Attribute::IS_REPEATABLE)]
