@@ -146,6 +146,11 @@ A workflow is a step graph whose steps may wait. `#[WaitForSignal]` parks the ex
 `WorkflowEngine::signal()` delivers the signal, whose payload the step reads as the variable
 `signals.<name>`. `#[WaitForTimer]` parks it until the timer is due; the scheduled tick
 (`firefly.orchestration.workflow.tick.*`) or `php artisan firefly:orchestration:tick` advances due workflows.
+A due workflow the tick cannot drive (its definition is not deployed on that node, a handler throws outside a
+step) is backed off, starting at one minute and doubling, so it never holds back the healthy rows behind it.
+After `firefly.orchestration.workflow.max-resume-attempts` failed ticks in a row (default `5`, about fifteen
+minutes) it is parked `FAILED` without compensation and dead-lettered. A database fault is not counted: it
+escapes the tick, so the scheduler reports the outage.
 `#[WaitForAll]` and `#[WaitForAny]` combine signals and timers, `#[ChildWorkflow]` starts another workflow and
 waits for it, `condition` skips a step when an ExpressionLanguage expression over `input`, `results`,
 `variables` and `headers` is false, and `#[WorkflowQuery]` answers a read-only question about a live execution.
@@ -381,7 +386,7 @@ default.
 |---|---|
 | `saga.enabled`, `saga.compensation-policy`, `saga.default-timeout`, `saga.compensation-error-handler` | Saga engine |
 | `tcc.enabled`, `tcc.default-timeout`, `tcc.composition.enabled`, `tcc.composition.compensation-policy` | TCC engine |
-| `workflow.enabled`, `workflow.queue.connection`, `workflow.queue.name`, `workflow.tick.enabled`, `workflow.tick.interval` | Workflow engine and its tick |
+| `workflow.enabled`, `workflow.queue.connection`, `workflow.queue.name`, `workflow.tick.enabled`, `workflow.tick.interval`, `workflow.max-resume-attempts` | Workflow engine and its tick |
 | `persistence.provider`, `persistence.connection`, `persistence.cache-store`, `persistence.key-prefix`, `persistence.key-ttl`, `persistence.retention-period`, `persistence.cleanup-interval` | Execution store |
 | `recovery.enabled`, `recovery.stale-threshold`, `recovery.action` | Recovery sweep |
 | `dlq.enabled`, `dlq.store` | Dead-letter queue |

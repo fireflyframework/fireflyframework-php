@@ -93,6 +93,7 @@ final readonly class OrchestrationSettings
             queueName: self::nullableName($config->get('firefly.orchestration.workflow.queue.name'), 'firefly.orchestration.workflow.queue.name'),
             tickEnabled: $config->bool('firefly.orchestration.workflow.tick.enabled', true),
             tickInterval: $durations->get('firefly.orchestration.workflow.tick.interval', 60.0, 'a zero tick interval would schedule the timer sweep continuously'),
+            maxResumeAttempts: self::atLeast($config->int('firefly.orchestration.workflow.max-resume-attempts', 5), 1, 'firefly.orchestration.workflow.max-resume-attempts'),
         );
 
         $provider = $config->string('firefly.orchestration.persistence.provider', 'memory');

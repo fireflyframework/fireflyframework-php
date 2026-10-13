@@ -2615,6 +2615,9 @@ return [
          | delivered twice is harmless: the second delivery finds the execution no longer PENDING. The `tick` is a scheduled task (firefly:schedule lists it) that resumes
          | WAITING workflows whose timers or deadlines are due, under the DistributedLock; without a scheduler
          | run php artisan firefly:orchestration:tick from cron. Defaults: enabled true, tick every 1m.
+         | A due workflow the tick cannot drive (its definition is not deployed, a handler throws outside a
+         | step) is backed off from 1m, doubling; after `max-resume-attempts` ticks in a row (default 5, about
+         | 15 minutes, at least 1) it is parked FAILED and dead-lettered. Database faults are never counted.
         */
         'workflow' => [
             'enabled' => env('FIREFLY_ORCHESTRATION_WORKFLOW_ENABLED', true),
@@ -2626,6 +2629,7 @@ return [
                 'enabled' => env('FIREFLY_ORCHESTRATION_TICK_ENABLED', true),
                 'interval' => env('FIREFLY_ORCHESTRATION_TICK_INTERVAL', '1m'),
             ],
+            'max-resume-attempts' => (int) env('FIREFLY_ORCHESTRATION_WORKFLOW_MAX_RESUME_ATTEMPTS', 5),
         ],
 
         /*

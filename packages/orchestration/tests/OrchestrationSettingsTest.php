@@ -23,6 +23,7 @@ it('defaults to the jafly OrchestrationProperties values a PHP application can h
         ->and($settings->saga->compensationErrorHandler)->toBe('default')
         ->and($settings->tcc->defaultTimeout)->toBe(30.0)
         ->and($settings->workflow->tickInterval)->toBe(60.0)
+        ->and($settings->workflow->maxResumeAttempts)->toBe(5)
         ->and($settings->persistence->provider)->toBe('memory')
         ->and($settings->persistence->keyPrefix)->toBe('orchestration:')
         ->and($settings->persistence->keyTtl)->toBeNull()
@@ -76,6 +77,7 @@ it('refuses a value it cannot honour, naming the key', function (array $orchestr
     [['backpressure' => ['batch-size' => 0]], 'firefly.orchestration.backpressure.batch-size'],
     [['saga' => ['default-timeout' => '-5s']], 'firefly.orchestration.saga.default-timeout'],
     [['workflow' => ['tick' => ['interval' => '0']]], 'firefly.orchestration.workflow.tick.interval'],
+    [['workflow' => ['max-resume-attempts' => 0]], 'firefly.orchestration.workflow.max-resume-attempts'],
     [['rest' => ['path' => '/']], 'firefly.orchestration.rest.path'],
     [['saga' => ['compensation-policy' => 'optimistic']], 'firefly.orchestration.saga.compensation-policy'],
 ]);

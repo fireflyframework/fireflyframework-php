@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Orchestration\Workflow\Engine;
 
+use Firefly\Kernel\Exception\Infrastructure\DataAccessException;
 use Firefly\Orchestration\Core\ClosureInvocation;
 use Firefly\Orchestration\Core\EngineSupport;
 use Firefly\Orchestration\Core\Exception\ExecutionLockedException;
@@ -28,6 +29,7 @@ use Firefly\Orchestration\Workflow\Registry\WorkflowDefinition;
 use Firefly\Orchestration\Workflow\Registry\WorkflowRegistry;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Support\Str;
+use PDOException;
 use Throwable;
 
 /**
@@ -167,9 +169,15 @@ final class WorkflowEngine
      * One execution that cannot be driven (its definition was removed in a deploy, or is not deployed on this
      * node yet; a handler blew up outside a step) is logged and backed off (backOff()): its wake-up moves
      * forward, so it leaves the head of the due queue instead of coming back first on every tick and, once a
-     * batch of them is due, starving every healthy timer and deadline. It is not failed: a rolling deploy can
-     * leave a node that does not know a workflow yet, and that is no reason to end the execution. When a batch
-     * had to back rows off, the tick asks for the next batch, so the healthy rows behind them still move now.
+     * batch of them is due, starving every healthy timer and deadline. A rolling deploy can leave a node that
+     * does not know a workflow yet, so one failed attempt does not end the execution; the attempts are counted
+     * in the state (BACKOFF_FAILURES), and the one that reaches `firefly.orchestration.workflow.
+     * max-resume-attempts` parks it FAILED and dead-letters it (park()). When a batch had to back rows off, the
+     * tick asks for the next batch, so the healthy rows behind them still move now.
+     *
+     * A database fault (a PDOException, which Laravel's QueryException is, or a firefly DataAccessException) is
+     * not the execution's fault: it is neither counted nor swallowed, and escapes the tick so the scheduler sees
+     * the outage instead of a log line per row.
      *
      * @return list<ExecutionState> the executions this tick advanced
      */
@@ -203,14 +211,18 @@ final class WorkflowEngine
                             $context->removeVariable(self::BACKOFF_FAILURES);
 
                             return $this->drive($this->registry->get($state->executionName), $context);
+                        } catch (ExecutionLockedException|PDOException|DataAccessException $notItsFault) {
+                            throw $notItsFault;
                         } catch (Throwable $error) {
-                            $this->backOff($due->correlationId, $state);
+                            $this->backOff($due->correlationId, $state, $error);
 
                             throw $error;
                         }
                     });
                 } catch (ExecutionLockedException) {
                     // Another process is advancing it right now; the next tick sees whatever it left.
+                } catch (PDOException|DataAccessException $fault) {
+                    throw $fault;
                 } catch (Throwable $error) {
                     $backedOff = true;
                     $this->support->logger->warning("Workflow [{$due->executionName}] execution [{$due->correlationId}] could not be resumed by the tick: {$error->getMessage()}", [
@@ -719,9 +731,10 @@ final class WorkflowEngine
      * to BACKOFF_MAX_SECONDS with every tick in a row that fails on it. It is written on the latest checkpoint
      * (the failed drive may have written one) and only while that is still WAITING; the deadline is left out of
      * the wake-up on purpose, since a deadline already past would keep the row at the head of the queue. The
-     * next drive that gets through clears the back-off and recomputes the wake-up from the definition.
+     * next drive that gets through clears the back-off and recomputes the wake-up from the definition. The
+     * attempt that reaches `max-resume-attempts` parks the execution instead (park()).
      */
-    private function backOff(string $correlationId, ExecutionState $before): void
+    private function backOff(string $correlationId, ExecutionState $before, Throwable $cause): void
     {
         try {
             $state = $this->support->persistence->findById($correlationId) ?? $before;
@@ -731,10 +744,16 @@ final class WorkflowEngine
 
             $previous = $before->variables[self::BACKOFF_FAILURES] ?? 0;
             $failures = (is_int($previous) ? $previous : 0) + 1;
-            $delay = min(self::BACKOFF_MAX_SECONDS, self::BACKOFF_BASE_SECONDS * 2 ** min($failures - 1, 16));
-
             $context = ExecutionContext::fromState($state);
             $context->setVariable(self::BACKOFF_FAILURES, $failures);
+
+            if ($failures >= $this->settings->maxResumeAttempts) {
+                $this->park($state, $context, $cause, $failures);
+
+                return;
+            }
+
+            $delay = min(self::BACKOFF_MAX_SECONDS, self::BACKOFF_BASE_SECONDS * 2 ** min($failures - 1, 16));
             $context->scheduleTimer(self::BACKOFF_TIMER, $this->support->now()->modify(sprintf('+%d seconds', $delay)));
             $this->support->checkpoint($context, ExecutionStatus::Waiting, $state->failureReason);
         } catch (Throwable $error) {
@@ -743,6 +762,27 @@ final class WorkflowEngine
                 'correlationId' => $correlationId,
             ]);
         }
+    }
+
+    /**
+     * Ends an execution the tick failed to drive `$attempts` ticks in a row: FAILED, with a report and no wake-up
+     * (only a WAITING row has one), so it leaves the due queue for good; dead-lettered with the last error for an operator to retry,
+     * and its parent woken like by any other failed child. Nothing is compensated: the definition may be gone,
+     * and the steps it completed are named in the report and the dead letter.
+     */
+    private function park(ExecutionState $state, ExecutionContext $context, Throwable $cause, int $attempts): void
+    {
+        $reason = "Workflow [{$state->executionName}] could not be resumed by the tick after {$attempts} attempts (".$cause::class.'); parked FAILED.';
+        $stepIds = $this->registry->has($state->executionName)
+            ? $this->registry->get($state->executionName)->stepIds()
+            : array_map('strval', array_keys($state->stepStatuses));
+        $now = $this->support->now();
+        $parked = $this->support->checkpoint($context, ExecutionStatus::Failed, $reason, ExecutionReportBuilder::fromContext($context, ExecutionStatus::Failed, $reason, $now, $stepIds));
+        $this->support->deadLetter($context, $state->waitingOn, ExecutionStatus::Failed, $cause);
+        $this->support->logger->warning($reason, ['correlationId' => $state->correlationId, 'exceptionClass' => $cause::class]);
+        $this->support->publish($this->support->lifecycle, OrchestrationEvent::executionCompleted($state->executionName, $state->correlationId, ExecutionPattern::Workflow, ExecutionStatus::Failed, $now));
+        $this->support->events->onCompleted($state->executionName, $state->correlationId, ExecutionPattern::Workflow, false, $this->support->elapsedMs($context));
+        $this->notifyParent($parked);
     }
 
     /**

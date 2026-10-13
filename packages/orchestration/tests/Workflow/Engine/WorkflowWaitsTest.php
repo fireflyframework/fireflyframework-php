@@ -7,7 +7,9 @@ use Firefly\Orchestration\Core\ExecutionContext;
 use Firefly\Orchestration\Core\ExecutionStatus;
 use Firefly\Orchestration\Core\StepStatus;
 use Firefly\Orchestration\Tests\Support\TestEngines;
+use Firefly\Orchestration\Tests\Support\UnreadableExecutionPersistence;
 use Firefly\Orchestration\Workflow\Builder\WorkflowBuilder;
+use Firefly\Orchestration\Workflow\Engine\WorkflowEngine;
 use Firefly\Orchestration\Workflow\Registry\SignalWait;
 use Firefly\Orchestration\Workflow\Registry\TimerWait;
 
@@ -149,4 +151,61 @@ it('backs off due executions it cannot drive, so a full batch of them does not s
         ->and($warnings)->toBe(5)
         ->and($again)->toBe([])
         ->and(count($after->logger->messages('warning')))->toBe(5);
+});
+
+it('parks a due execution it cannot drive FAILED and dead-letters it after max-resume-attempts, without holding back a healthy one', function (): void {
+    $timer = static fn (string $id) => WorkflowBuilder::workflow($id)
+        ->step('pause')->waitForTimer(60_000)->add()
+        ->step('go')->dependsOn('pause')->handler(static fn (): string => 'went')->add()
+        ->build();
+    $config = ['backpressure' => ['batch-size' => 1], 'workflow' => ['max-resume-attempts' => 3]];
+    $before = TestEngines::create($config);
+    $before->workflowRegistry->register($timer('retired'));
+    $before->workflowRegistry->register($timer('kept'));
+    $before->workflows->start('retired', correlationId: 'a-poison');
+    $before->workflows->start('kept', correlationId: 'b-healthy');
+
+    $after = TestEngines::create($config, persistence: $before->persistence);
+    $after->workflowRegistry->register($timer('kept'));
+    $after->clock->advance(61.0);
+    $first = $after->workflows->resumeDue();
+    $attempts = [$after->workflows->find('a-poison')?->variables[WorkflowEngine::BACKOFF_FAILURES] ?? null];
+    $after->clock->advance(61.0);
+    $after->workflows->resumeDue();
+    $attempts[] = $after->workflows->find('a-poison')?->variables[WorkflowEngine::BACKOFF_FAILURES] ?? null;
+    $waitingBeforeLast = $after->workflows->find('a-poison')?->status;
+    $after->clock->advance(121.0);
+    $after->workflows->resumeDue();
+    $parked = $after->workflows->find('a-poison');
+    $letters = $after->deadLetterStore->findByCorrelationId('a-poison');
+    $after->clock->advance(3600.0);
+
+    expect(array_map(static fn ($state): string => $state->correlationId, $first))->toBe(['b-healthy'])
+        ->and($after->workflows->find('b-healthy')?->status)->toBe(ExecutionStatus::Completed)
+        ->and($attempts)->toBe([1, 2])
+        ->and($waitingBeforeLast)->toBe(ExecutionStatus::Waiting)
+        ->and($parked?->status)->toBe(ExecutionStatus::Failed)
+        ->and($parked?->wakeAt)->toBeNull()
+        ->and($parked?->failureReason)->toContain('3 attempts')
+        ->and($parked?->report)->not->toBeNull()
+        ->and($letters)->toHaveCount(1)
+        ->and($letters[0]->statusAtFailure ?? null)->toBe(ExecutionStatus::Failed)
+        ->and($letters[0]->stepId ?? null)->toBe('pause')
+        ->and($after->workflows->resumeDue())->toBe([]);
+});
+
+it('lets a database fault escape the tick instead of logging it and leaving the execution WAITING', function (): void {
+    $store = new UnreadableExecutionPersistence(static fn (string $id): Throwable => new PDOException("SQLSTATE[08006] connection to the store lost reading [{$id}]"));
+    $engines = TestEngines::create(persistence: $store);
+    $engines->workflowRegistry->register(WorkflowBuilder::workflow('cooldown')
+        ->step('pause')->waitForTimer(60_000)->add()
+        ->step('go')->dependsOn('pause')->handler(static fn (): string => 'went')->add()
+        ->build());
+    $engines->workflows->start('cooldown', correlationId: 'db-1');
+    $store->refuseLoadsOf('cooldown');
+    $engines->clock->advance(61.0);
+
+    expect(fn () => $engines->workflows->resumeDue())->toThrow(PDOException::class, 'connection to the store lost')
+        ->and($store->peek('db-1')?->variables)->not->toHaveKey(WorkflowEngine::BACKOFF_FAILURES)
+        ->and($engines->logger->messages('warning'))->toBe([]);
 });

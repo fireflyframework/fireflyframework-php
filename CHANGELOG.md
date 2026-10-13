@@ -29,6 +29,9 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
   with the step result bound implicitly, and that a duplicate, a step with both forms and an unknown step are
   refused. A capstone and an integration test on PostgreSQL, MySQL and MariaDB check that a failing
   discovered workflow runs it (its SQL Server case has not yet run against a real server).
+- **Orchestration failure parking:** a saga whose compensation stops part-way ends `COMPENSATION_FAILED` and
+  is dead-lettered, and a due workflow the tick fails to drive `firefly.orchestration.workflow.max-resume-attempts`
+  times in a row (default `5`) is parked `FAILED` and dead-lettered.
 - **Observability:** `orchestration_executions_seconds`, `orchestration_steps_seconds`,
   `orchestration_compensations_total` and `orchestration_dead_letters_total`, and INTERNAL spans per execution
   and step behind `firefly.observability.tracing.orchestration.enabled`.

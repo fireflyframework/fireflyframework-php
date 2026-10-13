@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Firefly\Orchestration\Tests\Support;
 
+use Closure;
 use DateTimeImmutable;
 use Firefly\Orchestration\Core\ExecutionStatus;
 use Firefly\Orchestration\Persistence\ExecutionCriteria;
@@ -11,10 +12,13 @@ use Firefly\Orchestration\Persistence\ExecutionPersistenceProvider;
 use Firefly\Orchestration\Persistence\ExecutionState;
 use Firefly\Orchestration\Persistence\MemoryExecutionPersistenceProvider;
 use RuntimeException;
+use Throwable;
 
 /**
  * An in-memory store that, once refuseLoadsOf() names an execution, throws when findById() reads one of that
- * execution's states — a store that fails part-way through, after the execution was written.
+ * execution's states — a store that fails part-way through, after the execution was written. `$fault` builds
+ * what it throws (a RuntimeException by default), so a test can stand in a database fault such as a
+ * PDOException.
  */
 final class UnreadableExecutionPersistence implements ExecutionPersistenceProvider
 {
@@ -23,8 +27,15 @@ final class UnreadableExecutionPersistence implements ExecutionPersistenceProvid
     /** @var list<string> */
     private array $refused = [];
 
-    public function __construct()
+    /** @var Closure(string): Throwable */
+    private readonly Closure $fault;
+
+    /**
+     * @param  (Closure(string): Throwable)|null  $fault
+     */
+    public function __construct(?Closure $fault = null)
     {
+        $this->fault = $fault ?? static fn (string $correlationId): Throwable => new RuntimeException("cannot read [{$correlationId}]");
         $this->inner = new MemoryExecutionPersistenceProvider;
     }
 
@@ -48,7 +59,7 @@ final class UnreadableExecutionPersistence implements ExecutionPersistenceProvid
     {
         $state = $this->inner->findById($correlationId);
         if ($state !== null && in_array($state->executionName, $this->refused, true)) {
-            throw new RuntimeException("cannot read [{$correlationId}]");
+            throw ($this->fault)($correlationId);
         }
 
         return $state;
