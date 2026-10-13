@@ -18,5 +18,7 @@ it('ships an empty handler manifest that is fresh against cqrs/src (no handlers 
     $committedManifest = HandlerManifest::load($committed);
 
     expect($committedManifest->handlers())->toBe($result['handlers']) // both []
-        ->and($committedManifest->destinations())->toBe($result['destinations']); // both []
+        ->and($committedManifest->destinations())->toBe($result['destinations']) // both []
+        ->and($committedManifest->cachedQueries())->toBe($result['cachedQueries']) // both []
+        ->and($committedManifest->invalidations())->toBe($result['invalidations']); // both []
 });

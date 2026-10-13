@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace Firefly\Cqrs\Scanner;
 
+use Firefly\Cqrs\Attributes\CachedQuery;
 use Firefly\Cqrs\Attributes\CommandHandler;
+use Firefly\Cqrs\Attributes\InvalidatesQuery;
 use Firefly\Cqrs\Attributes\PublishDomainEvent;
 use Firefly\Cqrs\Attributes\QueryHandler;
+use Firefly\Cqrs\Cache\CachedQueryPolicy;
+use Firefly\Cqrs\Cache\InvalidationRule;
 use Firefly\Cqrs\Exception\CqrsConfigurationException;
 use Firefly\Cqrs\Handler\HandlerDescriptor;
 use Firefly\Cqrs\Handler\HandlerKind;
@@ -20,18 +24,23 @@ use ReflectionNamedType;
  * arg else inferred from the sole handle() parameter, mirroring #[AsEventListener]'s param inference); and collects
  * #[PublishDomainEvent] off DomainEvent subclasses into a {eventClass => destination} map. Fails loud
  * (CqrsConfigurationException) on an unresolvable type or a missing/multi-param handle() — never silently skips.
+ * It also compiles #[CachedQuery] off query classes into per-query policies and #[InvalidatesQuery] off event classes
+ * into invalidation rules, refusing a rule with both a key template and a `with` map, a rule naming a class that does
+ * not exist, and a TTL below one second.
  * Runs only at cache time; production loads the compiled HandlerManifest via require+map. Mirrors ScheduledScanner.
  */
 final class HandlerScanner
 {
     /**
      * @param  array<string,string>  $psr4  namespace-prefix => absolute directory
-     * @return array{handlers: list<HandlerDescriptor>, destinations: array<string,string>}
+     * @return array{handlers: list<HandlerDescriptor>, destinations: array<string,string>, cachedQueries: array<string, CachedQueryPolicy>, invalidations: list<InvalidationRule>}
      */
     public function scan(array $psr4): array
     {
         $handlers = [];
         $destinations = [];
+        $cachedQueries = [];
+        $invalidations = [];
 
         foreach ($this->classes($psr4) as $class) {
             $reflection = new ReflectionClass($class);
@@ -63,9 +72,28 @@ final class HandlerScanner
                     $destinations[$class] = $destination;
                 }
             }
+
+            foreach ($reflection->getAttributes(CachedQuery::class) as $attribute) {
+                $cached = $attribute->newInstance();
+                if ($cached->ttl !== null && $cached->ttl < 1) {
+                    throw new CqrsConfigurationException("#[CachedQuery] on [{$class}] declares ttl {$cached->ttl}; a TTL is at least one second (omit it to use firefly.cqrs.query.cache_ttl).");
+                }
+                $cachedQueries[$class] = new CachedQueryPolicy($class, $cached->ttl, $cached->group ?? $class);
+            }
+
+            foreach ($reflection->getAttributes(InvalidatesQuery::class) as $attribute) {
+                $rule = $attribute->newInstance();
+                if (! class_exists($rule->query)) {
+                    throw new CqrsConfigurationException("#[InvalidatesQuery] on [{$class}] names [{$rule->query}], which is not a class.");
+                }
+                if ($rule->key !== null && $rule->with !== []) {
+                    throw new CqrsConfigurationException("#[InvalidatesQuery({$rule->query}::class)] on [{$class}] declares both key and with; a rule evicts by one or the other.");
+                }
+                $invalidations[] = new InvalidationRule($class, $rule->eventType ?? $reflection->getShortName(), $rule->query, $rule->key, $rule->with);
+            }
         }
 
-        return ['handlers' => $handlers, 'destinations' => $destinations];
+        return ['handlers' => $handlers, 'destinations' => $destinations, 'cachedQueries' => $cachedQueries, 'invalidations' => $invalidations];
     }
 
     /**

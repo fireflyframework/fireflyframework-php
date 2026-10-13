@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Firefly\Cqrs\Cache\CachedQueryPolicy;
+use Firefly\Cqrs\Cache\InvalidationRule;
 use Firefly\Cqrs\Exception\CqrsConfigurationException;
 use Firefly\Cqrs\Handler\HandlerDescriptor;
 use Firefly\Cqrs\Handler\HandlerKind;
@@ -15,7 +17,7 @@ use Firefly\Cqrs\Tests\ScannerFixtures\RenameWidgetHandler;
 use Firefly\Cqrs\Tests\ScannerFixtures\WidgetCreated;
 
 /**
- * @return array{handlers: list<HandlerDescriptor>, destinations: array<string,string>}
+ * @return array{handlers: list<HandlerDescriptor>, destinations: array<string,string>, cachedQueries: array<string, CachedQueryPolicy>, invalidations: list<InvalidationRule>}
  */
 function scanHandlerFixtures(string $subdir, string $namespace): array
 {

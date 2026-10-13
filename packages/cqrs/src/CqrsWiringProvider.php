@@ -44,7 +44,7 @@ final class CqrsWiringProvider extends FireflyServiceProvider
 
                 $scanned = (new HandlerScanner)->scan($paths);
 
-                return new HandlerManifest($scanned['handlers'], $scanned['destinations']);
+                return new HandlerManifest($scanned['handlers'], $scanned['destinations'], $scanned['cachedQueries'], $scanned['invalidations']);
             });
         }
 
