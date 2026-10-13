@@ -2324,7 +2324,13 @@ return [
          | is its lifetime, falling back to `cache_ttl` (UNSET means "no TTL" — not zero — so leave it
          | commented out unless you want one).
          |
-         | Defaults: provider 'none', store '', prefix 'firefly:cqrs:', cache_ttl unset.
+         | With provider 'cache', #[InvalidatesQuery] on an event class evicts cached queries when that event
+         | is dispatched in process (a DomainEvent, after its transaction commits; nothing on rollback) or
+         | arrives as an EDA envelope of the same event type. `invalidation` adds rules for events this
+         | process has no class for (another service's envelopes): `event type => [query classes]`, each
+         | evicting the whole group of the queries it lists. A malformed entry refuses the boot.
+         |
+         | Defaults: provider 'none', store '', prefix 'firefly:cqrs:', cache_ttl unset, invalidation [].
         */
         // 'query' => [
         //     'cache_ttl' => 60,
@@ -2332,6 +2338,9 @@ return [
         //         'provider' => env('FIREFLY_CQRS_QUERY_CACHE', 'none'),
         //         'store' => env('FIREFLY_CQRS_QUERY_CACHE_STORE', ''),
         //         'prefix' => 'firefly:cqrs:',
+        //         'invalidation' => [
+        //             'ledger.closed' => [App\Ledger\LedgerTotals::class],
+        //         ],
         //     ],
         // ],
     ],
