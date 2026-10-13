@@ -225,10 +225,7 @@ final class WorkflowEngine
                     throw $fault;
                 } catch (Throwable $error) {
                     $backedOff = true;
-                    $this->support->logger->warning("Workflow [{$due->executionName}] execution [{$due->correlationId}] could not be resumed by the tick: {$error->getMessage()}", [
-                        'exception' => $error,
-                        'correlationId' => $due->correlationId,
-                    ]);
+                    $this->logTickFailure("Workflow [{$due->executionName}] execution [{$due->correlationId}] could not be resumed by the tick", $due, $error);
                 }
             }
         } while ($backedOff && $fresh > 0 && count($advanced) < $this->batchSize);
@@ -757,11 +754,21 @@ final class WorkflowEngine
             $context->scheduleTimer(self::BACKOFF_TIMER, $this->support->now()->modify(sprintf('+%d seconds', $delay)));
             $this->support->checkpoint($context, ExecutionStatus::Waiting, $state->failureReason);
         } catch (Throwable $error) {
-            $this->support->logger->warning("Workflow execution [{$correlationId}] could not be backed off by the tick: {$error->getMessage()}", [
-                'exception' => $error,
-                'correlationId' => $correlationId,
-            ]);
+            $this->logTickFailure("Workflow [{$before->executionName}] execution [{$correlationId}] could not be backed off by the tick", $before, $error);
         }
+    }
+
+    /**
+     * Logs a failure of the tick without the error's message at warning level: a message can carry what a
+     * handler or a driver put in it (a query, a token, a payload), and warnings are what log shipping keeps. The
+     * warning names the exception class, the execution and its correlation id; the message and the exception
+     * itself go to debug, for whoever turns it on.
+     */
+    private function logTickFailure(string $what, ExecutionState $execution, Throwable $error): void
+    {
+        $context = ['correlationId' => $execution->correlationId, 'executionName' => $execution->executionName, 'exceptionClass' => $error::class];
+        $this->support->logger->warning($what.' ('.$error::class.').', $context);
+        $this->support->logger->debug($what.': '.$error->getMessage(), $context + ['exception' => $error]);
     }
 
     /**

@@ -209,3 +209,24 @@ it('lets a database fault escape the tick instead of logging it and leaving the 
         ->and($store->peek('db-1')?->variables)->not->toHaveKey(WorkflowEngine::BACKOFF_FAILURES)
         ->and($engines->logger->messages('warning'))->toBe([]);
 });
+
+it('logs a due execution the tick cannot drive by exception class, name and correlation id, keeping the error message to debug', function (): void {
+    $store = new UnreadableExecutionPersistence(static fn (string $id): Throwable => new RuntimeException("token=s3cr3t while reading [{$id}]"));
+    $engines = TestEngines::create(persistence: $store);
+    $engines->workflowRegistry->register(WorkflowBuilder::workflow('cooldown')
+        ->step('pause')->waitForTimer(60_000)->add()
+        ->build());
+    $engines->workflows->start('cooldown', correlationId: 'log-1');
+    $store->refuseLoadsOf('cooldown');
+    $engines->clock->advance(61.0);
+
+    $engines->workflows->resumeDue();
+    $warnings = $engines->logger->messages('warning');
+    $contexts = $engines->logger->contexts('warning');
+
+    expect($warnings)->toHaveCount(1)
+        ->and($warnings[0] ?? '')->toContain('cooldown')->toContain('log-1')->toContain(RuntimeException::class)->not->toContain('s3cr3t')
+        ->and($contexts[0] ?? [])->not->toHaveKey('exception')
+        ->and($contexts[0]['correlationId'] ?? null)->toBe('log-1')
+        ->and(implode("\n", $engines->logger->messages('debug')))->toContain('s3cr3t');
+});
