@@ -2530,6 +2530,20 @@ return [
     'messaging' => [
         'provider' => env('FIREFLY_MESSAGING_PROVIDER', 'memory'),
 
+        /*
+         | Where a #[MessageListener(deadLetterTopic: …)] message goes once its retries are exhausted.
+         | 'memory' keeps it in the process (lost when it exits); 'database' writes it to
+         | firefly_messaging_dead_letters on `connection` (UNSET = the default connection), the raw value
+         | base64-encoded — run `php artisan migrate` — and
+         | `php artisan firefly:messaging:dead-letters:replay` republishes it to its original topic.
+         |
+         | Defaults: store 'memory', connection unset.
+        */
+        'dead-letter' => [
+            'store' => env('FIREFLY_MESSAGING_DEAD_LETTER_STORE', 'memory'),
+            // 'connection' => 'mysql',
+        ],
+
         // 'queue' => [
         //     'connection' => 'redis',
         //     'name' => 'messages',

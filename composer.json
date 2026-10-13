@@ -248,6 +248,7 @@
                 "Firefly\\Cqrs\\CqrsWiringProvider",
                 "Firefly\\Messaging\\MessagingServiceProvider",
                 "Firefly\\Messaging\\MessagingWiringProvider",
+                "Firefly\\Messaging\\MessagingConsoleServiceProvider",
                 "Firefly\\Observability\\ObservabilityServiceProvider",
                 "Firefly\\Observability\\ObservabilityWiringProvider",
                 "Firefly\\Security\\SecurityServiceProvider",
