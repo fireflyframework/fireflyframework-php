@@ -11,6 +11,7 @@ use Firefly\Orchestration\Core\Exception\ExecutionNotFoundException;
 use Firefly\Orchestration\Core\Exception\InvalidExecutionStateException;
 use Firefly\Orchestration\Core\Exception\OrchestrationException;
 use Firefly\Orchestration\Core\Exception\PatternDisabledException;
+use Firefly\Orchestration\Core\Exception\StepTimeoutException;
 use Firefly\Orchestration\Core\ExecutionContext;
 use Firefly\Orchestration\Core\ExecutionPattern;
 use Firefly\Orchestration\Core\ExecutionStatus;
@@ -50,6 +51,9 @@ final class WorkflowEngine
 
     /** The variable counting the ticks in a row that could not drive an execution. */
     public const string BACKOFF_FAILURES = 'tickFailures';
+
+    /** The variable compensate() records, so recover() finishes an interrupted compensation on request as one. */
+    public const string COMPENSATION_REQUESTED = 'compensationRequested';
 
     private const int BACKOFF_BASE_SECONDS = 60;
 
@@ -257,8 +261,11 @@ final class WorkflowEngine
 
     /**
      * Re-drives a workflow a crashed process left in a recoverable status (the recovery sweep's `resume`
-     * action): a PENDING one is begun, a RUNNING or COMPENSATING one is driven from its last checkpoint, so the
-     * step that was running when the process died runs again — make workflow steps idempotent.
+     * action): a PENDING one is begun, a RUNNING one is driven from its last checkpoint, so the step that was
+     * running when the process died runs again — make workflow steps idempotent. A COMPENSATING one is never
+     * driven forward, since its undo is already under way: the compensation is finished instead, over the steps
+     * still DONE, and the workflow ends the way the interrupted settlement would have ended it (see
+     * finishCompensation()).
      */
     public function recover(string $correlationId): ExecutionState
     {
@@ -271,7 +278,11 @@ final class WorkflowEngine
             $definition = $this->registry->get($state->executionName);
             $context = ExecutionContext::fromState($state);
 
-            return $state->status === ExecutionStatus::Pending ? $this->begin($definition, $context) : $this->drive($definition, $context);
+            return match ($state->status) {
+                ExecutionStatus::Pending => $this->begin($definition, $context),
+                ExecutionStatus::Compensating => $this->finishCompensation($definition, $context),
+                default => $this->drive($definition, $context),
+            };
         });
     }
 
@@ -308,13 +319,55 @@ final class WorkflowEngine
 
             $definition = $this->registry->get($state->executionName);
             $context = ExecutionContext::fromState($state);
-            $this->settle($correlationId, function () use ($definition, $context): void {
-                $this->cancelChildren($context);
-                $this->executor->compensate($definition, $context);
-            });
+            // Checkpointed COMPENSATING with the request recorded before anything is undone, so a process that
+            // dies part-way leaves a row recover() finishes as a compensation on request, not as a failure.
+            $context->setVariable(self::COMPENSATION_REQUESTED, true);
+            $this->support->checkpoint($context, ExecutionStatus::Compensating);
 
-            return $this->finish($definition, $context, ExecutionStatus::Cancelled, 'compensated on request');
+            return $this->compensateOnRequest($definition, $context);
         });
+    }
+
+    private function compensateOnRequest(WorkflowDefinition $workflow, ExecutionContext $context): ExecutionState
+    {
+        $this->settle($context->correlationId, function () use ($workflow, $context): void {
+            $this->cancelChildren($context);
+            $this->executor->compensate($workflow, $context);
+        });
+
+        return $this->finish($workflow, $context, ExecutionStatus::Cancelled, 'compensated on request');
+    }
+
+    /**
+     * Finishes the compensation of a workflow a crashed process left COMPENSATING. A compensation asked for
+     * through compensate() is finished the same way and ends CANCELLED. Otherwise a step failure (or the
+     * workflow's deadline) started it, and fail() settles it again from that failed step: the steps still DONE
+     * are compensated, the failure is dead-lettered and the workflow ends FAILED (TIMED_OUT for a passed
+     * deadline). Steps already COMPENSATED are not undone twice, and no PENDING step ever runs.
+     */
+    private function finishCompensation(WorkflowDefinition $workflow, ExecutionContext $context): ExecutionState
+    {
+        if ($context->variable(self::COMPENSATION_REQUESTED) === true) {
+            return $this->compensateOnRequest($workflow, $context);
+        }
+
+        $outcome = null;
+        foreach ($workflow->stepIds() as $stepId) {
+            if (in_array($context->stepStatus($stepId), [StepStatus::Failed, StepStatus::TimedOut], true)) {
+                $outcome = WorkflowRunOutcome::failed($stepId, $context->stepError($stepId) ?? new OrchestrationException("Workflow [{$workflow->id}] step [{$stepId}] failed."));
+
+                break;
+            }
+        }
+
+        $deadline = $context->deadline();
+        if ($outcome === null && $deadline !== null && $this->support->now() >= $deadline) {
+            $outcome = WorkflowRunOutcome::failed($context->waitingOn() ?? '', new StepTimeoutException("Workflow [{$workflow->id}] passed its timeoutMs deadline of {$workflow->timeoutMs} ms."), timedOut: true);
+        }
+
+        $outcome ??= WorkflowRunOutcome::failed('', new OrchestrationException("Workflow [{$workflow->id}] was interrupted while compensating."));
+
+        return $this->settle($context->correlationId, fn (): ExecutionState => $this->fail($workflow, $context, $outcome));
     }
 
     /**
