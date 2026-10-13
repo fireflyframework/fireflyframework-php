@@ -10,6 +10,7 @@ use DateTimeInterface;
 use JsonException;
 use JsonSerializable;
 use Stringable;
+use Traversable;
 use UnitEnum;
 
 /**
@@ -20,6 +21,11 @@ use UnitEnum;
  * itself or a value object nested in it — is not keyable: comparing the (array) cast, which lists every initialized
  * instance property, with the public view detects it, and the key is null. Keying such an object by its public
  * view alone would give Q(private 'a') and Q(private 'b') one entry and serve one caller's result to another.
+ *
+ * A Traversable (a Generator, an Iterator, an IteratorAggregate) is refused the same way: its values live in internal
+ * state no property read can see, so two queries carrying generators that yield 1 and 2 would otherwise share the one
+ * key of an empty public view. A Traversable that is also JsonSerializable or Stringable (a collection) is keyed by
+ * that form instead, which does carry its values.
  *
  * The canonical form sorts associative keys (so property order never matters), keeps list order (so ['x','y'] and
  * ['y','x'] are different queries), writes enums by case, dates as an exact instant with offset, and walks nested
@@ -69,6 +75,9 @@ final class QueryCacheKey
      */
     private static function publicProperties(object $object): array
     {
+        if ($object instanceof Traversable) {
+            throw new UnkeyableQueryValue;
+        }
         $public = get_object_vars($object);
         if (count((array) $object) !== count($public)) {
             throw new UnkeyableQueryValue;

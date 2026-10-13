@@ -26,7 +26,8 @@ use ReflectionNamedType;
  * #[PublishDomainEvent] off DomainEvent subclasses into a {eventClass => destination} map. Fails loud
  * (CqrsConfigurationException) on an unresolvable type or a missing/multi-param handle() — never silently skips.
  * It also compiles #[CachedQuery] off query classes into per-query policies and #[InvalidatesQuery] off event classes
- * into invalidation rules, refusing a rule with both a key template and a `with` map, a rule naming a class that does
+ * into invalidation rules, refusing a #[CachedQuery] on a query that is not Cacheable yet holds non-public state (QueryCacheKey
+ * could never key it, so the opt-in would silently do nothing), a rule with both a key template and a `with` map, a rule naming a class that does
  * not exist, a key template on a query that is not Cacheable (its entries live under a QueryCacheKey digest no
  * template can name, so the eviction would silently miss), a `with` map that does not name exactly the query's public properties (or targets a Cacheable query or
  * one with non-public state), and a TTL below one second.
@@ -81,6 +82,9 @@ final class HandlerScanner
                 if ($cached->ttl !== null && $cached->ttl < 1) {
                     throw new CqrsConfigurationException("#[CachedQuery] on [{$class}] declares ttl {$cached->ttl}; a TTL is at least one second (omit it to use firefly.cqrs.query.cache_ttl).");
                 }
+                if (! is_subclass_of($class, Cacheable::class)) {
+                    $this->publicPropertiesOrFail($class, "#[CachedQuery] on [{$class}]", 'opts the query into caching');
+                }
                 $cachedQueries[$class] = new CachedQueryPolicy($class, $cached->ttl, $cached->group ?? $class);
             }
 
@@ -121,16 +125,7 @@ final class HandlerScanner
             throw new CqrsConfigurationException("{$where} declares a with map, but the query is Cacheable and keyed by its own cacheKey(); use a key template instead.");
         }
 
-        $public = [];
-        foreach ((new ReflectionClass($queryClass))->getProperties() as $property) {
-            if ($property->isStatic()) {
-                continue;
-            }
-            if (! $property->isPublic()) {
-                throw new CqrsConfigurationException("{$where} declares a with map, but [{$queryClass}::\${$property->getName()}] is not public; a query keyed by value holds only public state.");
-            }
-            $public[] = $property->getName();
-        }
+        $public = $this->publicPropertiesOrFail($queryClass, $where, 'declares a with map');
 
         $unknown = array_diff(array_keys($with), $public);
         if ($unknown !== []) {
@@ -141,6 +136,30 @@ final class HandlerScanner
         if ($unmapped !== []) {
             throw new CqrsConfigurationException("{$where} leaves [".implode(', ', $unmapped).'] unmapped; a with map names every public property of the query.');
         }
+    }
+
+    /**
+     * The query's non-static property names, refusing any that is not public: QueryCacheKey reads only public state
+     * and answers null for an object holding more, so a value-keyed query with private or protected state would never
+     * be cached (#[CachedQuery] silently doing nothing) and no `with` map could name its entries.
+     *
+     * @param  class-string  $queryClass
+     * @return list<string>
+     */
+    private function publicPropertiesOrFail(string $queryClass, string $where, string $what): array
+    {
+        $public = [];
+        foreach ((new ReflectionClass($queryClass))->getProperties() as $property) {
+            if ($property->isStatic()) {
+                continue;
+            }
+            if (! $property->isPublic()) {
+                throw new CqrsConfigurationException("{$where} {$what}, but [{$queryClass}::\${$property->getName()}] is not public; a query keyed by value holds only public state (or implements Cacheable to key itself).");
+            }
+            $public[] = $property->getName();
+        }
+
+        return $public;
     }
 
     /**

@@ -10,6 +10,7 @@ use Firefly\Cqrs\Handler\HandlerManifestCompiler;
 use Firefly\Cqrs\Scanner\HandlerScanner;
 use Firefly\Cqrs\Tests\CacheScannerBadFixtures\CacheableTemplateEvent;
 use Firefly\Cqrs\Tests\CacheScannerBadFixtures\KeyedLedger;
+use Firefly\Cqrs\Tests\CacheScannerBadFixtures\PrivateKeyedLedger;
 use Firefly\Cqrs\Tests\CacheScannerFixtures\EntryPosted;
 use Firefly\Cqrs\Tests\CacheScannerFixtures\LedgerBalance;
 use Firefly\Cqrs\Tests\CacheScannerFixtures\LedgerTotals;
@@ -53,6 +54,39 @@ it('refuses a TTL below one second on its own', function () {
             ->toThrow(CqrsConfigurationException::class, 'declares ttl 0');
     } finally {
         @unlink($dir.'/ZeroTtlQuery.php');
+        @rmdir($dir);
+    }
+});
+
+// A value-keyed #[CachedQuery] with private state could never be keyed (QueryCacheKey answers null), so the scan
+// refuses it rather than compiling a policy that silently caches nothing; a Cacheable query keys itself and stays allowed.
+it('refuses #[CachedQuery] on a value-keyed query with non-public state', function () {
+    $dir = sys_get_temp_dir().'/firefly-cqrs-private-cached-'.bin2hex(random_bytes(6));
+    mkdir($dir);
+    touch($dir.'/PrivateLedger.php');
+
+    try {
+        expect(static fn (): array => (new HandlerScanner)->scan(['Firefly\\Cqrs\\Tests\\CacheScannerBadFixtures\\' => $dir]))
+            ->toThrow(CqrsConfigurationException::class, 'is not public');
+    } finally {
+        @unlink($dir.'/PrivateLedger.php');
+        @rmdir($dir);
+    }
+});
+
+it('compiles #[CachedQuery] on a Cacheable query whatever state it holds', function () {
+    $dir = sys_get_temp_dir().'/firefly-cqrs-keyed-cached-'.bin2hex(random_bytes(6));
+    mkdir($dir);
+    touch($dir.'/PrivateKeyedLedger.php');
+
+    try {
+        $result = (new HandlerScanner)->scan(['Firefly\\Cqrs\\Tests\\CacheScannerBadFixtures\\' => $dir]);
+
+        expect($result['cachedQueries'])->toEqual([
+            PrivateKeyedLedger::class => new CachedQueryPolicy(PrivateKeyedLedger::class, null, PrivateKeyedLedger::class),
+        ]);
+    } finally {
+        @unlink($dir.'/PrivateKeyedLedger.php');
         @rmdir($dir);
     }
 });

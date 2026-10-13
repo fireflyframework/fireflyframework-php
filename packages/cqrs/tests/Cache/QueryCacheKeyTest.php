@@ -104,3 +104,44 @@ it('refuses to key a public query that nests a value object with private state',
     expect(QueryCacheKey::of($query))->toBeNull()
         ->and(QueryCacheKey::of(new ($query::class)(new ($money::class)(200))))->toBeNull();
 });
+
+it('refuses to key a query that carries a generator or another Traversable, instead of colliding on its empty view', function () {
+    $query = new class((static fn () => yield 1)())
+    {
+        /** @param iterable<int> $ids */
+        public function __construct(public iterable $ids) {}
+    };
+    $other = new ($query::class)((static fn () => yield 2)());
+    $iterator = new ($query::class)(new ArrayIterator([1]));
+
+    expect(QueryCacheKey::of($query))->toBeNull()
+        ->and(QueryCacheKey::of($other))->toBeNull()
+        ->and(QueryCacheKey::of($iterator))->toBeNull()
+        ->and(QueryCacheKey::of(new ArrayIterator([1])))->toBeNull();
+});
+
+it('keys a Traversable collection by its JSON form, which carries its values', function () {
+    $collection = static fn (array $items): object => new class($items) implements IteratorAggregate, JsonSerializable
+    {
+        /** @param list<int> $items */
+        public function __construct(private array $items) {}
+
+        public function getIterator(): ArrayIterator
+        {
+            return new ArrayIterator($this->items);
+        }
+
+        /** @return list<int> */
+        public function jsonSerialize(): array
+        {
+            return $this->items;
+        }
+    };
+    $query = static fn (array $items): object => new class($collection($items))
+    {
+        public function __construct(public object $ids) {}
+    };
+
+    expect(QueryCacheKey::of($query([1])))->not->toBeNull()
+        ->and(QueryCacheKey::of($query([1])))->not->toBe(QueryCacheKey::of($query([2])));
+});
