@@ -2557,6 +2557,8 @@ return [
     | The point-to-point #[MessageListener] transport, independent of the event bus above.
     |   'memory' — in-process. The default.
     |   'queue'  — Laravel queue; both keys UNSET mean the application's own defaults.
+    |   'kafka'  — Kafka through firefly/eda-kafka (needs ext-rdkafka); a listener container driven by
+    |              `php artisan firefly:messaging:consume`, with the retry and dead-letter keys below.
     |
     */
 
@@ -2592,6 +2594,39 @@ return [
                 'multiplier' => env('FIREFLY_MESSAGING_LISTENER_RETRY_MULTIPLIER', 2.0),
                 'max-delay' => env('FIREFLY_MESSAGING_LISTENER_RETRY_MAX_DELAY', '30s'),
             ],
+
+            /*
+             | listener.dead-letter.enabled — what a listener container broker does with a delivery whose
+             | attempts ran out. true: it is published to the listener's own deadLetterTopic, or to the
+             | broker's default route (Kafka: `<topic><dlt-suffix>`), with x-original-topic, x-exception,
+             | x-exception-message and x-delivery-attempts headers, and only then acknowledged. false: it is
+             | logged and skipped — an explicit choice to lose it. A listener that names its own
+             | deadLetterTopic is always dead-lettered there.
+             |
+             | Default: true.
+            */
+            'dead-letter' => [
+                'enabled' => env('FIREFLY_MESSAGING_LISTENER_DEAD_LETTER_ENABLED', true),
+            ],
+        ],
+
+        /*
+         | kafka — read only when provider is 'kafka'. Nothing connects at boot: one consumer per consumer
+         | group is built on the first poll, the producer on the first publish, and publish() flushes before
+         | it returns. Offsets are committed by hand, after every listener of a record handled it or had it
+         | dead-lettered; a dead letter that cannot be produced stops the worker with the offset uncommitted.
+         |
+         | brokers — UNSET means the event bus's firefly.eda.kafka.brokers (else 127.0.0.1:9092), so one
+         | cluster serves both transports unless you split them.
+         | group-id — the consumer group of a #[MessageListener] that names none.
+         | dlt-suffix — the default dead-letter topic is the record's topic plus this suffix.
+         |
+         | Default: group-id 'firefly', dlt-suffix '.DLT'.
+        */
+        'kafka' => [
+            // 'brokers' => env('FIREFLY_MESSAGING_KAFKA_BROKERS', '127.0.0.1:9092'),
+            'group-id' => env('FIREFLY_MESSAGING_KAFKA_GROUP_ID', 'firefly'),
+            'dlt-suffix' => env('FIREFLY_MESSAGING_KAFKA_DLT_SUFFIX', '.DLT'),
         ],
     ],
 
