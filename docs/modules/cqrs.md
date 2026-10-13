@@ -2,8 +2,9 @@
 
 `firefly/cqrs` adds the command/query **dispatch** surface — a synchronous, in-process mediator — on
 top of the shipped seams. It writes no interception code: a `#[Transactional]` command handler gets
-transaction semantics for free from the firefly/data proxy. Read models / projections are a future
-`firefly/eventsourcing` package.
+transaction semantics for free from the firefly/data proxy. Read models / projections ship in
+`firefly/eventsourcing`: see [Projections](eventsourcing.md#projections) for `FunctionProjection`, the
+`ProjectionRunner` and the `firefly:eventsourcing:projections` commands.
 
 ![CQRS / EDA bridge](../assets/diagrams/cqrs-eda-bridge.svg)
 

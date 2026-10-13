@@ -106,6 +106,8 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
   `provider=postgres` reads the `firefly.eda.database.*` keys, with every `firefly.eda.postgres.*` key kept as an
   alias. The outbox table gains `claimed_by` / `claimed_until` (run `php artisan migrate`).
 - **Transaction timeouts on SQL Server** set the session's `LOCK_TIMEOUT` and restore it afterwards.
+- **The CQRS module doc points at the shipped projections.** `docs/modules/cqrs.md` no longer calls read models
+  a future package; it links the `firefly/eventsourcing` projections section.
 
 ### Fixed
 
