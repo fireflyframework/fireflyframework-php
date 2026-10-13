@@ -62,7 +62,7 @@ function lockingWriteFromOther(Connection $other, string $lane): ?Throwable
     match ($lane) {
         'pgsql' => $other->statement("set lock_timeout = '300ms'"),
         'mysql', 'mariadb' => $other->statement('set session innodb_lock_wait_timeout = 1'),
-        'sqlsrv' => $other->statement('set lock_timeout 300'),
+        'sqlsrv' => $other->unprepared('set lock_timeout 300'), // a prepared SET is undone when sp_prepexec returns
         default => null,
     };
 

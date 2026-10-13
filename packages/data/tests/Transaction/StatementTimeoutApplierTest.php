@@ -198,3 +198,43 @@ it('puts SQL Server\'s previous LOCK_TIMEOUT back — -1, wait forever, is the s
     expect($phases['applied'])->toBe(['select @@lock_timeout as value', 'set lock_timeout 2000'])
         ->and($phases['restored'])->toBe(['set lock_timeout -1']);
 });
+
+it('sets SQL Server\'s LOCK_TIMEOUT as a direct batch, because a prepared SET does not outlive sp_prepexec', function () {
+    $connection = new class(new PDO('sqlite::memory:'), 'pretend', '', ['driver' => 'sqlsrv', 'name' => 'pretend']) extends SqlServerConnection
+    {
+        /** @var list<string> */
+        public array $direct = [];
+
+        /**
+         * @param  string  $query
+         * @param  array<int|string, mixed>  $bindings
+         * @param  bool  $useReadPdo
+         */
+        public function selectOne($query, $bindings = [], $useReadPdo = true)
+        {
+            return (object) ['value' => -1];
+        }
+
+        /**
+         * @param  string  $query
+         * @param  array<int|string, mixed>  $bindings
+         */
+        public function statement($query, $bindings = []): bool
+        {
+            throw new LogicException("prepared statement used for [{$query}]");
+        }
+
+        /** @param  string  $query */
+        public function unprepared($query): bool
+        {
+            $this->direct[] = $query;
+
+            return true;
+        }
+    };
+
+    $restore = (new StatementTimeoutApplier)->apply($connection, 3);
+    $restore();
+
+    expect($connection->direct)->toBe(['set lock_timeout 3000', 'set lock_timeout -1']);
+});

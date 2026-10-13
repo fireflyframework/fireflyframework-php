@@ -55,7 +55,8 @@ function translationShortLockWait(Connection $connection, string $lane): void
     match ($lane) {
         'pgsql' => $connection->statement("set lock_timeout = '300ms'"),
         'mysql', 'mariadb' => $connection->statement('set session innodb_lock_wait_timeout = 1'),
-        'sqlsrv' => $connection->statement('set lock_timeout 300'),
+        // A prepared SET is undone when sp_prepexec returns on SQL Server; only a direct batch sticks to the session.
+        'sqlsrv' => $connection->unprepared('set lock_timeout 300'),
         default => null,
     };
 }

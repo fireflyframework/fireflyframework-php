@@ -176,7 +176,11 @@ final class StatementTimeoutApplier
 
         try {
             $row = $connection->selectOne('select @@lock_timeout as value');
-            $connection->statement(sprintf('set lock_timeout %d', $seconds * 1000));
+            // unprepared(), never statement(): pdo_sqlsrv runs a prepared statement through sp_prepexec, and SQL Server
+            // restores a SET made inside it when that call returns, so the session would keep waiting forever.
+            /** @var literal-string $set an integer formatted by %d: nothing but digits reaches the batch */
+            $set = sprintf('set lock_timeout %d', $seconds * 1000);
+            $connection->unprepared($set);
         } catch (Throwable) {
             return $noop;
         }
@@ -192,7 +196,9 @@ final class StatementTimeoutApplier
 
         return static function () use ($connection, $restore): void {
             try {
-                $connection->statement(sprintf('set lock_timeout %d', $restore));
+                /** @var literal-string $reset an integer formatted by %d */
+                $reset = sprintf('set lock_timeout %d', $restore);
+                $connection->unprepared($reset);
             } catch (Throwable) {
                 // Best-effort, see the class docblock.
             }
