@@ -71,9 +71,9 @@ event-driven, actuator-observed microservice, chapter by chapter — every listi
 **[Download the book in English or Spanish, as PDF or EPUB](https://fireflyframework.github.io/fireflyframework-php/book/).**
 The published editions include the single-package installation and bundled installer.
 
-The book is **structurally complete and bilingual (English + Spanish)**: a quick start, **seventeen chapters**
+The book is **structurally complete and bilingual (English + Spanish)**: a quick start, **eighteen chapters**
 across four parts — Foundations (DI, config, HTTP), Modelling & Persisting the Domain (repositories, DDD),
-Coordinating & Securing the App (CQRS, EDA + transactional outbox, webhooks and callbacks, `#[Transactional]`, security, OAuth2 and
+Coordinating & Securing the App (CQRS, EDA + transactional outbox, webhooks and callbacks, `#[Transactional]`, sagas/TCC/durable workflows, security, OAuth2 and
 OpenID Connect), and Observability, Testing & Delivery (actuator, testing, the CLI + zero-reflection cache,
 feature flags)
 — plus a Laravel→LaraFly cheat-sheet and a glossary. The two editions are line-for-line the same book: every
@@ -1133,7 +1133,7 @@ Start at the **[documentation table of contents](docs/README.md)** — it groups
 - [Laravel ↔ Spring Boot Comparison](docs/laravel-comparison.md) — concept-by-concept mapping for both audiences.
 - [Versioning](docs/versioning.md) · [Contributing](docs/contributing.md) · [Publishing](docs/publishing.md).
 - Every [module guide](#modules) above.
-- [*larafly by example*](book/README.md) — the complete bilingual book (17 chapters + appendices, PDF + EPUB).
+- [*larafly by example*](book/README.md) — the complete bilingual book (18 chapters + appendices, PDF + EPUB).
 - [`samples/lumen/`](samples/lumen/) — the wallet-and-ledger sample this README's showcases are drawn from;
   run its own test suite with `vendor/bin/pest samples/lumen/tests`.
 
@@ -1170,7 +1170,7 @@ accurately:
   today via a plain `#[EventListener]`; a dedicated `firefly/eventsourcing`-style package for event
   sourcing/snapshots/projections is future work, as it is in PyFly.
 - **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES), the *larafly by example*
-  [book](book/README.md) (17 chapters + appendices, EN + ES, PDF + EPUB), and a
+  [book](book/README.md) (18 chapters + appendices, EN + ES, PDF + EPUB), and a
   [docs table of contents](docs/README.md) all shipped with the documentation-parity milestone.
   Deeper guides (more recipes, more diagrams) continue to grow from here.
 
