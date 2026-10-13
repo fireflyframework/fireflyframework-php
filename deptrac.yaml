@@ -102,6 +102,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/feature-flags/src/.*
+    - name: Orchestration
+      collectors:
+        - type: directory
+          value: packages/orchestration/src/.*
     - name: OpenApi
       collectors:
         - type: directory
@@ -493,6 +497,26 @@ deptrac:
       - Web
       - Actuator
       - Resilience
+
+    # Orchestration is the saga / TCC / durable-workflow capability. It reads Config, carries Container/Context
+    # attributes and boot passes, extends AutoConfigure's base, reuses Kernel exceptions, builds its step
+    # retries, timeouts and the CIRCUIT_BREAKER compensation policy on Resilience (Retry, TimeLimiter,
+    # CircuitBreaker, Duration), serializes writers through Scheduling's DistributedLock and contributes its tick
+    # to Scheduling's manifest (Cadence, ScheduledDescriptor), publishes lifecycle and step events and listens
+    # for trigger events through Eda's EventPublisher, and supplies an Actuator endpoint and HealthIndicator.
+    # NO Web edge (its REST routes mount on the Illuminate router, the FlagdSyncRouteRegistrar precedent) and NO
+    # Data edge (state is written through illuminate/database). Cli (firefly:cache compiles its manifest) and
+    # Observability (the metrics and tracing adapters) depend on it; it depends on neither.
+    Orchestration:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Resilience
+      - Scheduling
+      - Eda
+      - Actuator
 
     # OpenApi is a top-of-stack capability (like Web/Cqrs/Security/Actuator): it generates an OpenAPI 3.1
     # document from manifests that already exist, so it is nearly all READS. It reads Web's RouteManifest/

@@ -1,0 +1,74 @@
+{
+    "name": "firefly/orchestration",
+    "description": "LaraFly orchestration: sagas, TCC transactions and durable workflows discovered from attributes into a compiled manifest, with compensation policies, memory/cache/database execution persistence, recovery, a dead-letter queue, EDA events and triggers, an actuator endpoint and an opt-in REST surface.",
+    "type": "library",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        {
+            "name": "Firefly Software Solutions Inc.",
+            "homepage": "https://github.com/fireflyframework"
+        }
+    ],
+    "keywords": [
+        "firefly",
+        "laravel",
+        "saga",
+        "tcc",
+        "workflow",
+        "orchestration"
+    ],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/orchestration"
+    },
+    "require": {
+        "php": "^8.3",
+        "firefly/actuator": "*@dev",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/eda": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/resilience": "*@dev",
+        "firefly/scheduling": "*@dev",
+        "illuminate/bus": "^13.0",
+        "illuminate/cache": "^13.0",
+        "illuminate/console": "^13.0",
+        "illuminate/container": "^13.0",
+        "illuminate/contracts": "^13.0",
+        "illuminate/database": "^13.0",
+        "illuminate/http": "^13.0",
+        "illuminate/queue": "^13.0",
+        "illuminate/routing": "^13.0",
+        "illuminate/support": "^13.0",
+        "psr/log": "^3.0",
+        "symfony/expression-language": "^7.4|^8.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Orchestration\\OrchestrationServiceProvider",
+                "Firefly\\Orchestration\\OrchestrationWiringProvider"
+            ]
+        },
+        "branch-alias": {
+            "dev-main": "26.x-dev"
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Firefly\\Orchestration\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Firefly\\Orchestration\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "stable",
+    "config": {
+        "sort-packages": true
+    }
+}

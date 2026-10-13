@@ -74,6 +74,7 @@
             "Firefly\\Messaging\\Tests\\": "packages/messaging/tests/",
             "Firefly\\Observability\\Tests\\": "packages/observability/tests/",
             "Firefly\\OpenApi\\Tests\\": "packages/openapi/tests/",
+            "Firefly\\Orchestration\\Tests\\": "packages/orchestration/tests/",
             "Firefly\\Resilience\\Tests\\": "packages/resilience/tests/",
             "Firefly\\Scheduling\\Postgres\\Tests\\": "packages/scheduling-postgres/tests/",
             "Firefly\\Scheduling\\Tests\\": "packages/scheduling/tests/",
@@ -108,6 +109,7 @@
         "stan": "phpstan analyse --no-progress --memory-limit=1G",
         "test": "@php -d memory_limit=512M vendor/bin/pest",
         "test:browser": "@php -d memory_limit=512M vendor/bin/pest --testsuite=browser",
+        "test:integration": "@php -d memory_limit=512M vendor/bin/pest --group integration",
         "deptrac": "deptrac analyse --no-progress --config-file=deptrac.yaml",
         "mono-validate": "monorepo-builder validate",
         "check": [
@@ -140,6 +142,7 @@
         "firefly/messaging": "self.version",
         "firefly/observability": "self.version",
         "firefly/openapi": "self.version",
+        "firefly/orchestration": "self.version",
         "firefly/resilience": "self.version",
         "firefly/scheduling": "self.version",
         "firefly/scheduling-postgres": "self.version",
@@ -171,6 +174,7 @@
             "Firefly\\Kernel\\": "packages/kernel/src/",
             "Firefly\\Messaging\\": "packages/messaging/src/",
             "Firefly\\Observability\\": "packages/observability/src/",
+            "Firefly\\Orchestration\\": "packages/orchestration/src/",
             "Firefly\\OpenApi\\": "packages/openapi/src/",
             "Firefly\\Resilience\\": "packages/resilience/src/",
             "Firefly\\Scheduling\\": "packages/scheduling/src/",
@@ -259,6 +263,8 @@
                 "Firefly\\Security\\OAuth2\\Client\\SecurityOAuth2ClientWiringProvider",
                 "Firefly\\FeatureFlags\\FeatureFlagsServiceProvider",
                 "Firefly\\FeatureFlags\\FeatureFlagsWiringProvider",
+                "Firefly\\Orchestration\\OrchestrationServiceProvider",
+                "Firefly\\Orchestration\\OrchestrationWiringProvider",
                 "Firefly\\Cli\\Boot\\FireflyCacheServiceProvider"
             ]
         }

@@ -27,7 +27,7 @@ composer global require fireflyframework/larafly
 firefly new my-app
 ```
 
-All 30 components are included in that package. An existing application starts with
+All 31 components are included in that package. An existing application starts with
 `composer require fireflyframework/larafly`; compatible legacy `firefly/*` requirements are then
 satisfied by the framework's `replace` declarations. See [Installation](installation.md) for details.
 
