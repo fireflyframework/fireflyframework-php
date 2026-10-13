@@ -1147,6 +1147,79 @@ lista completa de endpoints y el modelo de exposición/seguridad.
 
 ---
 
+## Paso 12: un outbox agnóstico de la base de datos y un consumidor
+
+En el Paso 10 el listener se ejecutó dentro de la petición `PATCH`, porque el bus de eventos del skeleton vive en
+memoria: rápido, y perdido si el proceso muere entre el commit y el listener. El outbox de base de datos cierra ese
+hueco sin que cambie una sola línea de tu código. El evento se escribe en una tabla **en la misma transacción** que
+el greeting renombrado, y un worker lo entrega después — igual en SQLite, MySQL, MariaDB, PostgreSQL o SQL Server.
+
+El proveedor es la primera clave del bloque `eda` de `config/firefly.php`:
+
+<!-- source: skeleton/config/firefly.php -->
+
+```php
+'eda' => [
+
+    'provider' => env('FIREFLY_EDA_PROVIDER', 'memory'),
+    // …
+],
+```
+
+Cámbialo con la variable de entorno y crea la tabla del outbox — la migración se registra en cuanto el proveedor
+es `database`:
+
+```bash
+echo 'FIREFLY_EDA_PROVIDER=database' >> .env
+php artisan migrate        # crea firefly_eda_outbox
+```
+
+Reinicia `php artisan firefly:serve`, vuelve a renombrar el greeting y mira el log:
+
+```bash
+curl -X PATCH http://127.0.0.1:8000/greetings/Ada/record \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello from the outbox!"}'
+# {"name":"Ada","message":"Hello from the outbox!"}
+
+tail -n 1 storage/logs/laravel.log   # todavía la línea del Paso 10: nada ha entregado aún el evento nuevo
+```
+
+El evento `GreetingRenamed` es una fila `PENDING` en `firefly_eda_outbox`, confirmada junto con el mensaje nuevo.
+Entrégalo con el consumidor — un worker de larga duración en producción, un solo mensaje aquí:
+
+```bash
+php artisan firefly:eda:consume --max-messages=1
+tail -n 1 storage/logs/laravel.log
+```
+
+```
+[2026-07-28 12:20:41] local.INFO: greeting.renamed {"name":"Ada","oldMessage":"Hello again from the database!","newMessage":"Hello from the outbox!", ...}
+```
+
+Qué cambió y qué no:
+
+- **Tu código no cambió.** `GreetingRenamedListener`, `RenameGreetingHandler` y `#[PublishDomainEvent]` están
+  exactamente como los dejaron los Pasos 9 y 10. El outbox se engancha *antes* del commit, a través de la misma
+  frontera `#[Transactional]` que publicaba el evento después de él.
+- **La atomicidad sí.** Si el handler lanza una excepción después de `rename()`, la fila se revierte con el
+  greeting: ningún evento para una escritura que nunca ocurrió, y — como la fila se confirma con el greeting —
+  ningún evento perdido para una que sí ocurrió.
+- **La entrega es un worker.** La fila se *arrienda* a un consumidor antes de que se ejecute el listener, así que
+  puedes lanzar tantos workers `php artisan firefly:eda:consume` como quieras. En SQLite la estrategia de
+  reclamación `auto` es un arrendamiento optimista; en PostgreSQL, MySQL 8.0.1+ y MariaDB 10.6+ es
+  `FOR UPDATE SKIP LOCKED`; en SQL Server, `READPAST`. Un worker que cae a mitad de una entrega deja su fila para
+  que se entregue de nuevo cuando termine el arrendamiento (`firefly.eda.database.lease-seconds`, 300 por
+  defecto) — así que mantén tus listeners idempotentes.
+- **PostgreSQL puede hacerlo mejor.** `FIREFLY_EDA_PROVIDER=postgres` es el mismo outbox más un `pg_notify` al
+  escribir y un despertar por `LISTEN` en el consumidor, de modo que la entrega es inmediata en lugar de por sondeo.
+
+Consulta [Outbox de base de datos de EDA](modules/eda-database.md) para las estrategias de reclamación, el relay
+opcional a RabbitMQ o Kafka (`php artisan firefly:outbox:relay`) y el componente de salud `outbox`, y la
+[Matriz de soporte de bases de datos](database-support.md) para lo que hace cada servidor.
+
+---
+
 ## Paso 12: y ahora qué
 
 Has construido una pequeña porción de funcionalidad — `#[RestController]` → `#[Service]` →
