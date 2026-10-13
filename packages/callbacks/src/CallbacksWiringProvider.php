@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Firefly\Callbacks;
 
 use Firefly\Callbacks\Boot\CallbacksWiringPass;
+use Firefly\Callbacks\Console\ListCallbacksCommand;
+use Firefly\Callbacks\Console\ReplayCallbacksCommand;
 use Firefly\Config\Config;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
@@ -28,6 +30,10 @@ final class CallbacksWiringProvider extends FireflyServiceProvider
 
     public function boot(): void
     {
+        if ($this->app->runningInConsole()) {
+            $this->commands([ListCallbacksCommand::class, ReplayCallbacksCommand::class]);
+        }
+
         $migrations = dirname(__DIR__).'/database/migrations';
         $this->publishes([$migrations.'/'.self::MIGRATION => $this->app->databasePath('migrations/'.self::MIGRATION)], 'firefly-callbacks-migrations');
 
