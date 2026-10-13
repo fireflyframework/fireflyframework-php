@@ -6,6 +6,22 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ### Added
 
+- **Event sourcing (`firefly/eventsourcing`).** An `EventStore` port on `memory` or portable `database` tables
+  (`firefly.eventsourcing.store.provider`): appends under optimistic concurrency on
+  `UNIQUE(aggregate_id, aggregate_version)` (a 409 `ConcurrencyException` for the losing writer), stream loads by
+  version range, and one global stream numbered in COMMIT order, so a reader never skips an event that committed
+  late, proven with racing appenders on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite. Event envelopes carry
+  correlation, causation, tenant and user metadata; `#[EventType(name, version)]` events are compiled by
+  `firefly:cache`. Event-sourced aggregates and a snapshot-aware `EventSourcedRepository`; snapshots every
+  `snapshot.threshold` events with keep-count retention; `EventUpcaster` chains applied on read; projections with
+  fenced `memory`/`database` checkpoints, a per-batch `DistributedLock` lease, catch-up, live mode and rebuild,
+  `php artisan firefly:eventsourcing:projections{,:run,:rebuild}` and an `eventsourcing` health component with
+  projection lag; same-transaction publishing through the eda-database outbox (`publish.enabled`), otherwise after
+  commit, at most once; opt-in tenancy (`tenancy.enabled`).
+- **`firefly.orchestration.persistence.provider=event-sourced`.** Executions as event-sourced aggregates with
+  snapshots and an inline, rebuildable read model on the event store's connection
+  (`firefly:eventsourcing:projections:rebuild orchestration.executions`), passing the orchestration persistence
+  contract on every server.
 - **CQRS query cache (`firefly.cqrs.query.cache.provider=cache`).** `CacheQueryCache` on any Laravel cache store:
   `#[CachedQuery(ttl:, group:)]` on a query class caches its results under a key derived from the query value
   object; `#[InvalidatesQuery]` on an event class evicts one entry or a whole group when the event commits in
@@ -109,6 +125,11 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
   `provider=postgres` reads the `firefly.eda.database.*` keys, with every `firefly.eda.postgres.*` key kept as an
   alias. The outbox table gains `claimed_by` / `claimed_until` (run `php artisan migrate`).
 - **Transaction timeouts on SQL Server** set the session's `LOCK_TIMEOUT` and restore it afterwards.
+- **The CQRS module doc points at the shipped projections.** `docs/modules/cqrs.md` no longer calls read models
+  a future package; it links the `firefly/eventsourcing` projections section.
+- **The cqrs package README points at the shipped projections.** `packages/cqrs/README.md` no longer calls read
+  models a future package; it links the `firefly/eventsourcing` projections section, and the event-sourcing prose
+  guard now reads package READMEs too.
 
 ### Fixed
 
@@ -122,6 +143,8 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 - **`RabbitMqRoundTripTest` failed against a real broker when `FIREFLY_RABBITMQ_DSN` was a URL**, which the old
   parser read as one key and silently replaced with `127.0.0.1:5672`.
 - **The lumen sample's Postgres round trip called `firefly:eda:consume` without registering it.**
+- **README's roadmap still called event sourcing future work.** The bullet and `docs/modules/cqrs.md`'s
+  known-latent list now point at `firefly/eventsourcing`; a docs test refuses the claim while the package ships.
 - **The CQRS/EDA bridge figure still credited only the Postgres adapter with same-transaction atomicity.** Its
   caption now names the database outbox (`provider=database` or `postgres`), and its adapter row draws the
   `database` provider; a test derives both providers from their outbox auto-configurations.

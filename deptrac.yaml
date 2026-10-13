@@ -122,6 +122,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/orchestration/src/.*
+    - name: EventSourcing
+      collectors:
+        - type: directory
+          value: packages/eventsourcing/src/.*
     - name: OpenApi
       collectors:
         - type: directory
@@ -609,6 +613,31 @@ deptrac:
       - Eda
       - Actuator
 
+    # EventSourcing is the event-store capability. It reads Config, carries Container/Context attributes and boot
+    # wiring, extends AutoConfigure's base and reuses Kernel exceptions. It builds its aggregates on Domain's
+    # AggregateRoot/DomainEvent (=> Domain) and translates a duplicate-key race through Data's
+    # PersistenceExceptionTranslator, choosing READPAST through Data's DatabaseCapabilities (=> Data). It
+    # serializes envelopes with Eda's Serializer and publishes through Eda's EventPublisher (=> Eda), recognising
+    # the outbox writer and its connection from EdaDatabase (=> EdaDatabase, OutboxWriter + DatabaseOutboxSettings
+    # only). It leases projections on Scheduling's DistributedLock (=> Scheduling), parses durations with
+    # Resilience's Duration (=> Resilience), supplies an Actuator HealthIndicator (=> Actuator) and supplies
+    # Orchestration's ExecutionPersistenceProvider port as `event-sourced` (=> Orchestration; Orchestration never
+    # depends on it). Cli depends on it (firefly:cache compiles its manifest); nothing else does.
+    EventSourcing:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Domain
+      - Data
+      - Eda
+      - EdaDatabase
+      - Scheduling
+      - Resilience
+      - Actuator
+      - Orchestration
+
     # OpenApi is a top-of-stack capability (like Web/Cqrs/Security/Actuator): it generates an OpenAPI 3.1
     # document from manifests that already exist, so it is nearly all READS. It reads Web's RouteManifest/
     # RouteDescriptor (paths, verbs, statuses, binding plans) and Validation's ConstraintManifest + Rule
@@ -659,7 +688,7 @@ deptrac:
       - Observability
       - FeatureFlags
 
-    # Cli is the top-of-stack developer-experience package: firefly:cache drives each of the 13
+    # Cli is the top-of-stack developer-experience package: firefly:cache drives each of the 14
     # compile-producing packages' scanner/compiler pair directly (D4 DIRECT DEPENDENCY). UNLIKE Testing
     # (whose composer.json genuinely requires the full runtime family, so it legitimately lists all 18
     # layers), firefly/cli's composer.json requires exactly the packages ManifestCacheWriter/CacheCommand/
@@ -674,6 +703,7 @@ deptrac:
     # accordingly.
     # Orchestration is listed for the same reason: ManifestCacheWriter compiles #[Saga]/#[Tcc]/#[Workflow] through
     # OrchestrationScanner into orchestration.php, and packages/cli/composer.json requires it accordingly.
+    # EventSourcing is listed for the same reason: ManifestCacheWriter compiles #[EventType] events through EventSourcingScanner into eventsourcing.php.
     # It is depended on by NONE. It does NOT depend on Testing (dev-only).
     Cli:
       - Kernel
@@ -695,6 +725,7 @@ deptrac:
       - Resilience
       - FeatureFlags
       - Orchestration
+      - EventSourcing
 
     # The bundled installer reads the framework version for its local skeleton repository.
     Installer:

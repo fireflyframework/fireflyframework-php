@@ -31,6 +31,8 @@ final class FireflyCachePaths
 
     public const string ORCHESTRATION = 'orchestration.php';
 
+    public const string EVENTSOURCING = 'eventsourcing.php';
+
     public const string SECURITY_METHODS = 'security-methods.php';
 
     public const string TRANSACTIONAL = 'transactional.php';

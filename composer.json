@@ -71,6 +71,7 @@
             "Firefly\\Eda\\Postgres\\Tests\\": "packages/eda-postgres/tests/",
             "Firefly\\Eda\\Rabbitmq\\Tests\\": "packages/eda-rabbitmq/tests/",
             "Firefly\\Eda\\Tests\\": "packages/eda/tests/",
+            "Firefly\\EventSourcing\\Tests\\": "packages/eventsourcing/tests/",
             "Firefly\\FeatureFlags\\Tests\\": "packages/feature-flags/tests/",
             "Firefly\\Firefly\\Tests\\": "packages/firefly/tests/",
             "Firefly\\Installer\\Tests\\": "packages/installer/tests/",
@@ -142,6 +143,7 @@
         "firefly/eda-kafka": "self.version",
         "firefly/eda-postgres": "self.version",
         "firefly/eda-rabbitmq": "self.version",
+        "firefly/eventsourcing": "self.version",
         "firefly/feature-flags": "self.version",
         "firefly/firefly": "self.version",
         "firefly/installer": "self.version",
@@ -180,6 +182,7 @@
             "Firefly\\Eda\\Kafka\\": "packages/eda-kafka/src/",
             "Firefly\\Eda\\Postgres\\": "packages/eda-postgres/src/",
             "Firefly\\Eda\\Rabbitmq\\": "packages/eda-rabbitmq/src/",
+            "Firefly\\EventSourcing\\": "packages/eventsourcing/src/",
             "Firefly\\FeatureFlags\\": "packages/feature-flags/src/",
             "Firefly\\Installer\\": "packages/installer/src/",
             "Firefly\\Kernel\\": "packages/kernel/src/",
@@ -287,6 +290,8 @@
                 "Firefly\\Callbacks\\CallbacksWiringProvider",
                 "Firefly\\Orchestration\\OrchestrationServiceProvider",
                 "Firefly\\Orchestration\\OrchestrationWiringProvider",
+                "Firefly\\EventSourcing\\EventSourcingServiceProvider",
+                "Firefly\\EventSourcing\\EventSourcingWiringProvider",
                 "Firefly\\Cli\\Boot\\FireflyCacheServiceProvider"
             ]
         }

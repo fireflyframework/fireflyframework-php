@@ -35,6 +35,7 @@
         "firefly/domain": "*@dev",
         "firefly/eda": "*@dev",
         "firefly/eda-database": "*@dev",
+        "firefly/eventsourcing": "*@dev",
         "firefly/feature-flags": "*@dev",
         "firefly/kernel": "*@dev",
         "firefly/messaging": "*@dev",

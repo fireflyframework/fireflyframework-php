@@ -1080,7 +1080,7 @@ Full flag reference and generated-file contents: [CLI](docs/cli.md).
 
 One published library, `fireflyframework/larafly`, contains the components under `packages/*` and the bundled
 application skeleton. Its `replace` entries satisfy component requirements at the framework's version;
-component names remain useful module boundaries, with their own test suites. The 38
+component names remain useful module boundaries, with their own test suites. The 39
 [module guides](docs/modules/) below group them by concern:
 
 | Group | Module | Package(s) |
@@ -1108,6 +1108,7 @@ component names remain useful module boundaries, with their own test suites. The
 | Eventing & Messaging | [Webhooks](docs/modules/webhooks.md) — inbound webhooks: an endpoint per provider, HMAC/Stripe/GitHub/Twilio signatures, a replay window, idempotency, published to EDA | `firefly/webhooks` |
 | Eventing & Messaging | [Callbacks](docs/modules/callbacks.md) — outbound callbacks: subscriptions, signed deliveries driven by events, retries, a circuit breaker per endpoint, a replayable execution log | `firefly/callbacks` |
 | Eventing & Messaging | [Orchestration](docs/modules/orchestration.md) — sagas, TCC, durable workflows, recovery, DLQ | `firefly/orchestration` |
+| Eventing & Messaging | [Event Sourcing](docs/modules/eventsourcing.md) — event store, aggregates, snapshots, upcasters, projections, outbox publishing | `firefly/eventsourcing` |
 | CQRS | [CQRS](docs/modules/cqrs.md) — `CommandBus`/`QueryBus`, the domain→integration-event bridge | `firefly/cqrs` |
 | Security | [Security](docs/modules/security.md) — principal model, `HttpSecurity`, `#[PreAuthorize]`, JWT/OAuth2 | `firefly/security` |
 | Security | [OAuth2 Client](docs/modules/security-oauth2-client.md) — OpenID Connect login with presets and discovery, PKCE, id-token validation, `OidcUser`, RP-initiated logout, client credentials, `Http::oauth2Client()` | `firefly/security-oauth2-client` |
@@ -1174,9 +1175,11 @@ accurately:
   credentials, refresh rotation, introspection, revocation, userinfo and RP-initiated logout). IdP adapters
   beyond those presets (Cognito, internal-db) and MFA are deferred to their own future packages, matching the
   Java Firefly Framework's module topology.
-- **Read models / projections as a first-class concept.** The sample's `LedgerProjector` shows the pattern
-  today via a plain `#[EventListener]`; a dedicated `firefly/eventsourcing`-style package for event
-  sourcing/snapshots/projections is future work, as it is in PyFly.
+- **Event sourcing in the tutorial and the book.** Event stores, aggregates, snapshots, upcasters and
+  checkpointed, rebuildable projections ship in [`firefly/eventsourcing`](docs/modules/eventsourcing.md),
+  shaped after the Java library and PyFly's `pyfly.eventsourcing`. What remains is the walkthrough: the
+  sample's `LedgerProjector` still builds its read model from a plain `#[EventListener]`, and neither the
+  tutorial nor the book has a chapter on the package.
 - **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES, through a database outbox and a saga), the *larafly by example*
   [book](book/README.md) (18 chapters + appendices, EN + ES, PDF + EPUB), and a
   [docs table of contents](docs/README.md) all shipped with the documentation-parity milestone.

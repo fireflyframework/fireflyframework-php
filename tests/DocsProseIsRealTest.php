@@ -1569,13 +1569,13 @@ it('pins every firefly:cache figure to the artifacts ManifestCacheWriter really 
     // one phrasing of a claim is a guard on that phrasing, not on the claim, so all three are matched here.
     $figures = fireflyCacheFigures();
 
-    // Fifteen artifacts out of thirteen scanner/compiler calls: the component+context compiler emits two, and
+    // Sixteen artifacts out of fourteen scanner/compiler calls: the component+context compiler emits two, and
     // writeProxies() appends the proxies.php classmap. If this fails, the documents below are right and this
     // expectation is the thing to re-derive — but read ManifestCacheWriter first.
-    expect($figures)->toBe(['artifacts' => 15, 'pairs' => 13]);
+    expect($figures)->toBe(['artifacts' => 16, 'pairs' => 14]);
 
-    // A STEP is not a pair: writeManifests() makes thirteen scanner-then-compiler calls and writeProxies() is
-    // the fourteenth step, which is why the chapter's own body says "thirteen `scan()`-then-`write()` calls ...
+    // A STEP is not a pair: writeManifests() makes fourteen scanner-then-compiler calls and writeProxies() is
+    // the fifteenth step, which is why the chapter's own body says "fourteen `scan()`-then-`write()` calls ...
     // plus one more step". Derived as pairs + 1 rather than typed, so adding a capability moves the pair
     // count, the step count and the sentences that quote either of them together.
     $steps = $figures['pairs'] + 1;
@@ -3673,4 +3673,63 @@ it('pins the contributing guide\'s account of this file to the surface it really
     expect($failures)->toBe([])
         ->and(array_values(array_diff($prose, $listing)))->toBe([], 'this file walks a page the listing guard does not audit, which makes the guide\'s account of the two surfaces wrong in the other direction')
         ->and($unreached)->not->toBe([], 'the prose guard now walks everything the listing guard does, so the paragraph should say that instead of naming exceptions');
+});
+
+it('refuses any page that still calls event sourcing future work while firefly/eventsourcing ships', function () {
+    // The twenty-ninth. W3 shipped `packages/eventsourcing` — event store, aggregates, snapshots, upcasters,
+    // projections and outbox publishing — and README.md's module table learned to list it, while the same
+    // README's roadmap, under "What's still ahead, accurately", went on saying that a dedicated
+    // `firefly/eventsourcing`-style package for event sourcing/snapshots/projections "is future work". One page,
+    // two answers to the same question, and the wrong one sitting under a heading that promises accuracy.
+    //
+    // DERIVED FROM THE TREE. The rule holds only while `packages/eventsourcing/composer.json` exists, so the day
+    // the package moves or is withdrawn the sentence that says it is ahead becomes allowed again by itself. It
+    // reads sentences one at a time — a roadmap is one Markdown paragraph of bullets, and docs/modules/cqrs.md's
+    // "Known-latent" paragraph listed projection scaffolding (→ `firefly/eventsourcing`) in the same sentence as
+    // the things that really are deferred, so the "future work" of a neighbour must not condemn a sentence that
+    // only points at the shipped package — and judges any sentence that names event sourcing or the package and
+    // also calls it future, deferred or not yet shipped, in either language the project publishes in.
+    //
+    // The package READMEs are judged too: packages/cqrs/README.md closed its summary with "Read models /
+    // projections are a future `firefly/eventsourcing` package." — the same false claim on the page a reader
+    // of the cqrs package opens first, phrased as "a future ... package" rather than "future work".
+    $root = dirname(__DIR__);
+    $ships = is_file($root.'/packages/eventsourcing/composer.json');
+
+    $subject = '/firefly\/eventsourcing|event[\s-]+sourc|event[\s-]+store|abastecimiento de eventos/i';
+    $future = '/future work|\bfuture\b[^.]{0,40}\bpackage\b|is deferred|are deferred|not yet (?:shipped|available)|still ahead|trabajo futuro|queda pendiente|todav[ií]a no/i';
+
+    $pages = fireflyProsePages();
+    foreach (glob($root.'/packages/*/README.md') ?: [] as $readme) {
+        $paragraphs = preg_split('/\n\s*\n/', (string) file_get_contents($readme));
+        $pages[substr($readme, strlen($root) + 1)] = $paragraphs === false ? [] : $paragraphs;
+    }
+
+    $judged = 0;
+    $failures = [];
+
+    foreach ($pages as $page => $paragraphs) {
+        foreach ($paragraphs as $paragraph) {
+            $flatParagraph = (string) preg_replace('/\s+/', ' ', trim($paragraph));
+            // A sentence ends at terminal punctuation followed by the start of the next one, and a list item
+            // ends where the next bullet begins (the paragraph is flattened, so that is " - " or " * ").
+            $sentences = preg_split('/(?<=[.!?])\s+(?=[A-Z`*\[(¿¡])|\s(?=[-*] \*\*)/u', $flatParagraph);
+
+            foreach ($sentences === false ? [] : $sentences as $flat) {
+
+                if (preg_match($subject, $flat) !== 1) {
+                    continue;
+                }
+
+                $judged++;
+
+                if ($ships && preg_match($future, $flat) === 1) {
+                    $failures[] = $page.': '.mb_substr($flat, 0, 160);
+                }
+            }
+        }
+    }
+
+    expect($failures)->toBe([])
+        ->and($judged)->toBeGreaterThan(0, 'no page names event sourcing any more, so this canary holds nothing');
 });

@@ -17,6 +17,8 @@ use Firefly\Data\Scanner\TransactionalScanner;
 use Firefly\Data\Transaction\TransactionalManifestCompiler;
 use Firefly\Eda\Listener\EventListenerManifestCompiler;
 use Firefly\Eda\Scanner\EventListenerScanner;
+use Firefly\EventSourcing\Manifest\EventSourcingManifestCompiler;
+use Firefly\EventSourcing\Scanner\EventSourcingScanner;
 use Firefly\FeatureFlags\Gating\FeatureFlagAdviceSource;
 use Firefly\Messaging\Listener\MessageListenerManifestCompiler;
 use Firefly\Messaging\Scanner\MessageListenerScanner;
@@ -195,6 +197,12 @@ final class ManifestCacheWriter
         (new OrchestrationManifestCompiler)->write(
             (new OrchestrationScanner)->scan($psr4),
             $files[] = $dir.'/'.FireflyCachePaths::ORCHESTRATION,
+        );
+
+        // eventsourcing — #[EventType] events and the constructor parameters their mapper needs.
+        (new EventSourcingManifestCompiler)->write(
+            (new EventSourcingScanner)->scan($psr4),
+            $files[] = $dir.'/'.FireflyCachePaths::EVENTSOURCING,
         );
 
         // security

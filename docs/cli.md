@@ -8,11 +8,14 @@ framework stereotype (`make:firefly-*`), and thinly delegates to Laravel's own `
 commands (`firefly:serve`/`firefly:schedule`/`firefly:db`). Its own Deptrac `Cli` layer — depends on the rest of
 the framework, depended on by nothing.
 
-Seven more `firefly:*` commands ship with the capability they belong to rather than with the console:
+Twenty more `firefly:*` commands ship with the capability they belong to rather than with the console:
 `firefly:management:serve` (`firefly/actuator`), `firefly:openapi` (`firefly/openapi`), `firefly:eda:consume` and
 `firefly:eda:dead-letters:replay` (`firefly/eda`), `firefly:outbox:relay` (`firefly/eda-database`),
-`firefly:messaging:dead-letters:replay` (`firefly/messaging`) and `firefly:flags` (`firefly/feature-flags`). They
-are all listed at the end of this page.
+`firefly:messaging:consume` and `firefly:messaging:dead-letters:replay` (`firefly/messaging`), six
+`firefly:orchestration:*` commands (`firefly/orchestration`), three `firefly:eventsourcing:projections*` commands
+(`firefly/eventsourcing`), `firefly:flags` (`firefly/feature-flags`), `firefly:webhooks:prune` (`firefly/webhooks`)
+and `firefly:callbacks:list` and `firefly:callbacks:replay` (`firefly/callbacks`). They are all listed at the end of
+this page.
 
 ## `firefly:cache`
 
@@ -21,10 +24,10 @@ php artisan firefly:cache
 ```
 
 The zero-reflection payoff: it runs every settled package's existing scanner → compiler pair over
-`config('firefly.scan.paths')` (a PSR-4 map, e.g. `'App\\' => app_path()`) and writes fifteen compiled
+`config('firefly.scan.paths')` (a PSR-4 map, e.g. `'App\\' => app_path()`) and writes sixteen compiled
 artifacts — every manifest below, unconditionally, whether or not the application has anything to put in it —
 plus one generated proxy class per planned bean, into `bootstrap/cache/firefly/`. It prints what it wrote:
-`firefly:cache — wrote 15 manifest(s) + N proxy(ies) to <dir>`.
+`firefly:cache — wrote 16 manifest(s) + N proxy(ies) to <dir>`.
 
 ```
 bootstrap/cache/firefly/
@@ -39,6 +42,7 @@ bootstrap/cache/firefly/
 ├── message-listeners.php  # #[MessageListener] manifest
 ├── scheduled.php          # #[Scheduled] manifest
 ├── orchestration.php      # #[Saga]/#[Tcc]/#[Workflow] definitions and their schedules
+├── eventsourcing.php      # #[EventType] events and their constructor parameters
 ├── security-methods.php   # #[PreAuthorize]/#[Secured]/#[RolesAllowed] manifest
 ├── transactional.php      # #[Transactional] method manifest
 ├── proxy-plan.php         # the compiled ProxyPlan: which beans get a proxy, and the advice each method runs
@@ -112,7 +116,7 @@ php artisan firefly:cache
 ```
 
 ```
-firefly:cache — wrote 15 manifest(s) + 3 proxy(ies) to bootstrap/cache/firefly
+firefly:cache — wrote 16 manifest(s) + 3 proxy(ies) to bootstrap/cache/firefly
 firefly:cache — skipped 1 stale manifest entry naming a class that no longer exists: App\Security\ControlPlaneJwksProvider
 ```
 
@@ -340,6 +344,9 @@ command is part of that capability rather than of the console.
 | `firefly:orchestration:dlq` | `firefly/orchestration` | Lists orchestration dead letters. `--name=`, `--limit=50`. |
 | `firefly:orchestration:dlq:retry` | `firefly/orchestration` | Retries one orchestration dead letter by id; the execution restarts from scratch. |
 | `firefly:orchestration:tick` | `firefly/orchestration` | Resumes due workflows (signals, timers) and runs the recovery sweep; `--no-recovery` only resumes. The same work runs as a `#[Scheduled]` task under the `DistributedLock` port. |
+| `firefly:eventsourcing:projections` | `firefly/eventsourcing` | Lists every projection: its mode (`catch-up` or `inline`), its checkpoint, the global head, its lag and its last error. See [Event Sourcing](modules/eventsourcing.md#operating-projections). |
+| `firefly:eventsourcing:projections:run` | `firefly/eventsourcing` | Catches one projection (`{projection}`) or every catch-up projection up with the global event stream and exits; `--live` keeps following it until SIGINT/SIGTERM or `--max-runtime=` seconds. Exit 1 when a projection failed. Each batch runs under the projection's `DistributedLock` lease. |
+| `firefly:eventsourcing:projections:rebuild` | `firefly/eventsourcing` | Resets a projection and its checkpoint under its lease and replays the whole stream into it; also rebuilds the inline `orchestration.executions` read model. |
 | `firefly:flags` | `firefly/feature-flags` | Runs the `flags` management operations in-process: `list`, `show {key}`, `evaluate {key}` (`--context=<json>`, `--targeting-key=`), and the writes `enable`, `disable`, `default-variant {key} {variant}`, `put {key} --file=<definition.json>`, `delete {key}` (each with `--expected-version=`). `--json` prints the management JSON, including `{error,message}` on a refusal. Writes need `firefly.feature-flags.management.writes` and a flag store; the actor is the principal, else `cli:<os-user>`. An accepted write with pending local refresh exits successfully and asks the operator to check visibility again. |
 | `firefly:webhooks:prune` | `firefly/webhooks` | Deletes expired idempotency receipts from the database receipt store. Errors out when `firefly.webhooks.enabled` is false. See [Webhooks](modules/webhooks.md#idempotency). |
 | `firefly:callbacks:list` | `firefly/callbacks` | Lists callback subscriptions, or with `--executions` the most recent deliveries (`--status=pending\|delivered\|failed`, `--subscription=`, `--limit=20`). See [Callbacks](modules/callbacks.md#the-execution-log-and-the-commands). |

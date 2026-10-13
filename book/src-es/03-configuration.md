@@ -231,7 +231,7 @@ foreach ($this->classesIn($prefix, $dir) as $class) {
 }
 ```
 
-`ConfigManifestCompiler` escribe esa lista en `bootstrap/cache/firefly/config-properties.php` con la misma técnica basada en `var_export()`, sin reflexión, que usó el manifiesto de componentes. `php artisan firefly:cache` ejecuta este escaneo como uno de los trece pares escáner/compilador que orquesta — nunca invocas `ConfigPropertiesScanner` tú mismo.
+`ConfigManifestCompiler` escribe esa lista en `bootstrap/cache/firefly/config-properties.php` con la misma técnica basada en `var_export()`, sin reflexión, que usó el manifiesto de componentes. `php artisan firefly:cache` ejecuta este escaneo como uno de los catorce pares escáner/compilador que orquesta — nunca invocas `ConfigPropertiesScanner` tú mismo.
 
 En el arranque, `Firefly\Cli\Boot\FireflyCacheServiceProvider` carga ese manifiesto compilado y se lo entrega directamente a `Firefly\Config\Registrar\ConfigRegistrar::register()`, que vincula el DTO de cada descriptor como singleton del contenedor en un solo paso:
 

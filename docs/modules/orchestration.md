@@ -336,9 +336,11 @@ file, one CI integration lane each.
 | `memory` (default) | Tests and single-request flows. Nothing survives the process. |
 | `cache` | Any Laravel cache store (`persistence.cache-store`), keys under `persistence.key-prefix`. |
 | `database` | The `firefly_orchestration_*` tables on `persistence.connection`. Proven on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite by the CI integration lanes (see the [database support matrix](../database-support.md)). |
+| `event-sourced` | Supplied by `firefly/eventsourcing`: every execution is an event-sourced aggregate in the `firefly.eventsourcing.store.*` event store, snapshotted every `firefly.eventsourcing.snapshot.threshold` events, with the tables above as its read model on the event store's connection (`persistence.connection` is not read). See [Event Sourcing](eventsourcing.md#event-sourced-orchestration-persistence). |
 
 Publish the migration with `php artisan vendor:publish --tag=firefly-orchestration-migrations`; the package also
-loads it while `persistence.provider` or `dlq.store` is `database`.
+loads it while `persistence.provider` or `dlq.store` is `database`. Under `event-sourced`, the read-model migration
+is `--tag=firefly-eventsourcing-orchestration-migrations`.
 
 Writers serialize per execution through the `firefly/scheduling` `DistributedLock` (`firefly.orchestration.lock.*`).
 With `firefly.orchestration.recovery.enabled`, a scheduled sweep finds executions not updated for
