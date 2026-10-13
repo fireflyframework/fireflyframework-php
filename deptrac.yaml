@@ -42,6 +42,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/scheduling-postgres/src/.*
+    - name: SchedulingDatabase
+      collectors:
+        - type: directory
+          value: packages/scheduling-database/src/.*
     - name: Domain
       collectors:
         - type: directory
@@ -62,6 +66,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/eda-postgres/src/.*
+    - name: EdaDatabase
+      collectors:
+        - type: directory
+          value: packages/eda-database/src/.*
     - name: EdaKafka
       collectors:
         - type: directory
@@ -212,6 +220,19 @@ deptrac:
       - AutoConfigure
       - Scheduling
 
+    # SchedulingDatabase holds the database-backed adapters for Scheduling's DistributedLock port: a portable lease
+    # table (DatabaseLeaseLock) and MySQL/MariaDB named locks (MySqlNamedLock). Its own package for the same reason as
+    # SchedulingPostgres — the lock providers are opt-in backends, not part of the core scheduler. It reads Config,
+    # carries Container/Context attributes, extends AutoConfigure's base, reuses Kernel's ConfigurationException and
+    # implements Scheduling's DistributedLock. It is depended on by NONE.
+    SchedulingDatabase:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Scheduling
+
     # Domain is the pure DDD base: Entity / ValueObject / AggregateRoot / DomainEvent. It carries no framework
     # dependency (Kernel is permitted but deliberately unused). NOTHING may depend on Domain except Data.
     Domain:
@@ -263,7 +284,27 @@ deptrac:
     # mirror the after-commit domain->envelope mapping (=> Cqrs), mapping Domain's DomainEvent (=> Domain); it supplies
     # an Actuator HealthIndicator (=> Actuator). It reads Config indirectly via #[ConditionalOnProperty], carries
     # Container/Context attributes, and extends AutoConfigure's base. It is depended on by NONE.
+    # From W1 on it is the database outbox (=> EdaDatabase) plus pg_notify on write and a LISTEN wake-up.
     EdaPostgres:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Domain
+      - Data
+      - Eda
+      - Cqrs
+      - Actuator
+      - EdaDatabase
+
+    # EdaDatabase is the PORTABLE same-transaction outbox for Eda's EventPublisher/EventConsumer ports, on any
+    # Laravel database connection. Its OutboxPreCommitHook implements Data's PreCommitEventHook (=> Data) and maps
+    # Domain's DomainEvent through Cqrs's EdaCommandEventPublisher (=> Domain, Cqrs); its claim strategies are chosen
+    # by Data's DatabaseCapabilities probe (=> Data); it supplies an Actuator HealthIndicator (=> Actuator). It reads
+    # Config, carries Container/Context attributes and extends AutoConfigure's base. Only EdaPostgres depends on it —
+    # the Postgres package is this outbox plus pg_notify/LISTEN.
+    EdaDatabase:
       - Kernel
       - Container
       - Config

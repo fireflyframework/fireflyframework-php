@@ -8,8 +8,9 @@ and `FireflyDatabaseTestCase`/`UsesSqliteMemory` for database-backed tests; web/
 doubles for every one of Firefly's own ports (`RecordingEventPublisher`, `RecordingCommandBus`,
 `RecordingMessageBroker`, `RecordingTracer`, `FakeHealthIndicator`, and more); Firefly-flavored Pest
 expectations (`toHavePublished`/`toHaveHandledCommand`/`toBeUp`/`toHaveRecordedMetric`/
-`toBeProblemDetails`); a fixture layer (`FixtureRegistry`/`AggregateSeeder`/`ListenerSpy`); and a
-`RequiresDocker` testcontainers hook for `@group('integration')` tests. `require-dev` only, no runtime
+`toBeProblemDetails`); a fixture layer (`FixtureRegistry`/`AggregateSeeder`/`ListenerSpy`); a
+`RequiresDocker` testcontainers hook; and `IntegrationDsn`, the one parser every `@group('integration')` test
+reads its `FIREFLY_*` backend from. `require-dev` only, no runtime
 service provider.
 
 See [Testing](../../docs/modules/testing.md) for the full reference.

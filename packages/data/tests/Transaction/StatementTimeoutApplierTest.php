@@ -9,6 +9,7 @@ use Illuminate\Database\MariaDbConnection;
 use Illuminate\Database\MySqlConnection;
 use Illuminate\Database\PostgresConnection;
 use Illuminate\Database\SQLiteConnection;
+use Illuminate\Database\SqlServerConnection;
 
 /**
  * A driver-grammar connection over an in-memory sqlite PDO: under pretend() nothing executes, so the exact
@@ -167,4 +168,73 @@ it('does nothing, safely, for a driver it does not know', function () {
 
     expect($phases['applied'])->toBe([])
         ->and($phases['restored'])->toBe([]);
+});
+
+it('sets SQL Server\'s session LOCK_TIMEOUT in milliseconds, restoring nothing it did not read', function () {
+    $phases = applyAndRestore(pretendConnection(SqlServerConnection::class, 'sqlsrv'), 5);
+
+    expect($phases['applied'])->toBe(['select @@lock_timeout as value', 'set lock_timeout 5000'])
+        ->and($phases['restored'])->toBe([]);
+});
+
+it('puts SQL Server\'s previous LOCK_TIMEOUT back — -1, wait forever, is the server default', function () {
+    $connection = new class(new PDO('sqlite::memory:'), 'pretend', '', ['driver' => 'sqlsrv', 'name' => 'pretend']) extends SqlServerConnection
+    {
+        /**
+         * @param  string  $query
+         * @param  array<int|string, mixed>  $bindings
+         * @param  bool  $useReadPdo
+         */
+        public function selectOne($query, $bindings = [], $useReadPdo = true)
+        {
+            parent::selectOne($query, $bindings, $useReadPdo);
+
+            return str_contains($query, '@@lock_timeout') ? (object) ['value' => -1] : null;
+        }
+    };
+
+    $phases = applyAndRestore($connection, 2);
+
+    expect($phases['applied'])->toBe(['select @@lock_timeout as value', 'set lock_timeout 2000'])
+        ->and($phases['restored'])->toBe(['set lock_timeout -1']);
+});
+
+it('sets SQL Server\'s LOCK_TIMEOUT as a direct batch, because a prepared SET does not outlive sp_prepexec', function () {
+    $connection = new class(new PDO('sqlite::memory:'), 'pretend', '', ['driver' => 'sqlsrv', 'name' => 'pretend']) extends SqlServerConnection
+    {
+        /** @var list<string> */
+        public array $direct = [];
+
+        /**
+         * @param  string  $query
+         * @param  array<int|string, mixed>  $bindings
+         * @param  bool  $useReadPdo
+         */
+        public function selectOne($query, $bindings = [], $useReadPdo = true)
+        {
+            return (object) ['value' => -1];
+        }
+
+        /**
+         * @param  string  $query
+         * @param  array<int|string, mixed>  $bindings
+         */
+        public function statement($query, $bindings = []): bool
+        {
+            throw new LogicException("prepared statement used for [{$query}]");
+        }
+
+        /** @param  string  $query */
+        public function unprepared($query): bool
+        {
+            $this->direct[] = $query;
+
+            return true;
+        }
+    };
+
+    $restore = (new StatementTimeoutApplier)->apply($connection, 3);
+    $restore();
+
+    expect($connection->direct)->toBe(['set lock_timeout 3000', 'set lock_timeout -1']);
 });

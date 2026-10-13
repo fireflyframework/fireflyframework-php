@@ -51,6 +51,7 @@ return [
                 'order' => 0,
                 'lazy' => false,
                 'dependencies' => [
+                    0 => 'Illuminate\\Container\\Container',
                 ],
             ],
             3 => [

@@ -13,6 +13,7 @@ use Firefly\Eda\Kafka\KafkaEventPublisher;
 use Firefly\Eda\Kafka\KafkaProducerFactory;
 use Firefly\Eda\Kafka\RdKafkaConsumerClient;
 use Firefly\Eda\Kafka\Tests\Support\KafkaIntegrationTestCase;
+use Firefly\Testing\Integration\IntegrationDsn;
 
 uses(KafkaIntegrationTestCase::class);
 
@@ -33,7 +34,7 @@ uses(KafkaIntegrationTestCase::class);
  * real broker can prove, because producev() is the one call in this package that no unit test can reach.
  */
 it('round-trips publish -> consume -> handler -> commit against a real Kafka, and commit() prevents redelivery', function () {
-    $brokers = (string) getenv('FIREFLY_KAFKA_BROKERS');
+    $brokers = (string) IntegrationDsn::value(IntegrationDsn::KAFKA);
     $topic = 'firefly.eda.test.'.bin2hex(random_bytes(4));
     $groupId = 'firefly-test-'.bin2hex(random_bytes(4));
 
@@ -72,12 +73,12 @@ it('round-trips publish -> consume -> handler -> commit against a real Kafka, an
 
     expect($again)->toBeNull();
 })->skip(
-    ! extension_loaded('rdkafka') || getenv('FIREFLY_KAFKA_BROKERS') === false,
+    ! extension_loaded('rdkafka') || IntegrationDsn::missing(IntegrationDsn::KAFKA),
     'requires ext-rdkafka + FIREFLY_KAFKA_BROKERS',
 )->group('integration');
 
 it('routes an exhausted retry (nack requeue:false) to the "<topic>.DLT" dead-letter topic', function () {
-    $brokers = (string) getenv('FIREFLY_KAFKA_BROKERS');
+    $brokers = (string) IntegrationDsn::value(IntegrationDsn::KAFKA);
     $topic = 'firefly.eda.test.'.bin2hex(random_bytes(4));
     $dltTopic = $topic.'.DLT';
 
@@ -136,6 +137,6 @@ it('routes an exhausted retry (nack requeue:false) to the "<topic>.DLT" dead-let
         ->and($headers['x-dlt-source-topic'] ?? null)->toBe($topic)
         ->and($headers['x-dlt-source-offset'] ?? null)->toMatch('/^\d+$/');
 })->skip(
-    ! extension_loaded('rdkafka') || getenv('FIREFLY_KAFKA_BROKERS') === false,
+    ! extension_loaded('rdkafka') || IntegrationDsn::missing(IntegrationDsn::KAFKA),
     'requires ext-rdkafka + FIREFLY_KAFKA_BROKERS',
 )->group('integration');

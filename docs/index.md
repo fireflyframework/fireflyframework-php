@@ -8,7 +8,7 @@ CQRS, event-driven architecture, first-party security including both halves of O
 directly onto Laravel's own runtime. Nothing is forked or wrapped: a LaraFly app is, in every respect a
 Laravel developer would recognize, still a Laravel app — it just boots like a Spring Boot one.
 
-The whole framework ships as one Composer library, `fireflyframework/larafly`, containing all 31 components,
+The whole framework ships as one Composer library, `fireflyframework/larafly`, containing all 33 components,
 wired together by a single zero-reflection boot pipeline: a component scan compiles to a cached manifest once, and every
 request after that runs against plain PHP arrays — no runtime reflection on the hot path.
 
@@ -72,8 +72,8 @@ See [Installation](installation.md) for requirements and manual setup, and
   proxy per bean runs the whole advice chain, security *before* transaction (`Advice` order 100 against
   1000), so a refusal is thrown before a transaction is ever opened. A `CommandBus`/`QueryBus` mediator
   dispatches commands and queries, with domain events bridged onto the event-transport bus after commit.
-- **Event-driven, with real brokers** — an in-memory default plus RabbitMQ, Postgres LISTEN/NOTIFY, and Kafka
-  adapters behind one `EventPublisher` port.
+- **Event-driven, with real brokers** — an in-memory default plus a same-transaction outbox on every SQL database
+  (with LISTEN/NOTIFY on PostgreSQL), RabbitMQ and Kafka adapters behind one `EventPublisher` port.
 - **Secure by default** — a session-persisted `SecurityContext`, form login on the framework's own page, HTTP
   Basic, remember-me, logout, deny-by-default [`HttpSecurity`](modules/security.md) URL rules, and method
   security (`#[PreAuthorize]`, `#[PostAuthorize]`, `#[PreFilter]`, `#[PostFilter]`) enforced on **any**
@@ -103,7 +103,7 @@ See [Installation](installation.md) for requirements and manual setup, and
 
 ## The modules
 
-Every capability above ships in the root library; configuration selects optional features. The [module index](modules.md) lays all 34
+Every capability above ships in the root library; configuration selects optional features. The [module index](modules.md) lays all 36
 guides out by concern, with a line on each saying what it is for, and the same grouping is the site's
 **Modules** tab.
 
@@ -111,9 +111,9 @@ guides out by concern, with a line on each saying what it is for, and the same g
 |---|---|
 | **Foundation** | [Error Handling](modules/error-handling.md) · [Dependency Injection](modules/dependency-injection.md) · [Configuration](modules/configuration.md) · [Application Context](modules/context.md) · [Auto-Configuration](modules/starters.md) · [Validation](modules/validation.md) |
 | **Web & API** | [Web Layer](modules/web.md) · [Web Filters](modules/web-filters.md) · [OpenAPI](modules/openapi.md) |
-| **Resilience & Scheduling** | [Resilience](modules/resilience.md) · [Scheduling](modules/scheduling.md) |
+| **Resilience & Scheduling** | [Resilience](modules/resilience.md) · [Scheduling](modules/scheduling.md) · [Scheduling Database Locks](modules/scheduling-database.md) |
 | **Data & Domain** | [Domain (DDD)](modules/domain.md) · [Data & Repositories](modules/data.md) · [Relational Data](modules/data-relational.md) · [Transactions](modules/transactional.md) |
-| **Eventing & Messaging** | [EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [Messaging](modules/messaging.md) · [Orchestration](modules/orchestration.md) |
+| **Eventing & Messaging** | [EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [EDA Database Outbox](modules/eda-database.md) · [Messaging](modules/messaging.md) · [Orchestration](modules/orchestration.md) |
 | **CQRS** | [Command/Query](modules/cqrs.md) |
 | **Security** | [Security](modules/security.md) · [OAuth2 Client](modules/security-oauth2-client.md) · [OAuth2 Authorization Server](modules/security-oauth2-server.md) |
 | **Operations** | [Actuator](modules/actuator.md) · [Observability](modules/observability.md) · [Tracing](modules/tracing.md) · [Logging](modules/logging.md) · [Admin Dashboard](modules/admin.md) · [Bean Graph](modules/bean-graph.md) · [Data Browser](modules/data-browser.md) · [Feature Flags](modules/feature-flags.md) |

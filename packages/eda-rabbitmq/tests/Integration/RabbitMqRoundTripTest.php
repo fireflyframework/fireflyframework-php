@@ -12,33 +12,16 @@ use Firefly\Eda\Rabbitmq\RabbitMqConnectionFactory;
 use Firefly\Eda\Rabbitmq\RabbitMqEventConsumer;
 use Firefly\Eda\Rabbitmq\RabbitMqEventPublisher;
 use Firefly\Eda\Rabbitmq\Tests\Support\RabbitMqIntegrationTestCase;
+use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Config\Repository;
 use PhpAmqpLib\Message\AMQPMessage;
 
 uses(RabbitMqIntegrationTestCase::class);
 
-/** @return Config a Config over firefly.eda.rabbitmq.* parsed from FIREFLY_RABBITMQ_DSN */
+/** @return Config a Config over firefly.eda.rabbitmq.* from FIREFLY_RABBITMQ_DSN (key=value or amqp:// URL form) */
 function rabbitTestConfig(): Config
 {
-    $parts = [];
-    foreach (explode(';', (string) getenv('FIREFLY_RABBITMQ_DSN')) as $kv) {
-        [$key, $value] = array_pad(explode('=', $kv, 2), 2, '');
-        $parts[$key] = $value;
-    }
-
-    return new Config(new Repository([
-        'firefly' => [
-            'eda' => [
-                'rabbitmq' => [
-                    'host' => $parts['host'] ?? '127.0.0.1',
-                    'port' => (int) ($parts['port'] ?? 5672),
-                    'user' => $parts['user'] ?? 'guest',
-                    'password' => $parts['password'] ?? 'guest',
-                    'vhost' => '/',
-                ],
-            ],
-        ],
-    ]));
+    return new Config(new Repository(['firefly' => ['eda' => ['rabbitmq' => IntegrationDsn::rabbitmq()]]]));
 }
 
 it('round-trips publish -> consume -> handler -> ack against a real RabbitMQ', function () {
@@ -71,7 +54,7 @@ it('round-trips publish -> consume -> handler -> ack against a real RabbitMQ', f
     );
 
     expect($processed)->toBe(1)->and($received)->toBe([42]);
-})->skip(getenv('FIREFLY_RABBITMQ_DSN') === false, 'Set FIREFLY_RABBITMQ_DSN to run the @group integration RabbitMQ round-trip.')->group('integration');
+})->skip(IntegrationDsn::missing(IntegrationDsn::RABBITMQ), 'Set FIREFLY_RABBITMQ_DSN to run the @group integration RabbitMQ round-trip.')->group('integration');
 
 it('routes an exhausted retry to the DLX queue', function () {
     $config = rabbitTestConfig();
@@ -141,4 +124,4 @@ it('routes an exhausted retry to the DLX queue', function () {
     }
 
     expect($decoded['payload']['id'] ?? null)->toBe(99);
-})->skip(getenv('FIREFLY_RABBITMQ_DSN') === false, 'Set FIREFLY_RABBITMQ_DSN to run the @group integration RabbitMQ round-trip.')->group('integration');
+})->skip(IntegrationDsn::missing(IntegrationDsn::RABBITMQ), 'Set FIREFLY_RABBITMQ_DSN to run the @group integration RabbitMQ round-trip.')->group('integration');

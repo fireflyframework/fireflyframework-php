@@ -31,8 +31,9 @@ off `NewCommand::configure()`:
 
 Every component's code is included in `fireflyframework/larafly`. `--with` records an explicit component
 requirement in the generated manifest; it does not fetch a separate framework package. Configuration
-selects the active transport. `eda-postgres` needs `ext-pdo_pgsql`, `eda-kafka` needs `ext-rdkafka`,
-`eda-rabbitmq` uses the included AMQP client, and `scheduling-postgres` needs a PostgreSQL connection.
+selects the active transport. `eda-database` and `scheduling-database` work on any database connection,
+`eda-postgres` needs `ext-pdo_pgsql`, `eda-kafka` needs `ext-rdkafka`, `eda-rabbitmq` uses the included AMQP
+client, and `scheduling-postgres` needs a PostgreSQL connection.
 `--with=testing` adds `orchestra/testbench` and `illuminate/testing` to **`require-dev`**, alongside the
 compatible `firefly/testing` requirement. See [Installer](modules/installer.md).
 

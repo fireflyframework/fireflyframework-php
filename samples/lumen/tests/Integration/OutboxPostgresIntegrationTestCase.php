@@ -7,6 +7,7 @@ namespace Lumen\Tests\Integration;
 use Firefly\Eda\EdaConsumerServiceProvider;
 use Firefly\Eda\Postgres\EdaPostgresServiceProvider;
 use Firefly\Eda\Postgres\Outbox\OutboxSchema;
+use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
@@ -30,13 +31,12 @@ abstract class OutboxPostgresIntegrationTestCase extends LumenTestCase
     /** True only when a real Postgres target is reachable (the pdo_pgsql extension is loaded and FIREFLY_PG_DSN is set). */
     public static function postgresAvailable(): bool
     {
-        return extension_loaded('pdo_pgsql') && getenv('FIREFLY_PG_DSN') !== false;
+        return IntegrationDsn::skipReason('pgsql') === null;
     }
 
     /**
-     * The postgres outbox plus the provider that registers firefly:eda:consume. A real app gets the consume command
-     * through package auto-discovery; Testbench ignores discovery, so the round-trip names it like
-     * EdaConsumeCommandTestCase does.
+     * EdaConsumerServiceProvider is what registers `firefly:eda:consume` — the parent's list leaves it out because no
+     * unit test runs a consumer, and that is exactly how this test came to call a command that did not exist.
      *
      * @return list<class-string<ServiceProvider>>
      */
@@ -94,27 +94,14 @@ abstract class OutboxPostgresIntegrationTestCase extends LumenTestCase
     }
 
     /**
-     * A Laravel pgsql connection config parsed from FIREFLY_PG_DSN (host=…;port=…;dbname=…;user=…;password=…) —
-     * mirrors packages/eda-postgres/tests/Integration/PostgresOutboxRoundTripTest::outbox_pg_config().
+     * A Laravel pgsql connection config from FIREFLY_PG_DSN (host=…;port=…;dbname=…;user=…;password=…) — parsed by
+     * firefly/testing's IntegrationDsn.
      *
      * @return array<string, mixed>
      */
     private static function postgresConfig(): array
     {
-        $parts = [];
-        foreach (explode(';', (string) getenv('FIREFLY_PG_DSN')) as $kv) {
-            [$key, $value] = array_pad(explode('=', $kv, 2), 2, '');
-            $parts[$key] = $value;
-        }
-
-        return [
-            'driver' => 'pgsql',
-            'host' => $parts['host'] ?? '127.0.0.1',
-            'port' => $parts['port'] ?? '5432',
-            'database' => $parts['dbname'] ?? 'postgres',
-            'username' => $parts['user'] ?? 'postgres',
-            'password' => $parts['password'] ?? '',
-        ];
+        return IntegrationDsn::connectionConfig('pgsql');
     }
 
     protected function tearDown(): void

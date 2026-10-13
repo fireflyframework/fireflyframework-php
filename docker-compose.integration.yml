@@ -1,0 +1,103 @@
+# Local backends for `composer test:integration` — the same images the CI `integration` and `brokers` jobs run.
+#
+#   docker compose -f docker-compose.integration.yml up -d                       # everything but SQL Server
+#   docker compose -f docker-compose.integration.yml --profile sqlsrv up -d      # + SQL Server (x86-64 image; emulated on arm64)
+#   export FIREFLY_PG_DSN='host=127.0.0.1;port=5432;dbname=firefly;user=firefly;password=firefly'
+#   export FIREFLY_MYSQL_DSN='host=127.0.0.1;port=3306;dbname=firefly;user=firefly;password=firefly'
+#   export FIREFLY_MARIADB_DSN='host=127.0.0.1;port=3307;dbname=firefly;user=firefly;password=firefly'
+#   export FIREFLY_SQLSRV_DSN='host=127.0.0.1;port=1433;dbname=master;user=sa;password=Firefly-Integration-1;encrypt=yes;trust_server_certificate=true'
+#   export FIREFLY_RABBITMQ_DSN='host=127.0.0.1;port=5672;user=guest;password=guest'
+#   export FIREFLY_KAFKA_BROKERS='127.0.0.1:9092'
+#   export FIREFLY_REDIS_URL='redis://127.0.0.1:6379/0'
+#   composer test:integration
+#
+# Every host port can be moved with the FIREFLY_IT_*_PORT variables when the defaults are taken; the Kafka advertised
+# listener follows FIREFLY_IT_KAFKA_PORT. A missing variable skips its tests, it never fails them.
+services:
+  pgsql:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: firefly
+      POSTGRES_USER: firefly
+      POSTGRES_PASSWORD: firefly
+    ports: ["${FIREFLY_IT_PG_PORT:-5432}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U firefly -d firefly"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: firefly
+      MYSQL_USER: firefly
+      MYSQL_PASSWORD: firefly
+      MYSQL_ROOT_PASSWORD: firefly-root
+    ports: ["${FIREFLY_IT_MYSQL_PORT:-3306}:3306"]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -ufirefly -pfirefly"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  mariadb:
+    image: mariadb:11
+    environment:
+      MARIADB_DATABASE: firefly
+      MARIADB_USER: firefly
+      MARIADB_PASSWORD: firefly
+      MARIADB_ROOT_PASSWORD: firefly-root
+    ports: ["${FIREFLY_IT_MARIADB_PORT:-3307}:3306"]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  sqlsrv:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    profiles: ["sqlsrv"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: Firefly-Integration-1
+    ports: ["${FIREFLY_IT_SQLSRV_PORT:-1433}:1433"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Firefly-Integration-1 -Q 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+  rabbitmq:
+    image: rabbitmq:3.13-alpine
+    ports: ["${FIREFLY_IT_RABBITMQ_PORT:-5672}:5672"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+  kafka:
+    image: apache/kafka:3.8.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:${FIREFLY_IT_KAFKA_PORT:-9092}
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    ports: ["${FIREFLY_IT_KAFKA_PORT:-9092}:9092"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server 127.0.0.1:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    ports: ["${FIREFLY_IT_REDIS_PORT:-6379}:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20

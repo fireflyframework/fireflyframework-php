@@ -31,7 +31,8 @@ A capability records a requirement in the generated `composer.json`, satisfied b
 `replace` metadata. All component code is included; configuration selects optional features.
 `--with=testing` also adds the external test harness to the application's development dependencies.
 
-Adapters (`eda-kafka`, `eda-rabbitmq`, `eda-postgres`, `scheduling-postgres`) pull their port in with them
+Adapters (`eda-kafka`, `eda-rabbitmq`, `eda-database`, `eda-postgres`, `scheduling-database`,
+`scheduling-postgres`) pull their port in with them
 and are deliberately **excluded from `--full`**: which broker or engine an application talks to is not
 something an archetype can guess. Their code is already bundled, but configuring PostgreSQL or Kafka still
 requires the corresponding PHP extension. `security-oauth2-client` pulls `security` in the same way — a login with no

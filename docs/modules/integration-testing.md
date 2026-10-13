@@ -34,6 +34,35 @@ it('reads from a real Postgres container', function () {
 });
 ```
 
+## Connecting to a real backend: `IntegrationDsn`
+
+Every integration test reads its backend from the environment through one helper,
+`Firefly\Testing\Integration\IntegrationDsn`, which accepts both `host=…;port=…;dbname=…;user=…;password=…` and
+URL-form DSNs (`pgsql://user:pass@host:5432/db`, `amqp://guest:guest@host:5672/%2f`), refuses anything else, and
+treats a blank variable as unset — so a missing backend skips its tests and never fails them:
+
+| Variable | Backend | Lane |
+|---|---|---|
+| `FIREFLY_PG_DSN` | PostgreSQL | `pgsql` |
+| `FIREFLY_MYSQL_DSN` | MySQL | `mysql` |
+| `FIREFLY_MARIADB_DSN` | MariaDB | `mariadb` |
+| `FIREFLY_SQLSRV_DSN` | SQL Server (`encrypt` defaults to `yes`; `trust_server_certificate` defaults to `false`, so a self-signed local or CI server must set `trust_server_certificate=true` in its DSN) | `sqlsrv` |
+| `FIREFLY_RABBITMQ_DSN`, `FIREFLY_KAFKA_BROKERS`, `FIREFLY_REDIS_URL` | the brokers | `brokers` |
+
+`IntegrationDsn::connectionConfig($lane)` returns a Laravel connection config, `IntegrationDsn::connect($lane)` a
+standalone connection (what a second test process uses), `IntegrationDsn::skipReason($lane)` the reason a lane
+cannot run here (or `null`). The `sqlite` lane needs no variable: it runs on a temporary file in WAL mode, so two
+processes can race over it.
+
+## CI lanes
+
+`composer test:integration` runs the `integration` group. CI runs it in an `integration` job per database server
+(PostgreSQL 16, MySQL 8.4, MariaDB 11, SQL Server 2022), each exporting only its own DSN, and in a `brokers` job
+(RabbitMQ, Kafka with `ext-rdkafka`, Redis). Each job also sets `FIREFLY_INTEGRATION_LANE`, and
+`tests/Integration/IntegrationLaneTest.php` then FAILS if that lane's variables are missing or its servers do not
+answer — a lane cannot go green by skipping everything. `docker-compose.integration.yml` at the repository root
+starts the same services locally (SQL Server behind the `sqlsrv` profile).
+
 ## `RequiresDocker` + `skipUnlessDocker()`
 
 `Firefly\Testing\Integration\RequiresDocker` is a trait (`@mixin PHPUnit\Framework\TestCase`) that marks a test
@@ -180,5 +209,7 @@ available:
 vendor/bin/pest --group=integration
 ```
 
-Docker-less environments that invoke `vendor/bin/pest --group=integration` still get a clean run: every test
-using `RequiresDocker::skipUnlessDocker()` reports **skipped**, not failed.
+`composer test:integration` is the same run with the memory limit collection needs. Docker-less environments
+that invoke `vendor/bin/pest --group=integration` still get a clean run: every test using
+`RequiresDocker::skipUnlessDocker()` — and every test whose `FIREFLY_*` variable is unset — reports
+**skipped**, not failed.

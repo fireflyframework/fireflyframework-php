@@ -1,0 +1,60 @@
+{
+    "name": "firefly/scheduling-database",
+    "description": "LaraFly scheduling database adapters: DatabaseLeaseLock, a DistributedLock over a portable firefly_scheduling_locks lease table on any Laravel database connection (firefly.scheduling.lock.provider=database), and MySqlNamedLock over GET_LOCK/RELEASE_LOCK for MySQL and MariaDB (firefly.scheduling.lock.provider=mysql).",
+    "type": "library",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/fireflyframework/fireflyframework-php",
+    "authors": [
+        {
+            "name": "Firefly Software Solutions Inc.",
+            "homepage": "https://github.com/fireflyframework"
+        }
+    ],
+    "keywords": [
+        "firefly",
+        "laravel",
+        "scheduling",
+        "database"
+    ],
+    "support": {
+        "issues": "https://github.com/fireflyframework/fireflyframework-php/issues",
+        "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/scheduling-database"
+    },
+    "require": {
+        "php": "^8.3",
+        "firefly/autoconfigure": "*@dev",
+        "firefly/config": "*@dev",
+        "firefly/container": "*@dev",
+        "firefly/context": "*@dev",
+        "firefly/kernel": "*@dev",
+        "firefly/scheduling": "*@dev",
+        "illuminate/contracts": "^13.0",
+        "illuminate/database": "^13.0",
+        "illuminate/support": "^13.0"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Firefly\\Scheduling\\Database\\SchedulingDatabaseServiceProvider",
+                "Firefly\\Scheduling\\Database\\SchedulingDatabaseBootServiceProvider"
+            ]
+        },
+        "branch-alias": {
+            "dev-main": "26.x-dev"
+        }
+    },
+    "autoload": {
+        "psr-4": {
+            "Firefly\\Scheduling\\Database\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Firefly\\Scheduling\\Database\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "stable",
+    "config": {
+        "sort-packages": true
+    }
+}

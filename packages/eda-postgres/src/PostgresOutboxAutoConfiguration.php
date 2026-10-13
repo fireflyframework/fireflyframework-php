@@ -18,6 +18,8 @@ use Firefly\Data\Domain\AggregateTracker;
 use Firefly\Data\Domain\DomainEventDispatcher;
 use Firefly\Eda\Bus\SubscriberRegistry;
 use Firefly\Eda\Consumer\EventConsumer;
+use Firefly\Eda\Database\DatabaseOutboxSettings;
+use Firefly\Eda\Database\Outbox\Claim\OutboxClaimStrategies;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Postgres\Outbox\OutboxPreCommitHook;
 use Firefly\Eda\Tracing\BrokerTracing;
@@ -26,8 +28,15 @@ use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionResolverInterface;
 
 /**
- * Wires the GENUINE same-transaction Postgres outbox when firefly.eda.provider=postgres. #[Order(900)] (below
- * DataAutoConfiguration's / CqrsAutoConfiguration's 1000) makes this register FIRST, so:
+ * Wires the GENUINE same-transaction Postgres outbox when firefly.eda.provider=postgres.
+ *
+ * FROM W1 ON this is firefly/eda-database's outbox — the same leased claim, the same settings object
+ * (DatabaseOutboxSettings: the firefly.eda.database.* keys, with the firefly.eda.postgres.* keys as aliases) — plus
+ * the two Postgres optimizations: PostgresEventPublisher's in-transaction pg_notify and PostgresEventConsumer's LISTEN
+ * wake-up. DatabaseOutboxAutoConfiguration wires the same building blocks for provider=database; the two never both
+ * apply.
+ *
+ * #[Order(900)] (below DataAutoConfiguration's / CqrsAutoConfiguration's 1000) makes this register FIRST, so:
  *   - eventPublisher() binds EventPublisher -> PostgresEventPublisher (the outbox writer),
  *   - outboxPreCommitHook() binds the in-tx hook (T3's PreCommitEventHook),
  *   - domainEventDispatcher() binds OUR DomainEventDispatcher carrying that hook, winning
@@ -63,15 +72,15 @@ final class PostgresOutboxAutoConfiguration
     #[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'postgres')]
     public function eventPublisher(Config $config, ConnectionResolverInterface $connections, SubscriberRegistry $registry, ?EdaTracing $tracing = null): EventPublisher
     {
-        $name = $config->has('firefly.eda.postgres.connection') ? $config->string('firefly.eda.postgres.connection') : null;
-        $conn = $connections->connection($name);
+        $settings = DatabaseOutboxSettings::from($config);
+        $conn = $connections->connection($settings->connection);
         // Narrow to the concrete Connection ONLY to read the driver (getDriverName() is not on ConnectionInterface — B2).
         $emitNotify = $conn instanceof Connection && $conn->getDriverName() === 'pgsql';
 
         return new PostgresEventPublisher(
             $conn,
             $registry,
-            $config->string('firefly.eda.postgres.channel', 'firefly_eda_events'),
+            $settings->channel,
             $emitNotify,
             BrokerTracing::resolve($config, $tracing),
         );
@@ -96,7 +105,7 @@ final class PostgresOutboxAutoConfiguration
         return new OutboxPreCommitHook(
             $connections,
             $registry,
-            $config->string('firefly.eda.postgres.channel', 'firefly_eda_events'),
+            DatabaseOutboxSettings::from($config)->channel,
             $config->string('firefly.cqrs.default_destination', 'cqrs.events'),
             $manifest->destinations(),
             $correlation,
@@ -122,23 +131,25 @@ final class PostgresOutboxAutoConfiguration
 
     /**
      * The TERMINAL in-process consumer firefly:eda:consume drives in postgres mode: it claims committed PENDING
-     * outbox rows (LISTEN/NOTIFY wake + FOR UPDATE SKIP LOCKED), delivers each to the #[EventListener] handlers via
+     * outbox rows (LISTEN/NOTIFY wake + a leased claim chosen by server capability — SKIP LOCKED on pgsql), delivers each to the #[EventListener] handlers via
      * the SubscriberRegistry, and marks them PUBLISHED — with NO EventPublisher call, so there is no re-INSERT (B1).
-     * Narrows the resolved connection to the concrete type because PostgresEventConsumer needs getPdo()/getDriverName()
-     * (not on ConnectionInterface — B2).
+     * DatabaseOutboxSettings::connectionFrom() narrows the resolved connection to the concrete type because
+     * PostgresEventConsumer needs getPdo()/getDriverName() (not on ConnectionInterface — B2), and refuses anything else
+     * with a ConfigurationException instead of an assert that production builds compile away.
      */
     #[Bean]
     #[ConditionalOnProperty(name: 'firefly.eda.provider', havingValue: 'postgres')]
     public function eventConsumer(Config $config, ConnectionResolverInterface $connections): EventConsumer
     {
-        $name = $config->has('firefly.eda.postgres.connection') ? $config->string('firefly.eda.postgres.connection') : null;
-        $conn = $connections->connection($name);
-        assert($conn instanceof Connection); // PostgresEventConsumer needs getPdo()/getDriverName() (B2)
+        $settings = DatabaseOutboxSettings::from($config);
 
         return new PostgresEventConsumer(
-            $conn,
-            $config->string('firefly.eda.postgres.channel', 'firefly_eda_events'),
-            $config->int('firefly.eda.postgres.max_attempts', 3),
+            $settings->connectionFrom($connections),
+            $settings->channel,
+            $settings->maxAttempts,
+            null,
+            OutboxClaimStrategies::configured($settings->claimStrategy),
+            $settings->leaseSeconds,
         );
     }
 }
