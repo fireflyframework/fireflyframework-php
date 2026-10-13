@@ -139,7 +139,9 @@ max_execution_time` (milliseconds, `SELECT`s only) or mariadb `SET SESSION max_s
 statement — mariadb has no `max_execution_time` variable, and a `mysql` connection whose server is mariadb is
 detected through the server version), each with `innodb_lock_wait_timeout`, every previous value read first
 and restored in a `finally` independently of the other, sqlite `PDO::ATTR_TIMEOUT` (the busy timeout — the
-only knob sqlite has) restored to the configured `busy_timeout` — and a wall-clock deadline is taken. When the
+only knob sqlite has) restored to the configured `busy_timeout`, sqlsrv `SET LOCK_TIMEOUT` (milliseconds, a
+lock wait only — error 1222, translated to `CannotAcquireLockException`) with the previous `@@LOCK_TIMEOUT`
+read first and restored — and a wall-clock deadline is taken. When the
 method **returns** past that deadline the transaction is rolled back and `TransactionTimedOutException` (504
 `TRANSACTION_TIMED_OUT`) is thrown; a method whose own exception ended it keeps that exception. A joined
 `REQUIRED` and a `NESTED` savepoint run under the outer budget — Spring semantics.
@@ -386,7 +388,8 @@ $template->execute($work, new TransactionalDescriptor(
   limits both. The driver-level statement timeout is best-effort in the same way: sqlite has only a busy
   timeout (a merely slow statement is not interruptible, and the wall-clock check catches it on return), and
   mysql's `max_execution_time` applies to `SELECT`s only (mariadb's `max_statement_time` interrupts any
-  statement).
+  statement). SQL Server has no server-side knob for a statement that is merely slow: `LOCK_TIMEOUT` bounds
+  only the time a statement waits for a lock.
 - **`#[TransactionalEventListener]` needs the connection's event dispatcher for `BEFORE_COMMIT`** (every
   Laravel-configured connection has one; a hand-built `Connection` without `setEventDispatcher()` gets a
   `ConfigurationException` at the first `BEFORE_COMMIT` registration). `order` sorts transactional
