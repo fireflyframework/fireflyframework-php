@@ -225,6 +225,53 @@ final class Onboarding
 `upsertSearchAttributes()` and `search()` find executions by attribute. A step that returns `ContinueAsNew`
 ends the run and starts a fresh one with new input, linked through the `x-firefly-continued-from` header.
 
+### Compensating a workflow
+
+When a workflow step fails (after its retries), the engine undoes every completed step that has a
+compensation, newest first, dead-letters the failure and ends the execution `FAILED`. A step declares its
+compensation inline, with `compensatable: true, compensationMethod: 'name'` on its `#[WorkflowStep]`, or as a
+separate method marked `#[CompensationStep(compensates: 'step-id')]`, which makes the step compensatable on
+its own. Either way the method receives the step's result as its implicit argument (and may take the usual
+`#[Input]`, `#[Variable]` or `ExecutionContext` parameters); what it returns is recorded under
+`compensationResults`. A step has one compensation: two `#[CompensationStep]` methods for one step, both forms
+on one step, or a `#[CompensationStep]` naming a step the workflow does not declare are refused with a
+`TopologyValidationException` when the definitions are scanned.
+
+<!-- illustrative: a shipment workflow whose label is voided when the dispatch fails -->
+```php
+use Firefly\Container\Attributes\Service;
+use Firefly\Orchestration\Core\Argument\Input;
+use Firefly\Orchestration\Workflow\Attributes\CompensationStep;
+use Firefly\Orchestration\Workflow\Attributes\Workflow;
+use Firefly\Orchestration\Workflow\Attributes\WorkflowStep;
+
+#[Service]
+#[Workflow(id: 'shipment')]
+final class ShipmentWorkflow
+{
+    #[WorkflowStep(id: 'book')]
+    public function book(#[Input('parcel')] string $parcel): string
+    {
+        return "label-{$parcel}";
+    }
+
+    #[CompensationStep(compensates: 'book')]
+    public function voidLabel(string $label): string
+    {
+        return "voided {$label}";
+    }
+
+    #[WorkflowStep(id: 'dispatch', dependsOn: ['book'])]
+    public function dispatch(#[Input('carrier')] string $carrier): string
+    {
+        return "dispatched via {$carrier}";
+    }
+}
+```
+
+`WorkflowEngine::compensate()` runs the same compensations on request for a live execution and ends it
+`CANCELLED`.
+
 ### Queued (ASYNC) workflows
 
 A workflow declared with `triggerMode: TriggerMode::Async` never runs inside `start()`. The start persists

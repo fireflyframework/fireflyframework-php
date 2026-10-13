@@ -15,6 +15,7 @@ use Firefly\Orchestration\Tests\ScannerFixtures\Good\ApprovalWorkflow;
 use Firefly\Orchestration\Tests\ScannerFixtures\Good\DebitParticipant;
 use Firefly\Orchestration\Tests\ScannerFixtures\Good\InventoryService;
 use Firefly\Orchestration\Tests\ScannerFixtures\Good\OrderSaga;
+use Firefly\Orchestration\Tests\ScannerFixtures\Good\ShipmentWorkflow;
 use Firefly\Orchestration\Workflow\Registry\WaitDefinition;
 
 function orchestrationScanGood(): OrchestrationManifest
@@ -85,6 +86,16 @@ it('compiles a workflow: inherited retries, waits, children, compensations, cond
         ->and($workflow->onError[0]->suppressError)->toBeTrue();
 });
 
+it('compiles a #[CompensationStep] method as the compensation of the step it names, bound to that step\'s result', function (): void {
+    $workflow = orchestrationScanGood()->workflows()[1];
+
+    expect($workflow->id)->toBe('shipment')
+        ->and($workflow->step('book')->compensatable)->toBeTrue()
+        ->and($workflow->step('book')->compensation)->toEqual(new MethodInvocation(ShipmentWorkflow::class, 'voidLabel', [new ParameterBinding('label', ParameterBinding::IMPLICIT)]))
+        ->and($workflow->step('dispatch')->compensatable)->toBeFalse()
+        ->and($workflow->step('dispatch')->compensation)->toBeNull();
+});
+
 it('compiles the schedules', function (): void {
     $schedules = orchestrationScanGood()->schedules();
 
@@ -107,4 +118,7 @@ it('refuses every invalid definition at scan time, naming it', function (string 
     ['BadCondition', 'does not parse'],
     ['InitialDelay', 'initialDelay'],
     ['OrphanExternal', "no #[Saga(name: 'ghost')]"],
+    ['DuplicateCompensation', 'Workflow [twice-undone] step [book] has two #[CompensationStep] methods.'],
+    ['UnknownCompensation', "#[CompensationStep(compensates: 'ship')] in workflow [stray-undo] names a step it does not declare."],
+    ['BothCompensationForms', 'Workflow [both-forms] step [book] declares compensationMethod: and a #[CompensationStep]; a step has one compensation.'],
 ]);
