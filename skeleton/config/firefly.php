@@ -850,6 +850,27 @@ return [
                 // ],
 
                 /*
+                 | Infrastructure indicators, all OFF BY DEFAULT: turning one on adds a component that can
+                 | be DOWN, and an existing application's /health must not change status because the
+                 | framework was upgraded.
+                 |
+                 | `cache` writes, reads back and forgets a random sentinel key (one-minute TTL) on each
+                 | Laravel cache store in `stores`; an empty list probes `cache.default`. `queue` asks each
+                 | Laravel queue connection in `connections` for size() of its default queue and publishes
+                 | the backlog as a detail; an empty list probes `queue.default`. `redis` sends PING on each
+                 | connection of Laravel's Redis manager in `connections` (phpredis or predis, whichever
+                 | `database.redis.client` names); an application with no `redis` binding gets no `redis`
+                 | component even with the key on. Any one store or connection DOWN makes its component
+                 | DOWN, naming it and the error.
+                 |
+                 | Defaults: cache.enabled false, cache.stores [] (cache.default); queue.enabled false,
+                 | queue.connections [] (queue.default); redis.enabled false, redis.connections ['default'].
+                */
+                // 'cache' => ['enabled' => true, 'stores' => ['redis', 'file']],
+                // 'queue' => ['enabled' => true, 'connections' => ['database']],
+                // 'redis' => ['enabled' => true, 'connections' => ['default', 'cache']],
+
+                /*
                  | Probe groups served at /actuator/health/{name} — CSV of indicator names. An UNSET
                  | group is a 404, so these must stay commented out until you mean them.
                  |
