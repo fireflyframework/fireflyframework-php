@@ -258,3 +258,34 @@ it('cancels a child whose ASYNC dispatch failed when the parent fails over it', 
         ->and($log)->toBe(['refund'])
         ->and($engines->deadLetterStore->findByCorrelationId('p-9'))->toHaveCount(1);
 });
+
+it('wakes a parent whose child continued as new inline and then waited, and cancels the live run of that chain', function (): void {
+    $engines = TestEngines::create();
+    $engines->workflowRegistry->register(WorkflowBuilder::workflow('looping-check')
+        ->step('tick')->handler(static fn (array $input): mixed => ($input['round'] ?? 0) === 0 ? new ContinueAsNew(['round' => 1]) : 'ticked')->add()
+        ->step('approve')->dependsOn('tick')->waitForSignal('go')->handler(static fn (): string => 'approved')->add()
+        ->build());
+    $engines->workflowRegistry->register(WorkflowBuilder::workflow('pp')
+        ->step('spawn')->childWorkflow('looping-check')->handler(static fn (): array => [])->add()
+        ->step('after')->dependsOn('spawn')->handler(static fn (): string => 'after child')->add()
+        ->build());
+
+    $waiting = $engines->workflows->start('pp', correlationId: 'pp-cn');
+    $originId = $waiting->children['spawn'] ?? '';
+    $lastRunId = $engines->workflows->find($originId)?->variables['continuedAs'] ?? null;
+    $engines->workflows->signal(is_string($lastRunId) ? $lastRunId : '', 'go');
+    $parent = $engines->workflows->find('pp-cn');
+
+    $engines->workflows->start('pp', correlationId: 'pp-cancel');
+    $cancelOrigin = $engines->workflows->find('pp-cancel')?->children['spawn'] ?? '';
+    $cancelLastRun = $engines->workflows->find($cancelOrigin)?->variables['continuedAs'] ?? null;
+    $engines->workflows->cancel('pp-cancel');
+
+    expect($waiting->status)->toBe(ExecutionStatus::Waiting)
+        ->and($engines->workflows->find($originId)?->status)->toBe(ExecutionStatus::Completed)
+        ->and($lastRunId)->toBeString()->not->toBe($originId)
+        ->and($parent?->status)->toBe(ExecutionStatus::Completed)
+        ->and(data_get($parent?->stepResults, 'spawn.correlationId'))->toBe($lastRunId)
+        ->and(data_get($parent?->stepResults, 'spawn.results'))->toBe(['tick' => 'ticked', 'approve' => 'approved'])
+        ->and($engines->workflows->find(is_string($cancelLastRun) ? $cancelLastRun : '')?->status)->toBe(ExecutionStatus::Cancelled);
+});

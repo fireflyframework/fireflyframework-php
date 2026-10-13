@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
+use Firefly\Orchestration\Core\Exception\ExecutionLockedException;
 use Firefly\Orchestration\Core\Exception\InvalidExecutionStateException;
 use Firefly\Orchestration\Core\ExecutionContext;
+use Firefly\Orchestration\Core\ExecutionLock;
 use Firefly\Orchestration\Core\ExecutionStatus;
 use Firefly\Orchestration\Core\StepStatus;
 use Firefly\Orchestration\Core\TriggerMode;
 use Firefly\Orchestration\Persistence\ExecutionState;
+use Firefly\Orchestration\Tests\Support\ScriptedLock;
 use Firefly\Orchestration\Tests\Support\TestEngines;
 use Firefly\Orchestration\Workflow\Builder\WorkflowBuilder;
 use Firefly\Orchestration\Workflow\Engine\ContinueAsNew;
@@ -166,3 +169,26 @@ it('refuses to start a workflow under a correlation id that is already taken, an
     'sync' => [TriggerMode::Sync],
     'async' => [TriggerMode::Async],
 ]);
+
+it('takes the execution lock around an ASYNC start, so a start racing another one for the same id writes nothing', function (): void {
+    $lock = new ScriptedLock;
+    $engines = TestEngines::create(['lock' => ['wait' => 0]], lock: $lock);
+    $engines->workflowRegistry->register(WorkflowBuilder::workflow('queued')->triggerMode(TriggerMode::Async)
+        ->step('work')->handler(static fn (): string => 'worked')->add()
+        ->build());
+
+    // Another process is starting [w-race] right now and holds its lock between the existence check and the write.
+    $lock->holdElsewhere(ExecutionLock::name('w-race'));
+
+    expect(fn () => $engines->workflows->start('queued', ['by' => 'second'], correlationId: 'w-race'))
+        ->toThrow(ExecutionLockedException::class);
+    expect($engines->workflows->find('w-race'))->toBeNull()
+        ->and($engines->dispatcher->dispatched)->toBe([]);
+
+    $lock->releaseElsewhere(ExecutionLock::name('w-race'));
+    $pending = $engines->workflows->start('queued', ['by' => 'first'], correlationId: 'w-race');
+
+    expect($pending->status)->toBe(ExecutionStatus::Pending)
+        ->and($pending->input)->toBe(['by' => 'first'])
+        ->and($engines->dispatcher->dispatched)->toBe(['w-race']);
+});

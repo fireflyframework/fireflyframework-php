@@ -58,3 +58,32 @@ it('cancels a workflow and answers queries and search from its checkpoint', func
         ->and(array_map(static fn ($s): string => $s->correlationId, $engines->workflows->findByStatus(ExecutionStatus::Waiting)))->toBe(['o-2'])
         ->and(fn () => $engines->workflows->cancel('o-1'))->toThrow(InvalidExecutionStateException::class);
 });
+
+it('keeps the execution report of a finished workflow when its search attributes are upserted', function (): void {
+    $engines = TestEngines::create();
+    $engines->workflowRegistry->register(WorkflowBuilder::workflow('one-step')
+        ->step('only')->handler(static fn (): string => 'done')->add()
+        ->build());
+
+    $completed = $engines->workflows->start('one-step', correlationId: 'w-1');
+    $upserted = $engines->workflows->upsertSearchAttributes('w-1', ['k' => 'v']);
+
+    expect($completed->report)->not->toBeNull()
+        ->and($upserted->report)->toBe($completed->report)
+        ->and($engines->workflows->find('w-1')?->report)->toBe($completed->report)
+        ->and($engines->workflows->find('w-1')?->searchAttributes)->toBe(['k' => 'v']);
+});
+
+it('keeps the deadline of a waiting workflow in its wake-up when its search attributes are upserted', function (): void {
+    $engines = TestEngines::create();
+    $engines->workflowRegistry->register(WorkflowBuilder::workflow('bounded')->timeoutMs(5_000)
+        ->step('wait')->waitForSignal('go')->add()
+        ->build());
+
+    $waiting = $engines->workflows->start('bounded', correlationId: 'w-2');
+    $upserted = $engines->workflows->upsertSearchAttributes('w-2', ['k' => 'v']);
+
+    expect($waiting->wakeAt)->not->toBeNull()
+        ->and($upserted->wakeAt)->toEqual($waiting->wakeAt)
+        ->and($engines->workflows->find('w-2')?->wakeAt)->toEqual($waiting->wakeAt);
+});

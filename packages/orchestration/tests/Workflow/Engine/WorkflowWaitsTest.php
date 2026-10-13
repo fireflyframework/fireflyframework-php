@@ -119,3 +119,34 @@ it('keeps advancing the other due executions when one of them cannot be driven',
         ->and($warnings)->toHaveCount(1)
         ->and($warnings[0] ?? '')->toContain('a-retired');
 });
+
+it('backs off due executions it cannot drive, so a full batch of them does not starve a healthy one', function (): void {
+    $timer = static fn (string $id) => WorkflowBuilder::workflow($id)
+        ->step('pause')->waitForTimer(60_000)->add()
+        ->step('go')->dependsOn('pause')->handler(static fn (): string => 'went')->add()
+        ->build();
+    $before = TestEngines::create(['backpressure' => ['batch-size' => 3]]);
+    $before->workflowRegistry->register($timer('retired'));
+    $before->workflowRegistry->register($timer('kept'));
+    foreach (range(1, 5) as $n) {
+        $before->workflows->start('retired', correlationId: "a-retired-{$n}");
+    }
+    $before->workflows->start('kept', correlationId: 'b-kept');
+
+    // A deploy drops [retired]: five undrivable rows are due ahead of the healthy one, more than one batch.
+    $after = TestEngines::create(['backpressure' => ['batch-size' => 3]], persistence: $before->persistence);
+    $after->workflowRegistry->register($timer('kept'));
+    $after->clock->advance(61.0);
+    $advanced = $after->workflows->resumeDue();
+    $retired = $after->workflows->find('a-retired-1');
+    $warnings = count($after->logger->messages('warning'));
+    $again = $after->workflows->resumeDue();
+
+    expect(array_map(static fn ($state): string => $state->correlationId, $advanced))->toBe(['b-kept'])
+        ->and($after->workflows->find('b-kept')?->status)->toBe(ExecutionStatus::Completed)
+        ->and($retired?->status)->toBe(ExecutionStatus::Waiting)
+        ->and($retired?->wakeAt)->toEqual($after->clock->now()->modify('+60 seconds'))
+        ->and($warnings)->toBe(5)
+        ->and($again)->toBe([])
+        ->and(count($after->logger->messages('warning')))->toBe(5);
+});

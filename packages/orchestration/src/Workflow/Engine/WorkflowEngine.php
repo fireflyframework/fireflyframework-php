@@ -45,6 +45,16 @@ final class WorkflowEngine
 {
     public const string CONTINUED_FROM_HEADER = 'x-firefly-continued-from';
 
+    /** The timer that holds a tick back-off (resumeDue()); it is only ever a wake-up, never a step's wait. */
+    public const string BACKOFF_TIMER = 'tick:backoff';
+
+    /** The variable counting the ticks in a row that could not drive an execution. */
+    public const string BACKOFF_FAILURES = 'tickFailures';
+
+    private const int BACKOFF_BASE_SECONDS = 60;
+
+    private const int BACKOFF_MAX_SECONDS = 3600;
+
     /** @var array<string, true> the executions this process is driving right now */
     private array $driving = [];
 
@@ -85,11 +95,16 @@ final class WorkflowEngine
             $definition->id,
             function () use ($definition, $context): ExecutionState {
                 if ($definition->triggerMode === TriggerMode::Async) {
-                    $this->refuseExisting($context->correlationId);
-                    $pending = $this->support->checkpoint($context, ExecutionStatus::Pending);
-                    $this->dispatcher->dispatch($context->correlationId);
+                    // Under the lock like a SYNC start: the existence check and the PENDING upsert must be one
+                    // step, or two starts racing for a caller-supplied id both pass the check, the second
+                    // overwrites the first one's input, and both dispatch a job.
+                    return $this->support->lock->synchronized($context->correlationId, function () use ($context): ExecutionState {
+                        $this->refuseExisting($context->correlationId);
+                        $pending = $this->support->checkpoint($context, ExecutionStatus::Pending);
+                        $this->dispatcher->dispatch($context->correlationId);
 
-                    return $this->support->persistence->findById($context->correlationId) ?? $pending;
+                        return $this->support->persistence->findById($context->correlationId) ?? $pending;
+                    });
                 }
 
                 return $this->support->lock->synchronized($context->correlationId, function () use ($definition, $context): ExecutionState {
@@ -142,35 +157,65 @@ final class WorkflowEngine
         });
     }
 
-    /** @return list<ExecutionState> the executions this tick advanced */
+    /**
+     * Drives every due WAITING workflow, `batchSize` rows at a time, earliest wake-up first.
+     *
+     * One execution that cannot be driven (its definition was removed in a deploy, or is not deployed on this
+     * node yet; a handler blew up outside a step) is logged and backed off (backOff()): its wake-up moves
+     * forward, so it leaves the head of the due queue instead of coming back first on every tick and, once a
+     * batch of them is due, starving every healthy timer and deadline. It is not failed: a rolling deploy can
+     * leave a node that does not know a workflow yet, and that is no reason to end the execution. When a batch
+     * had to back rows off, the tick asks for the next batch, so the healthy rows behind them still move now.
+     *
+     * @return list<ExecutionState> the executions this tick advanced
+     */
     public function resumeDue(): array
     {
         $advanced = [];
-        foreach ($this->support->persistence->findDue($this->support->now(), $this->batchSize) as $due) {
-            if ($due->pattern !== ExecutionPattern::Workflow) {
-                continue;
-            }
+        $seen = [];
+        do {
+            $fresh = 0;
+            $backedOff = false;
+            foreach ($this->support->persistence->findDue($this->support->now(), $this->batchSize) as $due) {
+                if (isset($seen[$due->correlationId])) {
+                    continue;
+                }
+                $seen[$due->correlationId] = true;
+                $fresh++;
+                if ($due->pattern !== ExecutionPattern::Workflow) {
+                    continue;
+                }
 
-            try {
-                $advanced[] = $this->support->lock->synchronized($due->correlationId, function () use ($due): ExecutionState {
-                    $state = $this->load($due->correlationId);
-                    if ($state->status !== ExecutionStatus::Waiting) {
-                        return $state;
-                    }
+                try {
+                    $advanced[] = $this->support->lock->synchronized($due->correlationId, function () use ($due): ExecutionState {
+                        $state = $this->load($due->correlationId);
+                        if ($state->status !== ExecutionStatus::Waiting) {
+                            return $state;
+                        }
 
-                    return $this->drive($this->registry->get($state->executionName), ExecutionContext::fromState($state));
-                });
-            } catch (ExecutionLockedException) {
-                // Another process is advancing it right now; the next tick sees whatever it left.
-            } catch (Throwable $error) {
-                // One execution that cannot be driven (its definition was removed in a deploy, a handler blew up
-                // outside a step) must not stop the rest of the batch: report it and move on to the next row.
-                $this->support->logger->warning("Workflow [{$due->executionName}] execution [{$due->correlationId}] could not be resumed by the tick: {$error->getMessage()}", [
-                    'exception' => $error,
-                    'correlationId' => $due->correlationId,
-                ]);
+                        try {
+                            $context = ExecutionContext::fromState($state);
+                            $context->removeTimer(self::BACKOFF_TIMER);
+                            $context->removeVariable(self::BACKOFF_FAILURES);
+
+                            return $this->drive($this->registry->get($state->executionName), $context);
+                        } catch (Throwable $error) {
+                            $this->backOff($due->correlationId, $state);
+
+                            throw $error;
+                        }
+                    });
+                } catch (ExecutionLockedException) {
+                    // Another process is advancing it right now; the next tick sees whatever it left.
+                } catch (Throwable $error) {
+                    $backedOff = true;
+                    $this->support->logger->warning("Workflow [{$due->executionName}] execution [{$due->correlationId}] could not be resumed by the tick: {$error->getMessage()}", [
+                        'exception' => $error,
+                        'correlationId' => $due->correlationId,
+                    ]);
+                }
             }
-        }
+        } while ($backedOff && $fresh > 0 && count($advanced) < $this->batchSize);
 
         return $advanced;
     }
@@ -287,8 +332,18 @@ final class WorkflowEngine
             foreach ($attributes as $key => $value) {
                 $context->setSearchAttribute($key, $value);
             }
+            // The deadline is not persisted, only folded into wakeAt: without it a WAITING workflow's wake-up
+            // would lose the deadline, and the tick would never time it out.
+            if ($this->registry->has($state->executionName)) {
+                $this->applyDeadline($this->registry->get($state->executionName), $context);
+            }
 
-            return $this->support->checkpoint($context, $state->status, $state->failureReason, null);
+            // Saved as is rather than through checkpoint(): the context does not carry the execution report,
+            // and checkpointing a finished workflow without it would erase the report the upsert must keep.
+            $updated = $context->toState($state->status, $this->support->now(), $state->failureReason, $state->report);
+            $this->support->persistence->save($updated);
+
+            return $updated;
         });
     }
 
@@ -330,7 +385,7 @@ final class WorkflowEngine
     {
         $this->driving[$context->correlationId] = true;
         try {
-            $context->setDeadline($workflow->timeoutMs > 0 ? $context->startedAt()->modify(sprintf('+%d milliseconds', $workflow->timeoutMs)) : null);
+            $this->applyDeadline($workflow, $context);
 
             while (true) {
                 $outcome = $this->executor->run($workflow, $context);
@@ -391,8 +446,12 @@ final class WorkflowEngine
 
             throw $error;
         }
-        $context->setChild($stepId, $childState->correlationId);
-        $this->support->events->onChildWorkflowStarted($workflow->id, $context->correlationId, $child->workflowId, $childState->correlationId);
+        // The id this parent generated, not $childState's: a child that continued as new inline returns its LAST
+        // run, but its completion is matched on the origin (wakeParent() keys on CONTINUED_FROM_HEADER) and
+        // WorkflowExecutor::settledChild() follows the continuedAs chain from it, so the origin is what stays
+        // recorded; recording the last run would leave the parent waiting forever once that run waits.
+        $context->setChild($stepId, $childId);
+        $this->support->events->onChildWorkflowStarted($workflow->id, $context->correlationId, $child->workflowId, $childId);
 
         if (! $child->waitForCompletion) {
             $this->executor->finishStep($workflow, $context, $stepId, ['correlationId' => $childState->correlationId, 'status' => $childState->status->value]);
@@ -546,10 +605,70 @@ final class WorkflowEngine
     private function cancelChildren(ExecutionContext $context): void
     {
         foreach ($context->children() as $childId) {
-            $child = $this->support->persistence->findById($childId);
+            $child = $this->lastRun($childId);
             if ($child !== null && ! $child->isTerminal()) {
-                $this->cancel($childId);
+                $this->cancel($child->correlationId);
             }
+        }
+    }
+
+    /**
+     * The latest run of the chain that starts at `$correlationId`: a run that continued as new is COMPLETED and
+     * points at its successor through the `continuedAs` variable, and the live run is the last one.
+     */
+    private function lastRun(string $correlationId): ?ExecutionState
+    {
+        $seen = [];
+        $state = $this->support->persistence->findById($correlationId);
+        while ($state !== null) {
+            $next = $state->variables['continuedAs'] ?? null;
+            if (! is_string($next) || $next === '' || isset($seen[$next])) {
+                return $state;
+            }
+            $seen[$next] = true;
+            $successor = $this->support->persistence->findById($next);
+            if ($successor === null) {
+                return $state;
+            }
+            $state = $successor;
+        }
+
+        return null;
+    }
+
+    private function applyDeadline(WorkflowDefinition $workflow, ExecutionContext $context): void
+    {
+        $context->setDeadline($workflow->timeoutMs > 0 ? $context->startedAt()->modify(sprintf('+%d milliseconds', $workflow->timeoutMs)) : null);
+    }
+
+    /**
+     * Moves the wake-up of an execution the tick could not drive forward, doubling from BACKOFF_BASE_SECONDS up
+     * to BACKOFF_MAX_SECONDS with every tick in a row that fails on it. It is written on the latest checkpoint
+     * (the failed drive may have written one) and only while that is still WAITING; the deadline is left out of
+     * the wake-up on purpose, since a deadline already past would keep the row at the head of the queue. The
+     * next drive that gets through clears the back-off and recomputes the wake-up from the definition.
+     */
+    private function backOff(string $correlationId, ExecutionState $before): void
+    {
+        try {
+            $state = $this->support->persistence->findById($correlationId) ?? $before;
+            if ($state->status !== ExecutionStatus::Waiting) {
+                return;
+            }
+
+            $previous = $before->variables[self::BACKOFF_FAILURES] ?? 0;
+            $failures = (is_int($previous) ? $previous : 0) + 1;
+            $delay = min(self::BACKOFF_MAX_SECONDS, self::BACKOFF_BASE_SECONDS * 2 ** min($failures - 1, 16));
+
+            $context = ExecutionContext::fromState($state);
+            $context->setVariable(self::BACKOFF_FAILURES, $failures);
+            $context->scheduleTimer(self::BACKOFF_TIMER, $this->support->now()->modify(sprintf('+%d seconds', $delay)));
+            $this->support->checkpoint($context, ExecutionStatus::Waiting, $state->failureReason);
+        } catch (Throwable $error) {
+            $this->support->logger->warning("Workflow execution [{$correlationId}] could not be backed off by the tick: {$error->getMessage()}", [
+                'exception' => $error,
+                'correlationId' => $correlationId,
+            ]);
         }
     }
 

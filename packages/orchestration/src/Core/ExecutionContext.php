@@ -255,6 +255,11 @@ final class ExecutionContext
         $this->variables[$name] = $value;
     }
 
+    public function removeVariable(string $name): void
+    {
+        unset($this->variables[$name]);
+    }
+
     /** @return array<string, mixed> */
     public function results(): array
     {
