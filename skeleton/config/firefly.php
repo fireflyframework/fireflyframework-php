@@ -863,12 +863,30 @@ return [
                  | component even with the key on. Any one store or connection DOWN makes its component
                  | DOWN, naming it and the error.
                  |
+                 | Each gate reads its own environment variable (FIREFLY_HEALTH_CACHE_ENABLED,
+                 | FIREFLY_HEALTH_QUEUE_ENABLED, FIREFLY_HEALTH_REDIS_ENABLED), so an operator can turn
+                 | one on without editing this file; the commented lines below are samples of the lists.
+                 |
                  | Defaults: cache.enabled false, cache.stores [] (cache.default); queue.enabled false,
                  | queue.connections [] (queue.default); redis.enabled false, redis.connections ['default'].
                 */
-                // 'cache' => ['enabled' => true, 'stores' => ['redis', 'file']],
-                // 'queue' => ['enabled' => true, 'connections' => ['database']],
-                // 'redis' => ['enabled' => true, 'connections' => ['default', 'cache']],
+                'cache' => [
+                    'enabled' => env('FIREFLY_HEALTH_CACHE_ENABLED', false),
+                    'stores' => [
+                        // 'redis', 'file',
+                    ],
+                ],
+                'queue' => [
+                    'enabled' => env('FIREFLY_HEALTH_QUEUE_ENABLED', false),
+                    'connections' => [
+                        // 'database',
+                    ],
+                ],
+                'redis' => [
+                    'enabled' => env('FIREFLY_HEALTH_REDIS_ENABLED', false),
+                    'connections' => ['default'],
+                    // 'connections' => ['default', 'cache'],
+                ],
 
                 /*
                  | Probe groups served at /actuator/health/{name} — CSV of indicator names. An UNSET
