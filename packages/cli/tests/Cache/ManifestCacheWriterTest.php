@@ -22,7 +22,7 @@ it('emits every app manifest data file with a var_export array shape', function 
     foreach ([
         FireflyCachePaths::COMPONENT, FireflyCachePaths::CONTEXT, FireflyCachePaths::CONFIG_PROPERTIES,
         FireflyCachePaths::ROUTES, FireflyCachePaths::CONSTRAINTS, FireflyCachePaths::HANDLERS,
-        FireflyCachePaths::EVENT_LISTENERS, FireflyCachePaths::MESSAGE_LISTENERS, FireflyCachePaths::SCHEDULED,
+        FireflyCachePaths::EVENT_LISTENERS, FireflyCachePaths::MESSAGE_LISTENERS, FireflyCachePaths::SCHEDULED, FireflyCachePaths::ORCHESTRATION,
         FireflyCachePaths::SECURITY_METHODS, FireflyCachePaths::TRANSACTIONAL, FireflyCachePaths::PROXY_PLAN,
     ] as $basename) {
         $path = $dir.'/'.$basename;

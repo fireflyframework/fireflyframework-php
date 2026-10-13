@@ -1093,17 +1093,18 @@ php artisan firefly:cache
 ```
 
 ```
-firefly:cache — wrote 14 manifest(s) + 1 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
+firefly:cache — wrote 15 manifest(s) + 1 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
 ```
 
-El recuento de manifiestos es fijo, catorce, porque `ManifestCacheWriter` escribe cada artefacto sin
+El recuento de manifiestos es fijo, quince, porque `ManifestCacheWriter` escribe cada artefacto sin
 condiciones — una aplicación sin ningún método `#[Scheduled]` obtiene igualmente un `scheduled.php` vacío,
 que es lo que permite a la ruta de arranque leer "el fichero no está" como "nadie ha compilado todavía" y no
 como "no hay nada que cargar". Este único comando ejecuta *cada* par escáner → compilador ya asentado de
 cada paquete sobre `config('firefly.scan.paths')` y escribe, en `bootstrap/cache/firefly/`: los manifiestos
 de DI/context/config-properties, la tabla de rutas compilada, el manifiesto de handlers
 `#[ControllerAdvice]`, el manifiesto de restricciones de validación, el manifiesto de handlers de CQRS, los
-manifiestos de listeners de evento/mensaje, el manifiesto de tareas programadas, el manifiesto de métodos de
+manifiestos de listeners de evento/mensaje, el manifiesto de tareas programadas, el manifiesto de orquestación
+(`#[Saga]`/`#[Tcc]`/`#[Workflow]`), el manifiesto de métodos de
 seguridad, el manifiesto de `#[Transactional]`, el **plan de proxies** (`proxy-plan.php` — qué beans reciben
 un proxy y qué advice ejecuta cada uno de sus métodos) y el classmap de proxies, **y** un fichero de clase
 `RenameGreetingHandler__FireflyTransactionalProxy` generado (el "1 proxy" de arriba). Se emite un proxy por

@@ -24,8 +24,8 @@ function orchestrationReflectionHits(string $dir): array
 
 /**
  * Production loads the compiled OrchestrationManifest by require; reflection is allowed in exactly one file,
- * the scanner that compiles it (Task 16 adds it and widens this list to that one name).
+ * the scanner that compiles it (at firefly:cache time, or as the uncached development fallback).
  */
 it('confines reflection in firefly/orchestration to the scanner', function (): void {
-    expect(orchestrationReflectionHits(__DIR__.'/../src'))->toBe([]);
+    expect(orchestrationReflectionHits(__DIR__.'/../src'))->toBe(['OrchestrationScanner.php']);
 });

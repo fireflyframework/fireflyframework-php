@@ -1074,17 +1074,17 @@ php artisan firefly:cache
 ```
 
 ```
-firefly:cache — wrote 14 manifest(s) + 1 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
+firefly:cache — wrote 15 manifest(s) + 1 proxy(ies) to /path/to/my-app/bootstrap/cache/firefly
 ```
 
-The manifest count is fixed at fourteen, because `ManifestCacheWriter` writes every artifact unconditionally
+The manifest count is fixed at fifteen, because `ManifestCacheWriter` writes every artifact unconditionally
 — an application with no `#[Scheduled]` method still gets an empty `scheduled.php`, which is what lets the
 boot path treat "the file is missing" as "nobody has compiled yet" rather than as "there is nothing to
 load". This single command drives *every* settled package's existing scanner → compiler pair over
 `config('firefly.scan.paths')` and writes, into `bootstrap/cache/firefly/`: the DI/context/config-properties
 manifests, the compiled route table, the `#[ControllerAdvice]` handler manifest, the validation constraint
 manifest, the CQRS handler manifest, the event/message-listener manifests, the scheduled-task manifest, the
-security-method manifest, the `#[Transactional]` manifest, the **proxy plan** (`proxy-plan.php` — which
+orchestration manifest (`#[Saga]`/`#[Tcc]`/`#[Workflow]`), the security-method manifest, the `#[Transactional]` manifest, the **proxy plan** (`proxy-plan.php` — which
 beans get a proxy and which advice each of their methods runs) and the proxy classmap, **and** a generated
 `RenameGreetingHandler__FireflyTransactionalProxy` class file (the "1 proxy" above). A proxy is emitted per
 class the *plan* claims, which is every class any advice source names — so a `#[Service]` carrying only
