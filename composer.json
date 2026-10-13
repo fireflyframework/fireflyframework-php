@@ -85,6 +85,7 @@
             "Firefly\\Tests\\": "tests/",
             "Firefly\\Validation\\Tests\\": "packages/validation/tests/",
             "Firefly\\Web\\Tests\\": "packages/web/tests/",
+            "Firefly\\Webhooks\\Tests\\": "packages/webhooks/tests/",
             "Lumen\\Tests\\": "samples/lumen/tests/",
             "Firefly\\Kernel\\Tests\\": "packages/kernel/tests/",
             "Lumen\\": "samples/lumen/src/"
@@ -149,7 +150,8 @@
         "firefly/security-oauth2-server": "self.version",
         "firefly/testing": "self.version",
         "firefly/validation": "self.version",
-        "firefly/web": "self.version"
+        "firefly/web": "self.version",
+        "firefly/webhooks": "self.version"
     },
     "autoload": {
         "psr-4": {
@@ -181,7 +183,8 @@
             "Firefly\\Security\\OAuth2\\Server\\": "packages/security-oauth2-server/src/",
             "Firefly\\Testing\\": "packages/testing/src/",
             "Firefly\\Validation\\": "packages/validation/src/",
-            "Firefly\\Web\\": "packages/web/src/"
+            "Firefly\\Web\\": "packages/web/src/",
+            "Firefly\\Webhooks\\": "packages/webhooks/src/"
         },
         "files": [
             "packages/security-oauth2-client/src/Registration/casters.php",
@@ -260,6 +263,8 @@
                 "Firefly\\Security\\OAuth2\\Client\\SecurityOAuth2ClientWiringProvider",
                 "Firefly\\FeatureFlags\\FeatureFlagsServiceProvider",
                 "Firefly\\FeatureFlags\\FeatureFlagsWiringProvider",
+                "Firefly\\Webhooks\\WebhooksServiceProvider",
+                "Firefly\\Webhooks\\WebhooksWiringProvider",
                 "Firefly\\Cli\\Boot\\FireflyCacheServiceProvider"
             ]
         }

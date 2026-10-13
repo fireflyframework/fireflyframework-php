@@ -102,6 +102,10 @@ deptrac:
       collectors:
         - type: directory
           value: packages/feature-flags/src/.*
+    - name: Webhooks
+      collectors:
+        - type: directory
+          value: packages/webhooks/src/.*
     - name: OpenApi
       collectors:
         - type: directory
@@ -500,6 +504,22 @@ deptrac:
       - Data
       - Web
       - Actuator
+      - Resilience
+
+    # Webhooks is the inbound-webhook capability: an endpoint per provider mounted on the router by a BootPass
+    # (the FlagdSyncRouteRegistrar shape), signature validators, an idempotency store on the cache or any database
+    # connection (illuminate, unlayered), and a publish to Eda's EventPublisher (=> Eda). Every refusal is rendered
+    # by Web's ProblemDetailsRenderer (=> Web); replay windows parse through Resilience's Duration (=> Resilience,
+    # the Scheduling precedent). It reads Config, carries Container/Context attributes, extends AutoConfigure's base
+    # and reuses Kernel exceptions. NOTHING depends on it.
+    Webhooks:
+      - Kernel
+      - Container
+      - Config
+      - Context
+      - AutoConfigure
+      - Web
+      - Eda
       - Resilience
 
     # OpenApi is a top-of-stack capability (like Web/Cqrs/Security/Actuator): it generates an OpenAPI 3.1
