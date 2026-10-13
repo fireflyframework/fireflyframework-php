@@ -133,3 +133,22 @@ it('opens the circuit for an endpoint after its failures and stops calling it', 
         ->and($third->lastError)->toContain('circuit open for https://partner.example.com:443')
         ->and($sender->sent)->toHaveCount(2);
 });
+
+it('refuses to deliver to an inactive subscription without sending anything, unless the caller includes inactive ones', function () {
+    $sender = new ScriptedCallbackSender([204]);
+    [$deliverer] = w4Deliverer($sender);
+    $inactive = new CallbackSubscription('sub-1', 'partner', 'https://partner.example.com/hooks', ['order.*'], 'shared', [], false);
+    $execution = w4Execution($inactive);
+
+    $refused = $deliverer->deliver($inactive, $execution);
+
+    expect($refused->status)->toBe(CallbackStatus::Failed)
+        ->and($refused->attempts)->toBe(0)
+        ->and($refused->lastError)->toContain('subscription [sub-1] is inactive')
+        ->and($sender->sent)->toBe([]);
+
+    $forced = $deliverer->deliver($inactive, $execution, includeInactive: true);
+
+    expect($forced->status)->toBe(CallbackStatus::Delivered)
+        ->and($sender->sent)->toHaveCount(1);
+});

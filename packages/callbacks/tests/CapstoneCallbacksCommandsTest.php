@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Firefly\Callbacks\Execution\CallbackStatus;
 use Firefly\Callbacks\Execution\ExecutionLog;
+use Firefly\Callbacks\Subscription\CallbackSubscription;
+use Firefly\Callbacks\Subscription\SubscriptionRegistry;
 use Firefly\Callbacks\Tests\Support\CallbacksArtisan;
 use Firefly\Callbacks\Tests\Support\CallbacksCapstoneTestCase;
 use Illuminate\Support\Facades\Http;
@@ -62,4 +64,28 @@ it('exits 1 when a replayed delivery fails again', function () {
         ->expectsOutputToContain('failed after 5 attempt(s) — circuit open for https://partner.example.com:443')
         ->assertExitCode(1);
     Http::assertSentCount(5);
+});
+
+it('refuses to replay to a deactivated subscription unless --include-inactive is passed, and says so', function () {
+    /** @var CallbacksCapstoneTestCase $this */
+    Http::fake(['partner.example.com/*' => Http::sequence()->push('', 503)->push('', 503)->push('', 503)->push('', 204)]);
+    $this->events->publish('orders', 'order.created', ['id' => 11]);
+    $failed = $this->app()->make(ExecutionLog::class)->recent(1, CallbackStatus::Failed)[0];
+
+    $registry = $this->app()->make(SubscriptionRegistry::class);
+    $current = $registry->find('sub-orders');
+    expect($current)->not->toBeNull();
+    /** @var CallbackSubscription $current */
+    $registry->save(new CallbackSubscription($current->id, $current->name, $current->url, $current->eventTypes, $current->secret, $current->headers, false, $current->maxAttempts));
+
+    CallbacksArtisan::pending($this->artisan('firefly:callbacks:replay', ['--failed' => true]))
+        ->expectsOutputToContain('subscription [sub-orders] is inactive; pass --include-inactive to replay it anyway')
+        ->assertExitCode(1);
+    Http::assertSentCount(3);
+
+    CallbacksArtisan::pending($this->artisan('firefly:callbacks:replay', ['ids' => [$failed->id], '--include-inactive' => true]))
+        ->expectsOutputToContain('--include-inactive: inactive subscriptions are replayed too')
+        ->expectsOutputToContain("{$failed->id}: delivered after 4 attempt(s)")
+        ->assertExitCode(0);
+    Http::assertSentCount(4);
 });

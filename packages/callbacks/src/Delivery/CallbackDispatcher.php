@@ -61,16 +61,22 @@ final class CallbackDispatcher
         return $results;
     }
 
-    /** Sends a logged execution again (`firefly:callbacks:replay`); null when its subscription no longer exists. */
-    public function replay(CallbackExecution $execution): ?CallbackExecution
+    /**
+     * Sends a logged execution again (`firefly:callbacks:replay`); null when its subscription no longer exists. A
+     * deactivated subscription is refused by the deliverer (failed, "is inactive") and the log is left as it was,
+     * unless $includeInactive is set.
+     */
+    public function replay(CallbackExecution $execution, bool $includeInactive = false): ?CallbackExecution
     {
         $subscription = $this->subscriptions->find($execution->subscriptionId);
         if ($subscription === null) {
             return null;
         }
 
-        $result = $this->deliverer->deliver($subscription, $execution);
-        $this->log->record($result);
+        $result = $this->deliverer->deliver($subscription, $execution, $includeInactive);
+        if ($subscription->active || $includeInactive) {
+            $this->log->record($result);
+        }
 
         return $result;
     }

@@ -70,3 +70,26 @@ it('replays a logged execution through its subscription, and declines when the s
         ->and($log->find($failed->id)?->status)->toBe(CallbackStatus::Delivered)
         ->and($dispatcher->replay($orphan))->toBeNull();
 });
+
+it('refuses to replay to a deactivated subscription and leaves the log untouched, unless inactive ones are included', function () {
+    $sender = new ScriptedCallbackSender([500, 204]);
+    $subscriptions = new InMemorySubscriptionRegistry([new CallbackSubscription('orders', 'orders', 'https://a.example.com/hooks', ['order.*'], 's')]);
+    $log = new InMemoryExecutionLog;
+    $deliverer = new CallbackDeliverer(new CallbacksSettings(maxAttempts: 1), $sender, new CallbackSigner, null, static function (float $s): void {});
+    $dispatcher = new CallbackDispatcher($subscriptions, $log, $deliverer);
+    $failed = $dispatcher->dispatch(new EventEnvelope('order.created', 'orders', [], [], 'evt-4'))[0];
+
+    $subscriptions->save(new CallbackSubscription('orders', 'orders', 'https://a.example.com/hooks', ['order.*'], 's', [], false));
+    $refused = $dispatcher->replay($failed);
+
+    expect($refused?->status)->toBe(CallbackStatus::Failed)
+        ->and($refused?->lastError)->toContain('is inactive')
+        ->and($sender->sent)->toHaveCount(1)
+        ->and($log->find($failed->id))->toEqual($failed);
+
+    $forced = $dispatcher->replay($failed, includeInactive: true);
+
+    expect($forced?->status)->toBe(CallbackStatus::Delivered)
+        ->and($sender->sent)->toHaveCount(2)
+        ->and($log->find($failed->id)?->status)->toBe(CallbackStatus::Delivered);
+});
