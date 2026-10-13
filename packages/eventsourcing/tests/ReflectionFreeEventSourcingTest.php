@@ -24,9 +24,8 @@ function eventSourcingReflectionHits(string $dir): array
 
 /**
  * Production loads the compiled EventSourcingManifest by require; reflection is allowed in exactly one file, the
- * scanner that compiles it (at firefly:cache time, or as the uncached development fallback). Until Task 8 adds that
- * scanner there is none at all.
+ * scanner that compiles it (at firefly:cache time, or as the uncached development fallback). The scanner is that file.
  */
 it('confines reflection in firefly/eventsourcing to the scanner', function (): void {
-    expect(eventSourcingReflectionHits(__DIR__.'/../src'))->toBe([]);
+    expect(eventSourcingReflectionHits(__DIR__.'/../src'))->toBe(['EventSourcingScanner.php']);
 });
