@@ -3,14 +3,15 @@
 This is a hand-built, step-by-step walkthrough of building a real LaraFly feature from an empty
 `firefly new` application to a fully attribute-driven slice — a REST controller, a service, typed
 configuration, a repository-backed domain model, request validation, RFC-7807 error handling, a CQRS
-command/query pair, and a domain event listener. Every code block below is accurate to the framework as
-shipped in this repository — attributes, class names, and method signatures are taken verbatim from
-`firefly/*` package sources and the runnable `samples/lumen` wallet sample, not invented for the tutorial.
+command/query pair, a domain event listener, a database-agnostic outbox, and a compensating saga. Every
+code block below is accurate to the framework as shipped in this repository — attributes, class names, and
+method signatures are taken verbatim from `firefly/*` package sources and the runnable `samples/lumen`
+wallet sample, not invented for the tutorial.
 
 By the end you will have grown the `firefly/skeleton` starter's sample `Greeting` slice into a small
-"greetings" feature with a persisted `greetings` table, an `#[EventListener]` reacting to a domain event,
-and a zero-reflection cached boot — the same architecture the [Lumen sample](#step-12-whats-next) uses at
-larger scale.
+"greetings" feature with a persisted `greetings` table, an `#[EventListener]` reacting to a domain event
+delivered through a database outbox, a greeting-card saga that undoes itself, and a zero-reflection cached
+boot — the same architecture the [Lumen sample](#step-14-whats-next) uses at larger scale.
 
 ## Table of Contents
 
@@ -25,7 +26,9 @@ larger scale.
 9. [Step 9: Commands and Queries — CQRS](#step-9-commands-and-queries-cqrs)
 10. [Step 10: Reacting to a Domain Event — `#[EventListener]`](#step-10-reacting-to-a-domain-event-eventlistener)
 11. [Step 11: The Zero-Reflection Cache and Health Introspection](#step-11-the-zero-reflection-cache-and-health-introspection)
-12. [Step 12: What's Next](#step-12-whats-next)
+12. [Step 12: A Database-Agnostic Outbox and a Consumer](#step-12-a-database-agnostic-outbox-and-a-consumer)
+13. [Step 13: A Saga with Compensation — `#[Saga]`](#step-13-a-saga-with-compensation-saga)
+14. [Step 14: What's Next](#step-14-whats-next)
 
 ## Prerequisites
 
@@ -1195,12 +1198,231 @@ Kafka (`php artisan firefly:outbox:relay`), and the `outbox` health component, a
 
 ---
 
-## Step 12: What's Next
+## Step 13: A Saga with Compensation — `#[Saga]`
+
+Everything so far has fit in one transaction. Selling a greeting card does not: it reserves a printed card from
+stock, charges the customer through a payment provider, and hands the card to a mailer — three systems, three
+commits, and no transaction that spans them. If the mailer fails, the charge has already happened. A **saga** is
+the answer: each step commits on its own, each step that changed something names a *compensation* that undoes it,
+and a failure runs the compensations of the completed steps, newest first.
+
+The three systems get one stand-in, `app/Cards/CardDesk.php` — in a real application each would be an adapter
+behind its own port; here one in-memory class keeps the step about the saga, and its `$journal` records every call:
+
+<!-- source: tests/Fixtures/Tutorial/app/Cards/CardDesk.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Cards;
+
+use Firefly\Container\Attributes\Component;
+use RuntimeException;
+
+/**
+ * A stand-in for the three systems a greeting-card order touches — the card stock, the payment provider and the
+ * mailer. A real application has one adapter per system; one in-memory class keeps this step about the saga.
+ * $journal records every call, in order.
+ */
+#[Component]
+final class CardDesk
+{
+    /** @var list<string> */
+    public array $journal = [];
+
+    private int $cards = 0;
+
+    private int $payments = 0;
+
+    public function reserve(): string
+    {
+        $card = 'card-'.++$this->cards;
+        $this->journal[] = "reserve {$card}";
+
+        return $card;
+    }
+
+    public function release(string $card): void
+    {
+        $this->journal[] = "release {$card}";
+    }
+
+    public function charge(int $amountMinor): string
+    {
+        $payment = 'payment-'.++$this->payments;
+        $this->journal[] = "charge {$payment} {$amountMinor}";
+
+        return $payment;
+    }
+
+    public function refund(string $payment): void
+    {
+        $this->journal[] = "refund {$payment}";
+    }
+
+    public function send(string $card, string $to): string
+    {
+        if ($to === 'Nobody') {
+            throw new RuntimeException("The mailer has no address for {$to}.");
+        }
+
+        $this->journal[] = "send {$card} to {$to}";
+
+        return "sent {$card} to {$to}";
+    }
+}
+```
+
+Now the saga, `app/Cards/GreetingCardSaga.php`:
+
+<!-- source: tests/Fixtures/Tutorial/app/Cards/GreetingCardSaga.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Cards;
+
+use Firefly\Container\Attributes\Service;
+use Firefly\Orchestration\Core\Argument\FromStep;
+use Firefly\Orchestration\Core\Argument\Input;
+use Firefly\Orchestration\Saga\Attributes\Saga;
+use Firefly\Orchestration\Saga\Attributes\SagaStep;
+
+#[Service]
+#[Saga(name: 'greeting-card')]
+final class GreetingCardSaga
+{
+    public const int PRICE_MINOR = 300;
+
+    public function __construct(private readonly CardDesk $desk) {}
+
+    #[SagaStep(id: 'reserve', compensate: 'release')]
+    public function reserve(): string
+    {
+        return $this->desk->reserve();
+    }
+
+    public function release(string $card): void
+    {
+        $this->desk->release($card);
+    }
+
+    #[SagaStep(id: 'charge', dependsOn: ['reserve'], compensate: 'refund')]
+    public function charge(): string
+    {
+        return $this->desk->charge(self::PRICE_MINOR);
+    }
+
+    public function refund(string $payment): void
+    {
+        $this->desk->refund($payment);
+    }
+
+    #[SagaStep(id: 'send', dependsOn: ['charge'])]
+    public function send(#[FromStep('reserve')] string $card, #[Input('to')] string $to): string
+    {
+        return $this->desk->send($card, $to);
+    }
+}
+```
+
+Element by element:
+
+- **`#[Saga(name: 'greeting-card')]`** on a `#[Service]` bean declares the saga; `firefly:cache` compiles it into
+  the orchestration manifest, and the topology is validated at boot.
+- **`#[SagaStep(id: 'reserve', compensate: 'release')]`** — a forward step and the method that undoes it. The
+  compensation receives the step's result: `release()` gets the card id `reserve()` returned.
+- **`dependsOn: ['reserve']`** orders the steps into layers: `charge` runs only after `reserve` succeeded, `send`
+  only after `charge`.
+- **`#[FromStep('reserve')]`** hands `send()` the card the first step reserved; **`#[Input('to')]`** reads a key of
+  the saga's input.
+- `send` has no compensation: it is the last step, so nothing after it can fail and strand it.
+
+Expose it, `app/Http/GreetingCardController.php`:
+
+<!-- source: tests/Fixtures/Tutorial/app/Http/GreetingCardController.php -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Http;
+
+use Firefly\Kernel\Exception\Business\ConflictException;
+use Firefly\Orchestration\Saga\Engine\SagaEngine;
+use Firefly\Web\Attributes\PathVariable;
+use Firefly\Web\Attributes\PostMapping;
+use Firefly\Web\Attributes\RestController;
+
+#[RestController]
+final class GreetingCardController
+{
+    public function __construct(private readonly SagaEngine $sagas) {}
+
+    /** @return array{order: string, status: string} */
+    #[PostMapping('/cards/{to}', status: 201)]
+    public function send(#[PathVariable] string $to): array
+    {
+        $result = $this->sagas->execute('greeting-card', ['to' => $to]);
+
+        if (! $result->success) {
+            throw new ConflictException("The card for {$to} was not sent; every completed step was undone.", 'CARD_NOT_SENT', $result->error);
+        }
+
+        return ['order' => $result->correlationId, 'status' => $result->status->value];
+    }
+}
+```
+
+`SagaEngine::execute()` runs the saga inside the request and returns a `SagaResult`; a failed saga becomes a
+`ConflictException`, which the web layer renders as RFC-7807 problem+json exactly like Step 8's errors. Recompile
+and try both cases:
+
+```bash
+php artisan firefly:cache
+
+curl -X POST http://127.0.0.1:8000/cards/Ada
+# {"order":"…","status":"COMPLETED"}
+
+curl -i -X POST http://127.0.0.1:8000/cards/Nobody
+# HTTP/1.1 409 Conflict   <- problem+json with code CARD_NOT_SENT
+```
+
+The second order reserved a card and charged the customer before the mailer refused. The journal shows what
+happened next, and the repository's own test (`tests/TutorialGreetingCardSagaTest.php`) asserts exactly this
+order:
+
+```
+reserve card-1
+charge payment-1 300
+refund payment-1
+release card-1
+```
+
+The charge was refunded **before** the card was released — newest first, the `strict-sequential` policy that
+`firefly.orchestration.saga.compensation-policy` defaults to. By default the saga's checkpoints and its dead
+letters live in memory, which is right for a saga that finishes inside one request. Set
+`FIREFLY_ORCHESTRATION_PERSISTENCE=database` and `FIREFLY_ORCHESTRATION_DLQ_STORE=database` (after
+`php artisan vendor:publish --tag=firefly-orchestration-migrations` and `php artisan migrate`) and every step
+boundary is written to `firefly_orchestration_executions`, a failed order lands in
+`firefly_orchestration_dead_letters`, and `php artisan firefly:orchestration:list --name=greeting-card` and
+`php artisan firefly:orchestration:dlq --name=greeting-card` show them. See [Orchestration](modules/orchestration.md)
+for the five compensation policies, TCC, durable workflows that wait for signals and timers, recovery, and the
+operator commands.
+
+---
+
+## Step 14: What's Next
 
 You've built one small feature slice — `#[RestController]` → `#[Service]` → `#[ConfigProperties]` →
 `#[Repository]` → `#[Valid]` → RFC-7807 errors → `#[CommandHandler]`/`#[QueryHandler]` →
-`#[EventListener]` → a cached, zero-reflection boot — using nothing but the framework's own real,
-shipped attributes. From here:
+`#[EventListener]` → a database outbox → a `#[Saga]` → a cached, zero-reflection boot — using nothing but
+the framework's own real, shipped attributes. From here:
 
 ### Foundation
 
@@ -1231,6 +1453,11 @@ shipped attributes. From here:
   distinction (`#[AsEventListener]` vs. `#[EventListener]`).
 - [EDA Brokers](modules/eda-brokers.md) and [Messaging](modules/messaging.md) — real broker adapters and the
   lower-level raw-bytes `MessageBrokerPort`.
+- [EDA Database Outbox](modules/eda-database.md) — the portable outbox from Step 12: claim strategies, the
+  relay, and the database support matrix.
+- [Orchestration](modules/orchestration.md) — sagas, TCC and durable workflows: everything Step 13 left out.
+- [Webhooks](modules/webhooks.md) and [Callbacks](modules/callbacks.md) — signed webhooks in, signed callbacks
+  out, both on the event bus.
 
 ### Production
 
@@ -1243,10 +1470,12 @@ shipped attributes. From here:
   the Prometheus/Micrometer-style metrics core.
 - [Tracing](modules/tracing.md) and [Logging](modules/logging.md) — a W3C `traceparent` carried across HTTP,
   the CQRS buses and the event bus, and the same ids on every structured log record.
-- [Resilience](modules/resilience.md) and [Scheduling](modules/scheduling.md) — `Retry`/`CircuitBreaker`/
-  `Bulkhead` and `#[Scheduled]`.
+- [Resilience](modules/resilience.md), [Scheduling](modules/scheduling.md) and
+  [Scheduling Database Locks](modules/scheduling-database.md) — `Retry`/`CircuitBreaker`/`Bulkhead`,
+  `#[Scheduled]`, and the lock that keeps a task on one node.
 - [Testing](modules/testing.md) — the `firefly/testing` boot harness and recording doubles for every port
-  used in this tutorial.
+  used in this tutorial, and [Integration Testing](modules/integration-testing.md) for the same tests on real
+  servers.
 
 ### See It at Scale
 
