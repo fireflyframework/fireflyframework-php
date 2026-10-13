@@ -78,3 +78,31 @@ it('includes the workflow deadline in the wake-up instant while waiting, and cle
     expect(ExecutionState::instant($ctx->toState(ExecutionStatus::Waiting, $now)->wakeAt ?? $now))->toBe('2026-10-12T10:30:00.000000+00:00')
         ->and($ctx->toState(ExecutionStatus::Running, $now)->wakeAt)->toBeNull();
 });
+
+it('keeps a timer that came due after its wait was evaluated in the wake-up instant, so the tick still wakes the workflow', function (): void {
+    $evaluatedAt = new DateTimeImmutable('2026-10-12T10:00:00.000000+00:00');
+    $ctx = ExecutionContext::start(ExecutionPattern::Workflow, 'w', [], [], 'c', $evaluatedAt);
+    $ctx->scheduleTimer('cool-off', $evaluatedAt->modify('+1 milliseconds'));
+
+    // The engine evaluates the wait at one instant and checkpoints a little later: the timer is due by then, but
+    // nothing saw it fire, so dropping it would leave a WAITING row no tick ever looks at again.
+    expect($ctx->timerFired('cool-off', $evaluatedAt))->toBeFalse()
+        ->and(ExecutionState::instant($ctx->toState(ExecutionStatus::Waiting, $evaluatedAt->modify('+5 milliseconds'))->wakeAt ?? $evaluatedAt))
+        ->toBe('2026-10-12T10:00:00.001000+00:00');
+});
+
+it('leaves out of the wake-up instant a timer a wait saw fire, and a due timer nothing evaluated', function (): void {
+    $now = new DateTimeImmutable('2026-10-12T10:00:00+00:00');
+    $ctx = ExecutionContext::start(ExecutionPattern::Workflow, 'w', [], [], 'c', $now);
+    $ctx->scheduleTimer('fired', $now->modify('-1 minute'));
+    $ctx->scheduleTimer('unseen', $now->modify('-2 minutes'));
+    $ctx->scheduleTimer('later', $now->modify('+10 minutes'));
+
+    expect($ctx->timerFired('fired', $now))->toBeTrue()
+        ->and(ExecutionState::instant($ctx->toState(ExecutionStatus::Waiting, $now)->wakeAt ?? $now))->toBe('2026-10-12T10:10:00.000000+00:00');
+
+    // Rescheduling a timer forgets what an earlier check saw: the new instant is pending again.
+    $ctx->scheduleTimer('fired', $now->modify('+1 minute'));
+    expect($ctx->timerFired('fired', $now))->toBeFalse()
+        ->and(ExecutionState::instant($ctx->toState(ExecutionStatus::Waiting, $now->modify('+2 minutes'))->wakeAt ?? $now))->toBe('2026-10-12T10:01:00.000000+00:00');
+});

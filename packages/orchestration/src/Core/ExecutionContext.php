@@ -81,6 +81,14 @@ final class ExecutionContext
     /** @var array<string, DateTimeImmutable> */
     private array $timers = [];
 
+    /**
+     * The instant each timer was last checked (timerFired()) in THIS run. Not persisted: it only tells
+     * wakeAt() which due timers a check actually saw fire, and every run checks its own waits again.
+     *
+     * @var array<string, DateTimeImmutable>
+     */
+    private array $timerChecks = [];
+
     private ?string $waitingOn = null;
 
     private ?string $parentCorrelationId = null;
@@ -490,16 +498,22 @@ final class ExecutionContext
     public function scheduleTimer(string $timerId, DateTimeImmutable $fireAt): void
     {
         $this->timers[$timerId] = $fireAt;
+        unset($this->timerChecks[$timerId]);
     }
 
     public function timerFired(string $timerId, DateTimeImmutable $now): bool
     {
-        return isset($this->timers[$timerId]) && $this->timers[$timerId] <= $now;
+        if (! isset($this->timers[$timerId])) {
+            return false;
+        }
+        $this->timerChecks[$timerId] = $now;
+
+        return $this->timers[$timerId] <= $now;
     }
 
     public function removeTimer(string $timerId): void
     {
-        unset($this->timers[$timerId]);
+        unset($this->timers[$timerId], $this->timerChecks[$timerId]);
     }
 
     public function waitingOn(): ?string
@@ -549,13 +563,23 @@ final class ExecutionContext
     }
 
     /**
-     * The earliest PENDING instant: a timer already due is being handled by the run that checkpoints now (it
-     * fired, and the step is still waiting on something else — a signal of a WaitForAll), so counting it
-     * would make the tick wake this execution every minute for nothing.
+     * The earliest PENDING instant. A timer a check of this run saw fire is being handled by the run that
+     * checkpoints now (the step is still waiting on something else — a signal of a WaitForAll), and a due timer
+     * nothing in this run checked belongs to a run that did not get that far (a tick back-off), so counting
+     * either would make the tick wake this execution on every pass for nothing. A timer is judged against the
+     * instant it was CHECKED, not the checkpoint instant: a wait is evaluated a moment before the checkpoint is
+     * written, and a timer that came due in between was never seen firing — dropping it would leave a WAITING
+     * execution with no wake-up, which no tick ever looks at again. Its wakeAt is then already past, and the
+     * next tick drives it.
      */
     private function wakeAt(DateTimeImmutable $now): ?DateTimeImmutable
     {
-        $candidates = array_values(array_filter($this->timers, static fn (DateTimeImmutable $at): bool => $at > $now));
+        $candidates = [];
+        foreach ($this->timers as $timerId => $at) {
+            if ($at > ($this->timerChecks[$timerId] ?? $now)) {
+                $candidates[] = $at;
+            }
+        }
         if ($this->deadline !== null) {
             $candidates[] = $this->deadline;
         }
