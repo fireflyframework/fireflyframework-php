@@ -2081,9 +2081,23 @@ return [
          | availability zone can legitimately need tens of milliseconds.
          |
          | Default: 0.5 (500ms).
+         |
+         | provider — where breaker, limiter and bulkhead state lives. `cache` keeps it on Laravel's default
+         | cache store, so every FPM worker and queue process shares one view; `memory` keeps it in the
+         | process (tests, CLI, a single long-running worker). An application that binds its own
+         | ResilienceStore wins over both.
+         |
+         | allow-lockless — the `cache` provider needs a store with atomic locks (redis, database, file,
+         | memcached, dynamodb, array) so a transition is a real critical section. On a store without them
+         | (apc, session) the application refuses to boot with RESILIENCE_STORE_LOCKLESS; true accepts the
+         | race between workers instead, logging one warning per store.
+         |
+         | Default: provider 'cache', allow-lockless false.
         */
         'store' => [
             'lock-block-timeout' => '500ms',
+            'provider' => env('FIREFLY_RESILIENCE_STORE_PROVIDER', 'cache'),
+            'allow-lockless' => env('FIREFLY_RESILIENCE_STORE_ALLOW_LOCKLESS', false),
         ],
 
         /*
