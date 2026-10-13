@@ -6,8 +6,8 @@ namespace Firefly\EventSourcing\Event;
 
 /**
  * One constructor parameter of a convention-mapped event, compiled at scan time so that building the event back
- * needs no reflection. `type` is the declared type's name (`string`, `float`, a class), or null for a union or no
- * type.
+ * needs no reflection. `type` is the declared type's name (`string`, `float`, a class), or null for no type or a
+ * union of JSON scalars and array, whose stored value is passed through as is (the scanner refuses any other union).
  *
  * @phpstan-type EventParameterRow array{name: string, type: string|null, nullable: bool, optional: bool}
  */

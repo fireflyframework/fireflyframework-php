@@ -97,7 +97,9 @@ final class EventMapper
 
     /**
      * Whether coerce() can rebuild a constructor parameter of this compiled type from its stored JSON value: no
-     * declared type, a union (compiled as null), mixed, the JSON scalars, array, a date, or an enum.
+     * declared type, mixed, the JSON scalars, array, a date, or an enum. Null also stands for a union, which the scanner
+     * compiles as null only when every member is a JSON scalar or array (passed through as stored); it refuses any
+     * other union, and every intersection, before this is asked.
      */
     public static function canBuild(?string $type): bool
     {

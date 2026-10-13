@@ -19,6 +19,8 @@ use ReflectionClass;
 use ReflectionNamedType;
 use ReflectionParameter;
 use ReflectionProperty;
+use ReflectionType;
+use ReflectionUnionType;
 use SplFileInfo;
 
 /**
@@ -32,7 +34,8 @@ use SplFileInfo;
  * envelope). A constructor parameter with no public property of its name would be missing from every stored payload,
  * and a public property no constructor parameter takes would be stored and then silently dropped on reload. A
  * constructor parameter whose type EventMapper cannot rebuild from JSON (EventMapper::canBuild(), for example a
- * JsonSerializable value object, which is written but never read back) is refused too. Each refuses the scan here,
+ * JsonSerializable value object, which is written but never read back) is refused too, and so is a union with a
+ * member other than a JSON scalar or array, or an intersection (passesThrough()). Each refuses the scan here,
  * rather than surfacing as an unreadable stream at replay time.
  */
 final class EventSourcingScanner
@@ -59,12 +62,16 @@ final class EventSourcingScanner
             $parameters = [];
             if (! $serializable) {
                 $this->assertRoundTrips($reflection);
+                $composite = [];
                 foreach ($reflection->getConstructor()?->getParameters() ?? [] as $parameter) {
                     $declared = $parameter->getType();
+                    if (! $declared instanceof ReflectionNamedType && $declared !== null && ! self::passesThrough($declared)) {
+                        $composite[] = '$'.$parameter->getName().' ('.$declared.')';
+                    }
                     $name = $declared instanceof ReflectionNamedType ? $declared->getName() : null;
                     $parameters[] = new EventParameter($parameter->getName(), $name === 'self' || $name === 'static' ? $class : $name, $declared === null || $declared->allowsNull(), $parameter->isOptional());
                 }
-                $this->assertBuildable($class, $parameters);
+                $this->assertBuildable($class, $parameters, $composite);
             }
 
             /** @var class-string<DomainEvent> $class */
@@ -114,12 +121,15 @@ final class EventSourcingScanner
 
     /**
      * Every convention-mapped constructor parameter must have a type EventMapper can rebuild from its stored value.
+     * $composite carries the union and intersection parameters already refused by passesThrough(): they compile as
+     * type null, which canBuild() accepts, so they are named here rather than found again in $parameters.
      *
      * @param  list<EventParameter>  $parameters
+     * @param  list<string>  $composite
      */
-    private function assertBuildable(string $class, array $parameters): void
+    private function assertBuildable(string $class, array $parameters, array $composite): void
     {
-        $unbuildable = [];
+        $unbuildable = $composite;
         foreach ($parameters as $parameter) {
             if (! in_array($parameter->name, ['eventId', 'occurredAt'], true) && ! EventMapper::canBuild($parameter->type)) {
                 $unbuildable[] = '$'.$parameter->name.' ('.$parameter->type.')';
@@ -129,7 +139,27 @@ final class EventSourcingScanner
             return;
         }
 
-        throw new ConfigurationException("#[EventType] on {$class}: the constructor parameter(s) ".implode(', ', $unbuildable).' have a type the convention mapper cannot rebuild from the stored payload, so the event could be appended but never read back. It builds int, float, string, bool, array, mixed, untyped and union parameters, dates and enums; implement Firefly\\EventSourcing\\Event\\SerializableEvent to map the other types yourself.');
+        throw new ConfigurationException("#[EventType] on {$class}: the constructor parameter(s) ".implode(', ', $unbuildable).' have a type the convention mapper cannot rebuild from the stored payload, so the event could be appended but never read back. It builds int, float, string, bool, array, mixed and untyped parameters, unions of those, dates and enums; implement Firefly\\EventSourcing\\Event\\SerializableEvent to map the other types yourself.');
+    }
+
+    /**
+     * A union or intersection parameter compiles as type null, so EventMapper hands it the stored JSON value as is.
+     * That is right only when every non-null member of a union is a JSON scalar, array or mixed: a class member (a
+     * date, an enum, a value object) would be given a string or an array it cannot accept, or would silently come
+     * back as that string. An intersection only ever names classes, so it never passes through.
+     */
+    private static function passesThrough(ReflectionType $declared): bool
+    {
+        if (! $declared instanceof ReflectionUnionType) {
+            return false;
+        }
+        foreach ($declared->getTypes() as $member) {
+            if (! $member instanceof ReflectionNamedType || ! in_array($member->getName(), ['null', 'int', 'float', 'string', 'bool', 'false', 'true', 'array', 'mixed'], true)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

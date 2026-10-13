@@ -2,13 +2,18 @@
 
 declare(strict_types=1);
 
+use Firefly\EventSourcing\Event\EventMapper;
+use Firefly\EventSourcing\Event\EventMetadata;
 use Firefly\EventSourcing\Event\EventParameter;
+use Firefly\EventSourcing\Event\EventTypeRegistry;
+use Firefly\EventSourcing\Event\StoredEvent;
 use Firefly\EventSourcing\Manifest\EventSourcingManifest;
 use Firefly\EventSourcing\Manifest\EventSourcingManifestCompiler;
 use Firefly\EventSourcing\Scanner\EventSourcingScanner;
 use Firefly\EventSourcing\Tests\Fixtures\Events\OrderChannel;
 use Firefly\EventSourcing\Tests\Fixtures\Events\OrderPaid;
 use Firefly\EventSourcing\Tests\Fixtures\Events\OrderPlaced;
+use Firefly\EventSourcing\Tests\Fixtures\Unions\Counted;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 
 /** @return array<string, string> */
@@ -71,4 +76,28 @@ it('refuses a convention-mapped constructor parameter whose type the mapper cann
 
     expect($scan)->toThrow(ConfigurationException::class, 'the constructor parameter(s) $price (Firefly\\EventSourcing\\Tests\\InvalidFixtures\\UnbuildableType\\Money) have a type the convention mapper cannot rebuild')
         ->and($scan)->toThrow(ConfigurationException::class, 'implement Firefly\\EventSourcing\\Event\\SerializableEvent');
+});
+
+it('refuses a convention-mapped union parameter with a class member, since its stored value would be handed back raw', function (): void {
+    $scan = fn () => (new EventSourcingScanner)->scan(eventFixtures('InvalidFixtures/UnionType', 'InvalidFixtures\\UnionType'));
+
+    expect($scan)->toThrow(ConfigurationException::class, 'the constructor parameter(s) $price (Firefly\\EventSourcing\\Tests\\InvalidFixtures\\UnbuildableType\\Money|int), $effective (DateTimeImmutable|string|null) have a type the convention mapper cannot rebuild')
+        ->and($scan)->toThrow(ConfigurationException::class, 'implement Firefly\\EventSourcing\\Event\\SerializableEvent');
+});
+
+it('refuses a convention-mapped intersection parameter', function (): void {
+    expect(fn () => (new EventSourcingScanner)->scan(eventFixtures('InvalidFixtures/IntersectionType', 'InvalidFixtures\\IntersectionType')))
+        ->toThrow(ConfigurationException::class, 'the constructor parameter(s) $tags (Countable&Traversable) have a type the convention mapper cannot rebuild');
+});
+
+it('accepts a union of JSON scalars and array and reads it back exactly as it was written', function (): void {
+    $mapper = new EventMapper(new EventTypeRegistry((new EventSourcingScanner)->scan(eventFixtures('Fixtures/Unions', 'Fixtures\\Unions'))->eventTypes()));
+    $event = new Counted('12', null, ['A1', 'B2']);
+    $new = $mapper->toNewEvent($event);
+    /** @var array<string, mixed> $payload */
+    $payload = json_decode((string) json_encode($new->payload), true, flags: JSON_THROW_ON_ERROR);
+    $back = $mapper->toDomainEvent(new StoredEvent($new->eventId, 's-1', 'stock', 1, 1, $new->eventType, $new->eventVersion, $payload, new EventMetadata, $new->occurredAt, new DateTimeImmutable));
+
+    expect($back)->toBeInstanceOf(Counted::class)
+        ->and($back instanceof Counted ? [$back->quantity, $back->flag, $back->bins] : null)->toBe(['12', null, ['A1', 'B2']]);
 });
