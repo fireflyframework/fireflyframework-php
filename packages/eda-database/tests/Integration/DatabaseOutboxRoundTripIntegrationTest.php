@@ -109,7 +109,10 @@ foreach (IntegrationDsn::lanes() as $lane) {
             // (1) invisible to another session until the writer commits
             $writer->transaction(function () use ($publisher, $reader): void {
                 $publisher->publish('orders', 'order.placed', ['n' => 1]);
-                expect($reader->table(OutboxSchema::TABLE)->count())->toBe(0);
+                // SQL Server without READ_COMMITTED_SNAPSHOT makes a plain read WAIT on the uncommitted row (here, forever:
+                // the writer is this process); READPAST reads what is committed, which is the claim being made.
+                $visible = $reader->table(OutboxSchema::TABLE);
+                expect(($reader->getDriverName() === 'sqlsrv' ? $visible->lock('with(readpast)') : $visible)->count())->toBe(0);
             });
             expect($reader->table(OutboxSchema::TABLE)->where('status', OutboxSchema::STATUS_PENDING)->count())->toBe(1);
 
