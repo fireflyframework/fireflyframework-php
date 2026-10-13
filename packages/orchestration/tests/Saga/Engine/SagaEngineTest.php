@@ -243,3 +243,71 @@ it('starts a registered saga by name', function (): void {
 
     expect($engines->sagas->execute('hello', ['who' => 'ada'])->resultOf('greet'))->toBe('hello ada');
 });
+
+/**
+ * a → b → c → d; d fails unless `$failForward` is false, and b's compensation always fails and is critical, so
+ * CIRCUIT_BREAKER stops before a.
+ *
+ * @param  list<string>  $log
+ */
+function orchestrationCriticalSaga(array &$log, bool $failForward = true): SagaDefinition
+{
+    $builder = SagaBuilder::saga('critical');
+    foreach (['a' => [], 'b' => ['a'], 'c' => ['b']] as $id => $dependsOn) {
+        $builder = $builder->step($id)->dependsOn(...$dependsOn)
+            ->handler(static fn (): string => "did {$id}")
+            ->compensation(static function () use ($id, &$log): string {
+                $log[] = "undo {$id}";
+                if ($id === 'b') {
+                    throw new RuntimeException('cannot undo b');
+                }
+
+                return "undid {$id}";
+            })
+            ->compensationCritical($id === 'b')
+            ->add();
+    }
+
+    return $builder->step('d')->dependsOn('c')->handler(static function () use ($failForward): string {
+        if ($failForward) {
+            throw new RuntimeException('d failed');
+        }
+
+        return 'did d';
+    })->add()->build();
+}
+
+it('ends COMPENSATION_FAILED, dead-letters the execution and names the uncompensated steps when CIRCUIT_BREAKER stops a failed saga', function (): void {
+    $engines = TestEngines::create(['saga' => ['compensation-policy' => 'circuit-breaker']]);
+    $log = [];
+
+    $result = $engines->sagas->execute(orchestrationCriticalSaga($log), correlationId: 'cb-1');
+    $letters = $engines->deadLetterStore->findByCorrelationId('cb-1');
+    $statuses = array_map(static fn ($entry): string => $entry->statusAtFailure->value, $letters);
+
+    expect($log)->toBe(['undo c', 'undo b'])
+        ->and($result->status)->toBe(ExecutionStatus::CompensationFailed)
+        ->and($result->isSuccess())->toBeFalse()
+        ->and($result->uncompensatedSteps)->toBe(['b', 'a'])
+        ->and($result->compensatedSteps())->toBe(['c'])
+        ->and($result->toArray()['uncompensatedSteps'] ?? null)->toBe(['b', 'a'])
+        ->and($engines->persistence->findById('cb-1')?->status)->toBe(ExecutionStatus::CompensationFailed)
+        ->and($engines->persistence->findById('cb-1')?->failureReason)->toContain('[a] left uncompensated')
+        ->and($statuses)->toContain(ExecutionStatus::CompensationFailed->value)
+        ->and(array_values(array_filter($letters, static fn ($entry): bool => $entry->statusAtFailure === ExecutionStatus::CompensationFailed))[0]->stepId ?? null)->toBe('b');
+});
+
+it('ends COMPENSATION_FAILED and dead-letters the execution when CIRCUIT_BREAKER stops a compensation on request', function (): void {
+    $engines = TestEngines::create(['saga' => ['compensation-policy' => 'circuit-breaker']]);
+    $log = [];
+    $saga = orchestrationCriticalSaga($log, failForward: false);
+    $engines->sagaRegistry->register($saga);
+    $engines->sagas->execute($saga, correlationId: 'cb-2');
+
+    $result = $engines->sagas->compensate('cb-2');
+
+    expect($result->status)->toBe(ExecutionStatus::CompensationFailed)
+        ->and($result->uncompensatedSteps)->toBe(['b', 'a'])
+        ->and($engines->persistence->findById('cb-2')?->status)->toBe(ExecutionStatus::CompensationFailed)
+        ->and(array_map(static fn ($entry): string => $entry->statusAtFailure->value, $engines->deadLetterStore->findByCorrelationId('cb-2')))->toBe([ExecutionStatus::CompensationFailed->value]);
+});

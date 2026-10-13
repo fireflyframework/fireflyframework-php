@@ -16,13 +16,15 @@ use Throwable;
 /**
  * What SagaEngine::execute() returns (jafly SagaResult). A failed step is reported here, never thrown: check
  * isSuccess(), then failedSteps()/compensatedSteps()/error. `success` is false for a FAILED saga and true for
- * a COMPLETED one — including one whose error an #[OnSagaError(suppressError: true)] suppressed.
+ * a COMPLETED one — including one whose error an #[OnSagaError(suppressError: true)] suppressed. A saga whose
+ * compensation stopped part-way is COMPENSATION_FAILED and lists the steps it left in `uncompensatedSteps`.
  */
 final readonly class SagaResult
 {
     /**
      * @param  array<string, StepOutcome>  $steps
      * @param  array<string, string>  $headers
+     * @param  list<string>  $uncompensatedSteps  the steps a COMPENSATION_FAILED saga left undone, in compensation order
      */
     public function __construct(
         public string $sagaName,
@@ -35,9 +37,13 @@ final readonly class SagaResult
         public ?ExecutionReport $report,
         public DateTimeImmutable $startedAt,
         public DateTimeImmutable $completedAt,
+        public array $uncompensatedSteps = [],
     ) {}
 
-    public static function from(SagaDefinition $saga, ExecutionContext $context, ExecutionStatus $status, ?Throwable $error, ?ExecutionReport $report, DateTimeImmutable $now): self
+    /**
+     * @param  list<string>  $uncompensated
+     */
+    public static function from(SagaDefinition $saga, ExecutionContext $context, ExecutionStatus $status, ?Throwable $error, ?ExecutionReport $report, DateTimeImmutable $now, array $uncompensated = []): self
     {
         $steps = [];
         foreach ($saga->stepIds() as $stepId) {
@@ -53,7 +59,7 @@ final readonly class SagaResult
             );
         }
 
-        return new self($saga->name, $context->correlationId, $status, $status->isSuccess(), $error, $steps, $context->headers(), $report, $context->startedAt(), $now);
+        return new self($saga->name, $context->correlationId, $status, $status->isSuccess(), $error, $steps, $context->headers(), $report, $context->startedAt(), $now, $uncompensated);
     }
 
     public function isSuccess(): bool
@@ -115,6 +121,7 @@ final readonly class SagaResult
             'durationMs' => $this->durationMs(),
             'headers' => $this->headers,
             'steps' => array_map(static fn (StepOutcome $step): array => $step->toArray(), $this->steps),
+            'uncompensatedSteps' => $this->uncompensatedSteps,
             'report' => $this->report?->toArray(),
         ];
     }

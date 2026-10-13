@@ -34,8 +34,10 @@ use Throwable;
  *  - compensate() refused before it started (the execution lock timed out, the store could not be read, the
  *    execution was already cancelled): the execution keeps its status — a COMPLETED member stays COMPLETED,
  *    which recovery never picks up, so the result is the only place the caller learns of it;
- *  - one of its compensations failed and the engine handled it (the error handler continued, FAIL_SAGA, an
- *    open compensation circuit): the execution ends CANCELLED with the failed steps marked in its report;
+ *  - one of its compensations failed and the error handler continued: the execution ends CANCELLED with the
+ *    failed steps marked in its report;
+ *  - the compensation stopped part-way (FAIL_SAGA, an open compensation circuit, a failed critical step): the
+ *    execution ends COMPENSATION_FAILED and is dead-lettered;
  *  - compensate() threw after it started: the execution stays COMPENSATING, where recovery finds it.
  */
 final class SagaCompositor

@@ -38,7 +38,7 @@ final readonly class ExecutionOutcome
 
     public static function fromWorkflow(ExecutionState $state): self
     {
-        $success = ! in_array($state->status, [ExecutionStatus::Failed, ExecutionStatus::TimedOut, ExecutionStatus::Cancelled], true);
+        $success = ! in_array($state->status, [ExecutionStatus::Failed, ExecutionStatus::TimedOut, ExecutionStatus::Cancelled, ExecutionStatus::CompensationFailed], true);
 
         return new self($state->correlationId, ExecutionPattern::Workflow, $state->executionName, $state->status, $success, $state->toArray());
     }

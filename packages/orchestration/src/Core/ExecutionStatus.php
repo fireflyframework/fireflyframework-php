@@ -6,7 +6,8 @@ namespace Firefly\Orchestration\Core;
 
 /**
  * The lifecycle of an execution, shared by the three engines (jafly ExecutionStatus parity). Sagas use
- * RUNNING → COMPENSATING → COMPLETED|FAILED; TCC uses TRYING → CONFIRMING → CONFIRMED, or CANCELING →
+ * RUNNING → COMPENSATING → COMPLETED|FAILED, or COMPENSATION_FAILED when the compensation stopped before every
+ * completed step was undone (the execution is dead-lettered for an operator); TCC uses TRYING → CONFIRMING → CONFIRMED, or CANCELING →
  * CANCELED|FAILED; workflows add PENDING (queued), WAITING (a signal, timer or child) and SUSPENDED.
  *
  * "Recoverable" is the set a crashed process can leave behind and the recovery sweep may act on. WAITING and
@@ -29,6 +30,7 @@ enum ExecutionStatus: string
     case Canceling = 'CANCELING';
     case Canceled = 'CANCELED';
     case Compensating = 'COMPENSATING';
+    case CompensationFailed = 'COMPENSATION_FAILED';
 
     public function isTerminal(): bool
     {
@@ -58,7 +60,7 @@ enum ExecutionStatus: string
     /** @return list<self> */
     public static function terminal(): array
     {
-        return [self::Completed, self::Failed, self::Cancelled, self::TimedOut, self::Confirmed, self::Canceled];
+        return [self::Completed, self::Failed, self::Cancelled, self::TimedOut, self::Confirmed, self::Canceled, self::CompensationFailed];
     }
 
     /** @return list<self> */

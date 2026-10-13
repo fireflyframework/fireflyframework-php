@@ -30,8 +30,9 @@ use Throwable;
  *  - RETRY_WITH_BACKOFF: reverse completion order with the step's compensation retry/backoff/timeout.
  *  - CIRCUIT_BREAKER: reverse completion order through a firefly/resilience breaker per saga; a failed
  *    `compensationCritical` step, or an open breaker, stops the sweep and throws a CompensationException
- *    naming the step that stopped it and the steps left DONE. Nothing re-runs them automatically: the
- *    execution ends with that message as its reason, for an operator to act on.
+ *    naming the step that stopped it and the steps left DONE. Nothing re-runs them automatically: SagaEngine
+ *    ends the execution COMPENSATION_FAILED with that message as its reason and dead-letters it, for an
+ *    operator to act on.
  *  - BEST_EFFORT: reverse completion order, every compensation attempted, FAIL_SAGA ignored.
  *
  * The error handler's RETRY answer re-runs the compensation after the step's compensation backoff (under
@@ -101,8 +102,8 @@ final class SagaCompensator
      * Compensates in reverse completion order through the saga's breaker. When the breaker refuses a step (or
      * opens during the sweep), or a `compensationCritical` step fails, the sweep stops and a
      * CompensationException names the step that stopped it and the steps left DONE. The engine records that
-     * message as the execution's reason, so a FAILED or CANCELLED saga never claims a compensation it did not
-     * finish.
+     * message as the execution's reason and ends it COMPENSATION_FAILED, so a saga never claims a compensation
+     * it did not finish.
      *
      * @param  list<string>  $reversed
      */
@@ -175,7 +176,22 @@ final class SagaCompensator
         $this->support->logger->warning($message.'.', ['correlationId' => $context->correlationId]);
         $this->support->checkpoint($context, ExecutionStatus::Compensating);
 
-        throw new CompensationException($message.($lastError === null ? '.' : ": {$lastError->getMessage()}"), $lastError);
+        throw new CompensationException($message.($lastError === null ? '.' : ": {$lastError->getMessage()}"), $lastError, $stoppedAt, $this->uncompensated($saga, $context));
+    }
+
+    /**
+     * The completed steps with a compensation that is not undone (still DONE, or COMPENSATION_FAILED), in
+     * reverse completion order.
+     *
+     * @return list<string>
+     */
+    private function uncompensated(SagaDefinition $saga, ExecutionContext $context): array
+    {
+        return array_values(array_filter(
+            array_reverse($context->completionOrder()),
+            static fn (string $stepId): bool => ($saga->steps[$stepId] ?? null)?->compensation !== null
+                && in_array($context->stepStatus($stepId), [StepStatus::Done, StepStatus::CompensationFailed], true),
+        ));
     }
 
     /** Runs one compensation; returns its error, or null when it succeeded. Throws only when `$breaker` refused admission. */
@@ -242,7 +258,7 @@ final class SagaCompensator
 
             if ($decision === CompensationErrorResult::FailSaga) {
                 if ($honourFailSaga) {
-                    throw new CompensationException("Saga [{$saga->name}] stopped compensating at step [{$stepId}]: {$error->getMessage()}", $error);
+                    throw new CompensationException("Saga [{$saga->name}] stopped compensating at step [{$stepId}]: {$error->getMessage()}", $error, $stepId, $this->uncompensated($saga, $context));
                 }
 
                 return false;

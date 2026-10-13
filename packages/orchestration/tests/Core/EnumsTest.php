@@ -10,7 +10,7 @@ use Firefly\Orchestration\Core\StepStatus;
 it('separates terminal, recoverable and suspendable execution statuses', function (): void {
     expect(ExecutionStatus::terminal())->toBe([
         ExecutionStatus::Completed, ExecutionStatus::Failed, ExecutionStatus::Cancelled,
-        ExecutionStatus::TimedOut, ExecutionStatus::Confirmed, ExecutionStatus::Canceled,
+        ExecutionStatus::TimedOut, ExecutionStatus::Confirmed, ExecutionStatus::Canceled, ExecutionStatus::CompensationFailed,
     ])
         ->and(ExecutionStatus::Waiting->isTerminal())->toBeFalse()
         ->and(ExecutionStatus::Waiting->isRecoverable())->toBeFalse()

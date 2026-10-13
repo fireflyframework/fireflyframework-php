@@ -113,14 +113,13 @@ final class SagaEngine
             $context = ExecutionContext::fromState($state);
             $this->support->checkpoint($context, ExecutionStatus::Compensating);
 
-            $reason = 'compensated on request';
             try {
                 $this->compensator->compensate($definition, $context);
             } catch (CompensationException $failure) {
-                $reason = $failure->getMessage();
+                return $this->compensationFailed($definition, $context, $failure, $failure);
             }
 
-            return $this->finish($definition, $context, ExecutionStatus::Cancelled, null, $reason);
+            return $this->finish($definition, $context, ExecutionStatus::Cancelled, null, 'compensated on request');
         });
     }
 
@@ -167,21 +166,39 @@ final class SagaEngine
             $this->support->deadLetter($context, $stepId, ExecutionStatus::Failed, $stepError);
         }
 
-        $suppressed = $compensationFailure === null && $this->support->callbacks->suppresses($saga->onError, $error);
-        $result = $suppressed
-            ? $this->finish($saga, $context, ExecutionStatus::Completed, null, null)
-            : $this->finish($saga, $context, ExecutionStatus::Failed, $error, $compensationFailure?->getMessage() ?? $error->getMessage());
+        if ($compensationFailure !== null) {
+            $result = $this->compensationFailed($saga, $context, $compensationFailure, $error);
+        } elseif ($this->support->callbacks->suppresses($saga->onError, $error)) {
+            $result = $this->finish($saga, $context, ExecutionStatus::Completed, null, null);
+        } else {
+            $result = $this->finish($saga, $context, ExecutionStatus::Failed, $error, $error->getMessage());
+        }
 
         $this->support->callbacks->invoke($saga->onError, $context, $result, $error);
 
         return $result;
     }
 
-    private function finish(SagaDefinition $saga, ExecutionContext $context, ExecutionStatus $status, ?Throwable $error, ?string $reason): SagaResult
+    /**
+     * A compensation that stopped before every completed step was undone (CompensationException) ends the saga
+     * COMPENSATION_FAILED, never FAILED or CANCELLED as if it had been rolled back: the steps it left are named
+     * in the reason and in SagaResult::$uncompensatedSteps, and the execution is dead-lettered for an operator.
+     */
+    private function compensationFailed(SagaDefinition $saga, ExecutionContext $context, CompensationException $failure, Throwable $error): SagaResult
+    {
+        $this->support->deadLetter($context, $failure->stoppedAt, ExecutionStatus::CompensationFailed, $failure);
+
+        return $this->finish($saga, $context, ExecutionStatus::CompensationFailed, $error, $failure->getMessage(), $failure->uncompensatedSteps);
+    }
+
+    /**
+     * @param  list<string>  $uncompensated
+     */
+    private function finish(SagaDefinition $saga, ExecutionContext $context, ExecutionStatus $status, ?Throwable $error, ?string $reason, array $uncompensated = []): SagaResult
     {
         $now = $this->support->now();
         $report = ExecutionReportBuilder::fromContext($context, $status, $reason, $now, $saga->stepIds());
-        $result = SagaResult::from($saga, $context, $status, $error, $report, $now);
+        $result = SagaResult::from($saga, $context, $status, $error, $report, $now, $uncompensated);
 
         $this->support->checkpoint($context, $status, $reason, $report);
         $this->support->publish($this->support->lifecycle, OrchestrationEvent::executionCompleted($saga->name, $context->correlationId, ExecutionPattern::Saga, $status, $now));

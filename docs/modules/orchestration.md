@@ -91,7 +91,7 @@ Steps can also be declared without a class through `SagaBuilder::saga('checkout'
 | `strict-sequential` (default) | Undo in reverse completion order, one at a time. |
 | `grouped-parallel` | Undo layer by layer, in reverse layer order. |
 | `retry-with-backoff` | Like `strict-sequential`, retrying each compensation with its `compensationRetry` and `compensationBackoffMs`. |
-| `circuit-breaker` | Stop compensating once a `compensationCritical` step fails or the breaker opens, and leave the rest to recovery. |
+| `circuit-breaker` | Stop compensating once a `compensationCritical` step fails or the breaker opens; the saga ends `COMPENSATION_FAILED`, is dead-lettered, and lists the steps it left in `SagaResult::$uncompensatedSteps`. |
 | `best-effort` | Run every compensation and record each failure without stopping. |
 
 `firefly.orchestration.saga.compensation-error-handler` decides what one failed compensation does to the run:
