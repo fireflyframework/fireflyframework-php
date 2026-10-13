@@ -149,6 +149,12 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ### Fixed
 
+- **The Lumen sample let any wallet owner debit any wallet.** `WithdrawHandler` and `RepayLoanHandler` were guarded
+  by `hasRole('ADMIN') or hasRole('WALLET_OWNER')`, so every customer could withdraw from, pay out of or repay a
+  loan against someone else's wallet. Both now require `hasRole('ADMIN') or (hasRole('WALLET_OWNER') and
+  hasPermission(#command, 'debit'))`, answered by the sample's `WalletPermissionEvaluator`, which grants the debit
+  only to the wallet's owner and refuses unknown targets and permissions; Chapters 4, 6, 9A, 9B and 10 of the book
+  follow, in both editions.
 - **`firefly:callbacks:replay` honors deactivation and endpoint changes.** The deliverer refuses an inactive
   subscription on every path (replay needs `--include-inactive`, which the output reports), and every delivery goes
   to the subscription's current URL — checked against `http.require-https` / `http.allowed-hosts` — instead of the
