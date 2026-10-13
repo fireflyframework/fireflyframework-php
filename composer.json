@@ -76,6 +76,7 @@
             "Firefly\\Messaging\\Tests\\": "packages/messaging/tests/",
             "Firefly\\Observability\\Tests\\": "packages/observability/tests/",
             "Firefly\\OpenApi\\Tests\\": "packages/openapi/tests/",
+            "Firefly\\Orchestration\\Tests\\": "packages/orchestration/tests/",
             "Firefly\\Resilience\\Tests\\": "packages/resilience/tests/",
             "Firefly\\Scheduling\\Database\\Tests\\": "packages/scheduling-database/tests/",
             "Firefly\\Scheduling\\Postgres\\Tests\\": "packages/scheduling-postgres/tests/",
@@ -145,6 +146,7 @@
         "firefly/messaging": "self.version",
         "firefly/observability": "self.version",
         "firefly/openapi": "self.version",
+        "firefly/orchestration": "self.version",
         "firefly/resilience": "self.version",
         "firefly/scheduling": "self.version",
         "firefly/scheduling-database": "self.version",
@@ -178,6 +180,7 @@
             "Firefly\\Kernel\\": "packages/kernel/src/",
             "Firefly\\Messaging\\": "packages/messaging/src/",
             "Firefly\\Observability\\": "packages/observability/src/",
+            "Firefly\\Orchestration\\": "packages/orchestration/src/",
             "Firefly\\OpenApi\\": "packages/openapi/src/",
             "Firefly\\Resilience\\": "packages/resilience/src/",
             "Firefly\\Scheduling\\": "packages/scheduling/src/",
@@ -272,6 +275,8 @@
                 "Firefly\\Security\\OAuth2\\Client\\SecurityOAuth2ClientWiringProvider",
                 "Firefly\\FeatureFlags\\FeatureFlagsServiceProvider",
                 "Firefly\\FeatureFlags\\FeatureFlagsWiringProvider",
+                "Firefly\\Orchestration\\OrchestrationServiceProvider",
+                "Firefly\\Orchestration\\OrchestrationWiringProvider",
                 "Firefly\\Cli\\Boot\\FireflyCacheServiceProvider"
             ]
         }

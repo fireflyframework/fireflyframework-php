@@ -242,6 +242,14 @@ survivors before the next config is evaluated, so `cqrsMetrics()` registers **fi
 `#[ConditionalOnMissingBean(CqrsMetrics::class)]` then sees a bean already bound and backs off. No code in
 `firefly/cqrs` changes; the win is pure auto-configuration ordering.
 
+`MeterRegistryOrchestrationMetrics` is the same drop-in for `firefly/orchestration`'s `OrchestrationMetrics` port,
+behind the same `#[Order(500)]` precedence over `OrchestrationAutoConfiguration`'s `#[Order(1000)]` no-op:
+
+    orchestration_executions_seconds{name, pattern, outcome}
+    orchestration_steps_seconds{name, step, outcome}
+    orchestration_compensations_total{name, step, outcome}
+    orchestration_dead_letters_total{name}
+
 ## Gating — property, not bean presence
 
 Every observability bean/endpoint/filter gates on the **same** config property,

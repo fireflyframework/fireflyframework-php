@@ -1072,7 +1072,7 @@ Full flag reference and generated-file contents: [CLI](docs/cli.md).
 
 One published library, `fireflyframework/larafly`, contains the components under `packages/*` and the bundled
 application skeleton. Its `replace` entries satisfy component requirements at the framework's version;
-component names remain useful module boundaries, with their own test suites. The 35
+component names remain useful module boundaries, with their own test suites. The 36
 [module guides](docs/modules/) below group them by concern:
 
 | Group | Module | Package(s) |
@@ -1097,6 +1097,7 @@ component names remain useful module boundaries, with their own test suites. The
 | Eventing & Messaging | [EDA Brokers](docs/modules/eda-brokers.md) — RabbitMQ/Postgres/Kafka adapters; Postgres adds `LISTEN`/`NOTIFY` to the database outbox | `firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka` |
 | Eventing & Messaging | [EDA Database Outbox](docs/modules/eda-database.md) — the portable same-transaction outbox on every database, concurrent consumers | `firefly/eda-database` |
 | Eventing & Messaging | [Messaging](docs/modules/messaging.md) — the lower-level raw-bytes broker layer | `firefly/messaging` |
+| Eventing & Messaging | [Orchestration](docs/modules/orchestration.md) — sagas, TCC, durable workflows, recovery, DLQ | `firefly/orchestration` |
 | CQRS | [CQRS](docs/modules/cqrs.md) — `CommandBus`/`QueryBus`, the domain→integration-event bridge | `firefly/cqrs` |
 | Security | [Security](docs/modules/security.md) — principal model, `HttpSecurity`, `#[PreAuthorize]`, JWT/OAuth2 | `firefly/security` |
 | Security | [OAuth2 Client](docs/modules/security-oauth2-client.md) — OpenID Connect login with presets and discovery, PKCE, id-token validation, `OidcUser`, RP-initiated logout, client credentials, `Http::oauth2Client()` | `firefly/security-oauth2-client` |
@@ -1149,10 +1150,10 @@ genuine same-transaction outbox (RabbitMQ, Postgres, Kafka, and the portable dat
 server, with integration lanes per server in CI) and the global `firefly new` installer. What's still ahead,
 accurately:
 
-- **More actuator endpoints.** Sixteen ship today — `/health`, `/info`, `/env`, `/beans`, `/conditions`,
+- **More actuator endpoints.** Seventeen ship today — `/health`, `/info`, `/env`, `/beans`, `/conditions`,
   `/mappings`, `/loggers`, `/scheduledtasks`, `/caches`, `/configprops`, `/metrics`, `/prometheus`,
-  `/process`, `/httpexchanges`, `/oauth2clients` when the authorization server is installed, and `/flags`
-  when feature flags are enabled — and
+  `/process`, `/httpexchanges`, `/oauth2clients` when the authorization server is installed, `/flags`
+  when feature flags are enabled, and `/orchestration` for sagas, TCCs and workflows — and
   `firefly.management.server.port` moves the whole surface onto a second listener, with `ManagementPortGuard`
   making the actuator refuse the application port and `php artisan firefly:management:serve` running that
   second listener in development. Spring Boot's `/refresh`, `/threaddump` and `/shutdown` are still not

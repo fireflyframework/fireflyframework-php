@@ -70,6 +70,10 @@ function lockingWriteFromOther(Connection $other, string $lane): ?Throwable
         $other->table('records')->where('id', 1)->update(['status' => 'stolen']);
     } catch (Throwable $e) {
         return (new PersistenceExceptionTranslator)->translate($e, $other->getDriverName());
+    } finally {
+        if ($lane === 'sqlsrv') {
+            $other->unprepared('set lock_timeout -1'); // pooled SQL Server sessions keep session SETs past disconnect()
+        }
     }
 
     return null;

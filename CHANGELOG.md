@@ -6,6 +6,34 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ### Added
 
+- **Orchestration (`firefly/orchestration`):** sagas with five compensation policies, compensation error
+  handlers, a builder DSL and saga composition; TCC with ordered participants, per-phase timeouts and
+  retries and TCC composition; and durable workflows with dependencies, conditions, signals, timers,
+  wait-for-all/any, child workflows, continue-as-new, queries, suspend/resume, search attributes and queued
+  execution. Definitions are attribute-discovered, compiled by `firefly:cache` and validated at boot.
+- **Orchestration persistence and recovery:** checkpoints at every step through a `memory`, `cache` or
+  `database` store (proven on PostgreSQL, MySQL, MariaDB, SQL Server and SQLite by the CI integration lanes),
+  a per-execution distributed lock, a scheduled recovery sweep that reports, resumes or compensates stale
+  executions, retention cleanup, and a dead-letter queue with retry.
+- **Orchestration operations:** lifecycle and step events through `firefly/eda`, event-type triggers, cron and
+  fixed-rate schedules, the `orchestration` actuator endpoint and health component,
+  `php artisan firefly:orchestration:{list,show,signal,dlq,dlq:retry,tick}` and an opt-in REST surface.
+- **Orchestration queued workflows:** ASYNC workflows are now tested end to end through a real Laravel queue.
+  A capstone checks that the `RunWorkflowJob` is pushed on `firefly.orchestration.workflow.queue.connection`
+  and `.name`, that `queue:work` runs it to `COMPLETED`, that a redelivered job is a no-op, and that the
+  `sync` connection runs the job inside the start. An integration test runs the same path on the `database`
+  queue against PostgreSQL, MySQL, MariaDB, SQL Server and a SQLite file, one CI integration lane each.
+- **Orchestration workflow compensation steps:** the separate-method `#[CompensationStep(compensates: …)]`
+  form is now tested and documented. The scanner tests check that the method becomes the step's compensation
+  with the step result bound implicitly, and that a duplicate, a step with both forms and an unknown step are
+  refused. A capstone and an integration test on PostgreSQL, MySQL, MariaDB, SQL Server and a SQLite file
+  check that a failing discovered workflow runs it.
+- **Orchestration failure parking:** a saga whose compensation stops part-way ends `COMPENSATION_FAILED` and
+  is dead-lettered, and a due workflow the tick fails to drive `firefly.orchestration.workflow.max-resume-attempts`
+  times in a row (default `5`) is parked `FAILED` and dead-lettered.
+- **Observability:** `orchestration_executions_seconds`, `orchestration_steps_seconds`,
+  `orchestration_compensations_total` and `orchestration_dead_letters_total`, and INTERNAL spans per execution
+  and step behind `firefly.observability.tracing.orchestration.enabled`.
 - **`firefly/eda-database` — the same-transaction outbox on every database.** `firefly.eda.provider=database`
   writes the outbox row inside the aggregate's transaction on PostgreSQL, MySQL, MariaDB, SQL Server or SQLite, and
   claims committed rows by leases through an `OutboxClaimStrategy` (SKIP LOCKED on PostgreSQL, MySQL 8.0.1+ and

@@ -16,6 +16,9 @@ require dirname(__DIR__, 4).'/vendor/autoload.php';
 $lane = $argv[1] ?? '';
 $go = $argv[2] ?? '';
 $connection = IntegrationDsn::connect($lane, 'deadlock-racer');
+if ($lane === 'sqlsrv') {
+    $connection->unprepared('set lock_timeout -1'); // a pooled session may carry another test's lock timeout
+}
 
 $connection->beginTransaction();
 $connection->table('firefly_deadlock_probe')->where('id', 2)->update(['name' => 'racer']);

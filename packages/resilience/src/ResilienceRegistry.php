@@ -75,6 +75,27 @@ final class ResilienceRegistry
         );
     }
 
+    /**
+     * Whether firefly.resilience.circuit-breaker names an instance called $name. Lets a consumer that has its
+     * own default breaker fall back ONLY when the instance is absent: circuitBreaker() also throws a
+     * ConfigurationException for a configured instance with an invalid value (a bad duration, say), and that
+     * one must reach the operator rather than be mistaken for "not configured".
+     */
+    public function hasCircuitBreaker(string $name): bool
+    {
+        $group = $this->config['circuit-breaker'] ?? null;
+
+        return is_array($group) && array_key_exists($name, $group);
+    }
+
+    /** Whether firefly.resilience.retry names an instance called $name — hasCircuitBreaker()'s twin for retries. */
+    public function hasRetry(string $name): bool
+    {
+        $group = $this->config['retry'] ?? null;
+
+        return is_array($group) && array_key_exists($name, $group);
+    }
+
     public function rateLimiter(string $name): RateLimiter
     {
         return $this->rateLimiters[$name] ??= new RateLimiter(

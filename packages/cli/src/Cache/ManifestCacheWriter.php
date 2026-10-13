@@ -21,6 +21,8 @@ use Firefly\FeatureFlags\Gating\FeatureFlagAdviceSource;
 use Firefly\Messaging\Listener\MessageListenerManifestCompiler;
 use Firefly\Messaging\Scanner\MessageListenerScanner;
 use Firefly\Observability\Method\ObservabilityAdviceSource;
+use Firefly\Orchestration\Manifest\OrchestrationManifestCompiler;
+use Firefly\Orchestration\Scanner\OrchestrationScanner;
 use Firefly\Resilience\Method\ResilienceAdviceSource;
 use Firefly\Scheduling\Scanner\ScheduledScanner;
 use Firefly\Scheduling\Schedule\ScheduledManifestCompiler;
@@ -185,6 +187,12 @@ final class ManifestCacheWriter
         (new ScheduledManifestCompiler)->write(
             (new ScheduledScanner)->scan($psr4),
             $files[] = $dir.'/'.FireflyCachePaths::SCHEDULED,
+        );
+
+        // orchestration — #[Saga] / #[Tcc] / #[Workflow] definitions and their schedules.
+        (new OrchestrationManifestCompiler)->write(
+            (new OrchestrationScanner)->scan($psr4),
+            $files[] = $dir.'/'.FireflyCachePaths::ORCHESTRATION,
         );
 
         // security

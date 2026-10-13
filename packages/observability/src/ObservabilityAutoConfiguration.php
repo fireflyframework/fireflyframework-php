@@ -29,10 +29,14 @@ use Firefly\Observability\Metrics\MeterRegistry;
 use Firefly\Observability\Metrics\MetricsRecorder;
 use Firefly\Observability\Metrics\NoOpMetricsRecorder;
 use Firefly\Observability\Metrics\SimpleMeterRegistry;
+use Firefly\Observability\Orchestration\MeterRegistryOrchestrationMetrics;
+use Firefly\Observability\Orchestration\TracerOrchestrationTracing;
 use Firefly\Observability\Prometheus\PrometheusTextFormat;
 use Firefly\Observability\Tracing\NoOpTracer;
 use Firefly\Observability\Tracing\Tracer;
 use Firefly\Observability\Tracing\W3CTraceContextPropagator;
+use Firefly\Orchestration\Event\OrchestrationMetrics;
+use Firefly\Orchestration\Event\OrchestrationTracing;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Cache\Factory;
 
@@ -232,5 +236,28 @@ final class ObservabilityAutoConfiguration
     public function edaTracing(Tracer $tracer): EdaTracing
     {
         return new TracerEdaTracing($tracer, new W3CTraceContextPropagator);
+    }
+
+    /**
+     * Backs firefly/orchestration's OrchestrationMetrics port — the cqrsMetrics() precedence over
+     * OrchestrationAutoConfiguration's #[Order(1000)] NoOp. firefly.orchestration.metrics.enabled still decides,
+     * on the orchestration side, whether the engines report to it at all.
+     */
+    #[Bean]
+    #[ConditionalOnMissingBean(OrchestrationMetrics::class)]
+    #[ConditionalOnProperty(name: 'firefly.observability.metrics.enabled', havingValue: 'true', matchIfMissing: true)]
+    public function orchestrationMetrics(MetricsRecorder $recorder): OrchestrationMetrics
+    {
+        return new MeterRegistryOrchestrationMetrics($recorder);
+    }
+
+    /** The OrchestrationTracing drop-in — the cqrsTracing() gates, with the orchestration instrumentation switch. */
+    #[Bean]
+    #[ConditionalOnMissingBean(OrchestrationTracing::class)]
+    #[ConditionalOnProperty(name: 'firefly.observability.tracing.enabled', havingValue: 'true')]
+    #[ConditionalOnProperty(name: 'firefly.observability.tracing.orchestration.enabled', havingValue: 'true', matchIfMissing: true)]
+    public function orchestrationTracing(Tracer $tracer): OrchestrationTracing
+    {
+        return new TracerOrchestrationTracing($tracer);
     }
 }

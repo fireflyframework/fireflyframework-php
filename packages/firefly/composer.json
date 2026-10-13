@@ -39,6 +39,7 @@
         "firefly/messaging": "*@dev",
         "firefly/observability": "*@dev",
         "firefly/openapi": "*@dev",
+        "firefly/orchestration": "*@dev",
         "firefly/resilience": "*@dev",
         "firefly/scheduling": "*@dev",
         "firefly/scheduling-database": "*@dev",

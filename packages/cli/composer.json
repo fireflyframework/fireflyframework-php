@@ -33,6 +33,7 @@
         "firefly/kernel": "*@dev",
         "firefly/messaging": "*@dev",
         "firefly/observability": "*@dev",
+        "firefly/orchestration": "*@dev",
         "firefly/resilience": "*@dev",
         "firefly/scheduling": "*@dev",
         "firefly/security": "*@dev",
