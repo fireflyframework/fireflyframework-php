@@ -2423,7 +2423,8 @@ return [
          | sleeps `poll-interval-ms` between claims (provider=postgres waits on NOTIFY instead).
          | `relay.downstream-provider` is only read by `php artisan firefly:outbox:relay`.
          |
-         | Every key falls back to its firefly.eda.postgres.* spelling below when it is unset.
+         | Every key falls back to its firefly.eda.postgres.* spelling below when it is unset or null (an
+         | unset env() counts as unset).
          |
          | Defaults: connection unset, channel 'firefly_eda_events', max-attempts 3, claim-strategy 'auto',
          | lease-seconds 300, poll-interval-ms 500, relay.downstream-provider unset.

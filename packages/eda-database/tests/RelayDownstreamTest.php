@@ -35,6 +35,22 @@ it('resolves the new key, and the legacy Postgres key as its alias', function ()
         ->and(RelayDownstream::resolve($container, $config))->toBeInstanceOf(RecordingDownstream::class);
 });
 
+it('lets a new key that is present but null (an unset env()) fall back to the legacy key', function () {
+    [$container, $config] = downstreamEnv([
+        'firefly.eda.database.relay.downstream-provider' => null,
+        'firefly.eda.postgres.relay.downstream_provider' => RecordingDownstream::class,
+    ]);
+
+    expect(RelayDownstream::configuredProvider($config))->toBe(RecordingDownstream::class)
+        ->and(RelayDownstream::resolve($container, $config))->toBeInstanceOf(RecordingDownstream::class);
+
+    [, $config] = downstreamEnv([
+        'firefly.eda.database.relay.downstream-provider' => null,
+        'firefly.eda.postgres.relay.downstream_provider' => null,
+    ]);
+    expect(RelayDownstream::configuredProvider($config))->toBeNull();
+});
+
 it('names both keys and the in-process alternative when neither is set', function () {
     [$container, $config] = downstreamEnv([]);
 

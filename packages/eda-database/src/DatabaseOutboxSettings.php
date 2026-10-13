@@ -14,8 +14,11 @@ use Illuminate\Database\ConnectionResolverInterface;
  * The outbox's settings, read ONCE and shared by both outbox providers — `database` and `postgres` — so an app that
  * moves from one to the other keeps its configuration. Each firefly.eda.database.* key falls back to the
  * firefly.eda.postgres.* spelling it replaces (PROGRAM.md rule 4: existing keys keep working); when both are set the
- * database key wins, and a key present but null (an unset env()) counts as unset for the connection. Values a server cannot honour are floored rather than rejected: a zero lease or zero attempts
- * would make the outbox drop or spin, and the floor is what "as small as possible" means.
+ * database key wins. A key that is present but NULL — the usual `env('X')` with X unset — counts as UNSET for every
+ * key, so it falls through to its alias and then to the default: Config::has() is true for a null value, and taking
+ * the database branch there would silently drain the default connection's outbox while the postgres alias names
+ * another. Values a server cannot honour are floored rather than rejected: a zero lease or zero attempts would make
+ * the outbox drop or spin, and the floor is what "as small as possible" means.
  */
 final readonly class DatabaseOutboxSettings
 {
@@ -30,19 +33,14 @@ final readonly class DatabaseOutboxSettings
 
     public static function from(Config $config): self
     {
-        $connection = match (true) {
-            $config->has('firefly.eda.database.connection') => $config->string('firefly.eda.database.connection', ''),
-            $config->has('firefly.eda.postgres.connection') => $config->string('firefly.eda.postgres.connection', ''),
-            default => null,
-        };
+        $connectionKey = self::firstSetKey($config, 'firefly.eda.database.connection', 'firefly.eda.postgres.connection');
+        $connection = $connectionKey === null ? null : $config->string($connectionKey);
 
-        $channel = $config->has('firefly.eda.database.channel')
-            ? $config->string('firefly.eda.database.channel')
-            : $config->string('firefly.eda.postgres.channel', 'firefly_eda_events');
+        $channelKey = self::firstSetKey($config, 'firefly.eda.database.channel', 'firefly.eda.postgres.channel');
+        $channel = $channelKey === null ? 'firefly_eda_events' : $config->string($channelKey);
 
-        $maxAttempts = $config->has('firefly.eda.database.max-attempts')
-            ? $config->int('firefly.eda.database.max-attempts')
-            : $config->int('firefly.eda.postgres.max_attempts', 3);
+        $maxAttemptsKey = self::firstSetKey($config, 'firefly.eda.database.max-attempts', 'firefly.eda.postgres.max_attempts');
+        $maxAttempts = $maxAttemptsKey === null ? 3 : $config->int($maxAttemptsKey);
 
         return new self(
             connection: $connection === '' ? null : $connection,
@@ -52,6 +50,24 @@ final readonly class DatabaseOutboxSettings
             leaseSeconds: (float) max(1, $config->int('firefly.eda.database.lease-seconds', 300)),
             pollIntervalMs: max(10, $config->int('firefly.eda.database.poll-interval-ms', 500)),
         );
+    }
+
+    /**
+     * The first of $keys whose value is set AND not null, or null when none is: the alias rule every outbox key
+     * follows, shared with RelayDownstream so the relay's downstream key cannot drift from it. A null value is an
+     * unset env() and must fall through to the alias, which Config::has() alone would not do.
+     *
+     * @internal
+     */
+    public static function firstSetKey(Config $config, string ...$keys): ?string
+    {
+        foreach ($keys as $key) {
+            if ($config->get($key) !== null) {
+                return $key;
+            }
+        }
+
+        return null;
     }
 
     /** The outbox connection as the concrete Connection the claim needs (driver name, PDO, transactions). */

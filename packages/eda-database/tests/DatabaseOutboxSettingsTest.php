@@ -41,3 +41,14 @@ it('treats a connection key that is present but null (an unset env()) as the def
     expect(outboxSettings(['database' => ['connection' => null]])->connection)->toBeNull()
         ->and(outboxSettings(['postgres' => ['connection' => null]])->connection)->toBeNull();
 });
+
+it('lets a database key that is present but null fall back to its postgres alias, then to the default', function () {
+    expect(outboxSettings([
+        'database' => ['connection' => null, 'channel' => null, 'max-attempts' => null],
+        'postgres' => ['connection' => 'pgsql', 'channel' => 'pgchan', 'max_attempts' => 7],
+    ]))->toEqual(new DatabaseOutboxSettings('pgsql', 'pgchan', 7, 'auto', 300.0, 500))
+        ->and(outboxSettings([
+            'database' => ['connection' => null, 'channel' => null, 'max-attempts' => null],
+            'postgres' => ['connection' => null, 'channel' => null, 'max_attempts' => null],
+        ]))->toEqual(new DatabaseOutboxSettings(null, 'firefly_eda_events', 3, 'auto', 300.0, 500));
+});

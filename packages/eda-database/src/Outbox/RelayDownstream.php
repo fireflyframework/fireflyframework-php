@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Firefly\Eda\Database\Outbox;
 
 use Firefly\Config\Config;
+use Firefly\Eda\Database\DatabaseOutboxSettings;
 use Firefly\Eda\EventPublisher;
 use Firefly\Eda\Tracing\BrokerTracing;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
@@ -50,14 +51,14 @@ class RelayDownstream
         'kafka' => ['class' => 'Firefly\\Eda\\Kafka\\KafkaEventPublisher', 'package' => 'firefly/eda-kafka'],
     ];
 
-    /** The configured downstream name (new key first, then the legacy one), or null when neither is set. */
+    /**
+     * The configured downstream name (new key first, then the legacy one), or null when neither is set. A key present
+     * but null (an unset env()) counts as unset, so it never hides a legacy value.
+     */
     public static function configuredProvider(Config $config): ?string
     {
-        $provider = match (true) {
-            $config->has('firefly.eda.database.relay.downstream-provider') => $config->string('firefly.eda.database.relay.downstream-provider', ''),
-            $config->has('firefly.eda.postgres.relay.downstream_provider') => $config->string('firefly.eda.postgres.relay.downstream_provider', ''),
-            default => '',
-        };
+        $key = DatabaseOutboxSettings::firstSetKey($config, self::PROVIDER_KEY, self::LEGACY_PROVIDER_KEY);
+        $provider = $key === null ? '' : $config->string($key);
 
         return trim($provider) === '' ? null : trim($provider);
     }
