@@ -7,4 +7,6 @@ delivery id on an idempotency store (memory, the Laravel cache, or a portable ta
 and published to the `firefly/eda` event bus as `webhook.{provider}.{type}` on `webhooks.{provider}`. A refusal is
 a problem+json document with a stable code. Off until `firefly.webhooks.enabled` is true.
 
+See [Webhooks](../../docs/modules/webhooks.md) for the full reference.
+
 Apache-2.0 © Firefly Software Solutions Inc.

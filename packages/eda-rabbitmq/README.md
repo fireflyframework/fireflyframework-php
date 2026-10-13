@@ -7,6 +7,9 @@ opt-in package, auto-configured behind `firefly.eda.provider=rabbitmq`, with a b
 (dead-letter exchange) for exhausted retries and a `RabbitMqHealthIndicator` feeding
 `/actuator/health`.
 
+The package also carries the RabbitMQ listener container for `firefly/messaging` (`firefly.messaging.provider=rabbitmq`),
+on the same connection factory.
+
 See [EDA Brokers](../../docs/modules/eda-brokers.md) for the full adapter reference.
 
 Apache-2.0 © Firefly Software Solutions Inc.

@@ -1066,7 +1066,7 @@ Full flag reference and generated-file contents: [CLI](docs/cli.md).
 
 One published library, `fireflyframework/larafly`, contains the components under `packages/*` and the bundled
 application skeleton. Its `replace` entries satisfy component requirements at the framework's version;
-component names remain useful module boundaries, with their own test suites. The 33
+component names remain useful module boundaries, with their own test suites. The 35
 [module guides](docs/modules/) below group them by concern:
 
 | Group | Module | Package(s) |
@@ -1088,7 +1088,9 @@ component names remain useful module boundaries, with their own test suites. The
 | Data & Domain | [Transactions](docs/modules/transactional.md) — `#[Transactional]`, propagation, isolation, timeouts, `#[TransactionalEventListener]` | `firefly/data` |
 | Eventing & Messaging | [Event-Driven Architecture](docs/modules/eda.md) — `EventPublisher`, `#[EventListener]`, retry/DLQ | `firefly/eda` |
 | Eventing & Messaging | [EDA Brokers](docs/modules/eda-brokers.md) — RabbitMQ/Postgres/Kafka adapters, the same-tx outbox | `firefly/eda-rabbitmq`, `firefly/eda-postgres`, `firefly/eda-kafka` |
-| Eventing & Messaging | [Messaging](docs/modules/messaging.md) — the lower-level raw-bytes broker layer | `firefly/messaging` |
+| Eventing & Messaging | [Messaging](docs/modules/messaging.md) — the lower-level raw-bytes broker layer, in memory, on the Laravel queue, on Kafka or on RabbitMQ | `firefly/messaging` |
+| Eventing & Messaging | [Webhooks](docs/modules/webhooks.md) — inbound webhooks: an endpoint per provider, HMAC/Stripe/GitHub/Twilio signatures, a replay window, idempotency, published to EDA | `firefly/webhooks` |
+| Eventing & Messaging | [Callbacks](docs/modules/callbacks.md) — outbound callbacks: subscriptions, signed deliveries driven by events, retries, a circuit breaker per endpoint, a replayable execution log | `firefly/callbacks` |
 | CQRS | [CQRS](docs/modules/cqrs.md) — `CommandBus`/`QueryBus`, the domain→integration-event bridge | `firefly/cqrs` |
 | Security | [Security](docs/modules/security.md) — principal model, `HttpSecurity`, `#[PreAuthorize]`, JWT/OAuth2 | `firefly/security` |
 | Security | [OAuth2 Client](docs/modules/security-oauth2-client.md) — OpenID Connect login with presets and discovery, PKCE, id-token validation, `OidcUser`, RP-initiated logout, client credentials, `Http::oauth2Client()` | `firefly/security-oauth2-client` |

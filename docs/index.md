@@ -103,7 +103,7 @@ See [Installation](installation.md) for requirements and manual setup, and
 
 ## The modules
 
-Every capability above ships in the root library; configuration selects optional features. The [module index](modules.md) lays all 33
+Every capability above ships in the root library; configuration selects optional features. The [module index](modules.md) lays all 35
 guides out by concern, with a line on each saying what it is for, and the same grouping is the site's
 **Modules** tab.
 
@@ -113,7 +113,7 @@ guides out by concern, with a line on each saying what it is for, and the same g
 | **Web & API** | [Web Layer](modules/web.md) · [Web Filters](modules/web-filters.md) · [OpenAPI](modules/openapi.md) |
 | **Resilience & Scheduling** | [Resilience](modules/resilience.md) · [Scheduling](modules/scheduling.md) |
 | **Data & Domain** | [Domain (DDD)](modules/domain.md) · [Data & Repositories](modules/data.md) · [Relational Data](modules/data-relational.md) · [Transactions](modules/transactional.md) |
-| **Eventing & Messaging** | [EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [Messaging](modules/messaging.md) |
+| **Eventing & Messaging** | [EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [Messaging](modules/messaging.md) · [Webhooks](modules/webhooks.md) · [Callbacks](modules/callbacks.md) |
 | **CQRS** | [Command/Query](modules/cqrs.md) |
 | **Security** | [Security](modules/security.md) · [OAuth2 Client](modules/security-oauth2-client.md) · [OAuth2 Authorization Server](modules/security-oauth2-server.md) |
 | **Operations** | [Actuator](modules/actuator.md) · [Observability](modules/observability.md) · [Tracing](modules/tracing.md) · [Logging](modules/logging.md) · [Admin Dashboard](modules/admin.md) · [Bean Graph](modules/bean-graph.md) · [Data Browser](modules/data-browser.md) · [Feature Flags](modules/feature-flags.md) |

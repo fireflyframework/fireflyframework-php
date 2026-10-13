@@ -2,7 +2,8 @@
 
 `firefly/messaging` is LaraFly's lower-level raw-bytes broker layer (a pyfly `messaging` analog): a
 `MessageBrokerPort` moving opaque byte payloads by topic, with consumer-group semantics, an in-memory
-default adapter plus a Laravel-queue async adapter, and a broker-agnostic `#[MessageListener]` attribute
+default adapter plus a Laravel-queue async adapter (and [Kafka and RabbitMQ](#kafka-and-rabbitmq) listener
+containers from the eda broker packages), and a broker-agnostic `#[MessageListener]` attribute
 carrying its **own** per-listener retry/DLQ policy. There is no envelope, no event-type pattern, and no
 serializer here — see [Event-Driven Architecture](eda.md) for that higher-level surface.
 
@@ -89,8 +90,9 @@ Same enqueue-then-worker-deliver shape as eda's `QueueEventBus`, over `illuminat
     `QueueMessageBroker::subscribe()` accepts a `$group` argument (for interface parity) but **ignores it** —
     every subscriber on a topic is invoked on every delivered message, unconditionally. Genuine
     competing-consumer semantics (one message, one group member) require a real broker's own group
-    coordination, which only lands with a broker adapter at **SP-4**. Consumer-group round-robin is an
-    in-memory-only nicety until then — do not rely on it once `firefly.messaging.provider=queue`.
+    coordination, which the Kafka and RabbitMQ providers have (see [Kafka and RabbitMQ](#kafka-and-rabbitmq)).
+    Consumer-group round-robin is an in-memory-only nicety on the other adapters — do not rely on it once
+    `firefly.messaging.provider=queue`.
 
 ## `#[MessageListener]` → scanner → manifest → wiring pass
 
@@ -167,17 +169,24 @@ rather than an `EventEnvelope`, faithful to the two ports' different payload sha
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `firefly.messaging.provider` | `memory`\|`queue` | `memory` | Selects `InMemoryMessageBroker` or `QueueMessageBroker` (`MessagingAutoConfiguration`). |
+| `firefly.messaging.provider` | `memory`\|`queue`\|`kafka`\|`rabbitmq` | `memory` | Selects the broker: `InMemoryMessageBroker` or `QueueMessageBroker` (`MessagingAutoConfiguration`); `kafka`/`rabbitmq` are bound by the eda adapters (see [Kafka and RabbitMQ](#kafka-and-rabbitmq)). |
 | `firefly.messaging.queue.connection` | string\|null | `null` (default connection) | Queue connection `QueueMessageBroker`/`DispatchMessageJob` dispatch onto, when `provider=queue`. |
 | `firefly.messaging.queue.name` | string\|null | `null` (default queue) | Queue name, when `provider=queue`. |
 | `firefly.messaging.listener.retry.max-attempts` | int | `5` | Attempts per delivery (the first included) on a listener container broker. |
 | `firefly.messaging.listener.retry.initial-delay` | duration | `1s` | Exponential back-off after the first failure (seconds, or `250ms`/`30s`/`5m`/`1h`). |
 | `firefly.messaging.listener.retry.multiplier` | float >= 1 | `2.0` | Back-off multiplier after each further failure. |
 | `firefly.messaging.listener.retry.max-delay` | duration | `30s` | Back-off cap. |
+| `firefly.messaging.listener.dead-letter.enabled` | bool | `true` | Dead-letter after the last attempt; false logs and skips. |
+| `firefly.messaging.kafka.brokers` | string | `firefly.eda.kafka.brokers`, else `127.0.0.1:9092` | Kafka bootstrap list. |
+| `firefly.messaging.kafka.group-id` | string | `firefly` | Group of a listener that names none. |
+| `firefly.messaging.kafka.dlt-suffix` | string | `.DLT` | Dead-letter topic suffix. |
+| `firefly.messaging.rabbitmq.exchange` | string | `firefly.messages` | Durable direct exchange. |
+| `firefly.messaging.rabbitmq.dead-letter-exchange` | string | `''` (= `<exchange>.dlx`) | Dead-letter exchange. |
+| `firefly.messaging.rabbitmq.prefetch` | int | `10` | `basic.qos` prefetch. |
 
 There is no `firefly.messaging.retries`/`retry_delay` config key — on the `memory` and `queue` adapters
 retry/DLQ policy lives entirely on each `#[MessageListener]` attribute (see above), not in configuration. The
-`listener.retry.*` keys apply only to a listener container broker, described next.
+`listener.*` keys apply only to a listener container broker — the Kafka and RabbitMQ providers — described next.
 
 ## Listener container brokers and `firefly:messaging:consume`
 
@@ -207,6 +216,26 @@ falling back to the in-memory broker.
 `DeadLetterStore` beans, each behind `#[ConditionalOnMissingBean]` so an application binding its own wins. It
 is always-on — installing `firefly/messaging` requires no configuration to boot with working (in-memory)
 defaults.
+
+## Kafka and RabbitMQ
+
+`firefly.messaging.provider=kafka` (from `firefly/eda-kafka`, needs ext-rdkafka) and `=rabbitmq` (from
+`firefly/eda-rabbitmq`) bind a `ListenerContainerBroker`: the same `#[MessageListener]`s, consumed by
+`php artisan firefly:messaging:consume` (`--max-messages`, `--time-limit`, `--poll-timeout`, `--sleep`).
+
+- **Retries belong to the container.** A delivery is attempted `firefly.messaging.listener.retry.max-attempts`
+  times (default 5) with an exponential back-off (1s, ×2, capped at 30s); a listener with `retries: N` gets N + 1
+  attempts with its `retryDelay` as a linear back-off instead. On a container, `retries: 0` means "the default".
+- **Then a dead letter.** Kafka produces the record to the listener's `deadLetterTopic` or `<topic>.DLT`; RabbitMQ
+  republishes it to the listener's `deadLetterTopic`, or rejects it so the queue's dead-letter exchange
+  (`<exchange>.dlx`) moves it to `<queue>.dlq`. Headers: `x-original-topic`, `x-exception` (short class),
+  `x-exception-message`, `x-delivery-attempts` (Kafka adds `x-dlt-reason`, `x-dlt-source-topic`,
+  `x-dlt-source-offset`). `firefly.messaging.listener.dead-letter.enabled=false` logs and skips instead.
+- **At least once.** A record is committed / a message acknowledged only after its listeners handled it or it was
+  dead-lettered; a dead letter that cannot be written leaves it uncommitted and stops the worker.
+- **Groups are real.** Kafka runs one consumer per group (a listener without one joins
+  `firefly.messaging.kafka.group-id`); RabbitMQ gives each group its own durable queue (`firefly.<topic>` without
+  one). The RabbitMQ connection is the event bus's — the `firefly.eda.rabbitmq.*` host, port, user, password and vhost.
 
 ## Example
 
@@ -271,11 +300,9 @@ an oversight:
 
 These are carried-forward, documented limitations of the M9 shipment — not bugs:
 
-- **Real brokers are OUT.** Only the in-memory and Laravel-queue adapters ship. Kafka/RabbitMQ land as their
-  own `firefly/messaging-<broker>` packages at **SP-4**, mirroring eda's broker-package plan.
 - **The queue path drops consumer-group round-robin** (see the warning above) — `QueueMessageBroker` ignores
   `$group` entirely and broadcasts to every subscriber on a topic. Genuine competing-consumer semantics need
-  a real broker's own group coordination, arriving with the SP-4 broker adapters.
+  a real broker's own group coordination, which the Kafka and RabbitMQ providers have.
 - **"Async" is queue-backed, not coroutine-based** — under the `sync` queue driver (or with no worker
   running), `QueueMessageBroker` delivers synchronously (minus the group-drop above), same async→sync
   contract as the rest of LaraFly.

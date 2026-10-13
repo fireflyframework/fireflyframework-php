@@ -1,7 +1,7 @@
 # Modules
 
 LaraFly publishes one `fireflyframework/larafly` library containing the **32 component directories** under
-`packages/*`, each with its own tests or metadata. The **33 guides** below explain their public surfaces.
+`packages/*`, each with its own tests or metadata. The **35 guides** below explain their public surfaces.
 Several components carry more than one guide: `firefly/data` answers for *Data & Repositories*,
 *Relational Data* and *Transactions*. Laravel discovers the root library's providers, and configuration
 selects optional features. A bean you declare wins over the framework default.
@@ -43,8 +43,8 @@ each binding in `WebServiceProvider::register()` with a `bound()` check instead,
 
 <div class="lf-card" markdown>
 <span class="lf-card-title">Eventing &amp; Messaging</span>
-[EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [Messaging](modules/messaging.md)
-<span class="lf-card-note">One `EventPublisher` port with in-memory, queue, RabbitMQ, Postgres and Kafka adapters, a genuine same-transaction outbox, and the lower-level raw-bytes broker layer beneath it.</span>
+[EDA](modules/eda.md) · [EDA Brokers](modules/eda-brokers.md) · [Messaging](modules/messaging.md) · [Webhooks](modules/webhooks.md) · [Callbacks](modules/callbacks.md)
+<span class="lf-card-note">One `EventPublisher` port with in-memory, queue, RabbitMQ, Postgres and Kafka adapters, a genuine same-transaction outbox, and the lower-level raw-bytes broker layer beneath it. Signed inbound webhooks and outbound callbacks ride on the same bus.</span>
 </div>
 
 <div class="lf-card" markdown>

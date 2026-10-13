@@ -9,4 +9,7 @@ Reflection-free and config-driven; the six also apply as attributes (`#[Retry]`,
 method-interceptor chain shared with `#[Transactional]`, at order 200 — inside method security, outside the
 transaction — gated by `firefly.resilience.method.enabled`.
 
+The store is `firefly.resilience.store.provider` — `cache` (default) or `memory` — and a cache store without atomic
+locks refuses the boot unless `firefly.resilience.store.allow-lockless` is true.
+
 Apache-2.0 © Firefly Software Solutions Inc.

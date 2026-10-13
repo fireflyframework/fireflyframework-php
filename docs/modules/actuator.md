@@ -37,7 +37,8 @@ always-on, and secured entirely by M11 config with zero code edge to `firefly/se
 
 `HealthIndicator { health(): Health }`; `Status` = UP/DOWN/OUT_OF_SERVICE/UNKNOWN (severity DOWN>OUT_OF_SERVICE>UP>UNKNOWN);
 a most-severe `StatusAggregator` (empty→UP); a bean-scan `HealthContributorRegistrar`; built-in `Ping`/`DiskSpace`/`Db`
-indicators. A throwing indicator degrades to DOWN — never a 500.
+indicators, and the opt-in `cache` (write/read/forget a sentinel per store), `queue` (`size()` per connection) and
+`redis` (`PING` per connection) indicators. A throwing indicator degrades to DOWN — never a 500.
 
 ### Who may read the component details
 

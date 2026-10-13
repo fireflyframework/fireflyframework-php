@@ -9,4 +9,6 @@ recorded in an execution log (memory or database). `php artisan firefly:callback
 deliveries; `php artisan firefly:callbacks:replay` sends logged deliveries again. Off until
 `firefly.callbacks.enabled` is true.
 
+See [Callbacks](../../docs/modules/callbacks.md) for the full reference.
+
 Apache-2.0 © Firefly Software Solutions Inc.

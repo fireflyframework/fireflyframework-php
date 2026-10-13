@@ -157,7 +157,8 @@ final class DocsCodeAudit
     /**
      * Prefixes whose NEXT segment is chosen by the application, not by the framework: a feature switch's own
      * name, a registration id, a provider id, a registered client's id, an in-memory user's name, an actuator
-     * endpoint id, a health group's name. For these the guard checks the TAIL after the user's segment
+     * endpoint id, a health group's name, a webhook provider id, a callback subscription's position, an event
+     * type mapped to the queries it invalidates. For these the guard checks the TAIL after the user's segment
      * instead — so `firefly.security.oauth2.client.registration.google.client-id` is accepted because some
      * real key ends in `.client-id` under that prefix, while a misspelt tail is still caught.
      *
@@ -172,6 +173,8 @@ final class DocsCodeAudit
      * @var list<string>
      */
     public const array USER_KEY_PREFIXES = [
+        'firefly.callbacks.subscriptions.',
+        'firefly.cqrs.query.cache.invalidation.',
         'firefly.feature.',
         'firefly.feature-flags.evaluators.',
         'firefly.feature-flags.flags.',
@@ -181,6 +184,7 @@ final class DocsCodeAudit
         'firefly.security.oauth2.client.registration.',
         'firefly.security.oauth2.server.clients.',
         'firefly.security.users.',
+        'firefly.webhooks.providers.',
     ];
 
     /** @var list<string> */

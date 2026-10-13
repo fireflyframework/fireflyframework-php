@@ -13,6 +13,9 @@ Every record it writes to a `.DLT` carries `x-dlt-reason`, `x-dlt-source-topic` 
 the same three headers, spelled the same way, that PyFly stamps on the records it dead-letters, so a topic
 both frameworks publish to is readable from one `kcat -C -t <topic>.DLT -f '%h'`.
 
+The package also carries the Kafka listener container for `firefly/messaging` (`firefly.messaging.provider=kafka`),
+built on the same factories.
+
 See [EDA Brokers](../../docs/modules/eda-brokers.md) for the full adapter reference.
 
 Apache-2.0 © Firefly Software Solutions Inc.

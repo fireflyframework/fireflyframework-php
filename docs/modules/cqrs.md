@@ -79,8 +79,8 @@ All default to no-ops so the pipeline is a series of skippable collaborators:
 - **Tracing** — `CqrsTracing` seam (`NoOpCqrsTracing` default) wrapping validate → authorize → resolve →
   invoke; observability's `TracerCqrsTracing` puts an INTERNAL span around every message (see
   [Tracing](tracing.md)).
-- **Query cache** — `QueryCache` seam (`NoOpQueryCache` = always-miss) consulted for a `Cacheable` query;
-  a real adapter lands with `firefly/cache`.
+- **Query cache** — `QueryCache` seam, `NoOpQueryCache` (always-miss) by default; `firefly.cqrs.query.cache.provider=cache`
+  binds `CacheQueryCache` on the Laravel cache — see [Query cache](#query-cache).
 
 ## The domain → integration-event bridge
 
@@ -126,13 +126,70 @@ silently), so cqrs installed without eda still boots and simply emits no integra
 edge): the bridge listens for `DomainEvent`s on the in-process `Context` dispatcher, never on `firefly/data`'s
 `AggregateTracker`/`DomainEventDispatcher` directly.
 
-## Configuration (`firefly.cqrs.*`, snake_case)
+## Query cache
+
+With `firefly.cqrs.query.cache.provider=cache`, a query class marked `#[CachedQuery]` is cached under a key derived
+from its public properties — two equal value objects share an entry, `3` and `'3'` do not — for its `ttl:`
+(falling back to `firefly.cqrs.query.cache_ttl`), in its `group:` (default: the query class). A `Cacheable`
+query keeps its own `cacheKey()`. A `null` result is never cached, and a cache failure is logged and runs the
+handler: the cache can make a query faster, never make it fail. A query holding private or protected state, or a
+generator, cannot be keyed and simply runs uncached.
+
+`#[InvalidatesQuery]` on an event class says which cached results the event makes stale: the whole group, one entry
+by mapping the query's properties to the event's (`with:`), or one `Cacheable` key (`key: 'statement:{account}'`).
+Eviction happens when the event is dispatched after its transaction commits — a rolled-back write evicts nothing —
+and when it arrives over the event bus from another process, matched by its event type (`eventType:`, default the
+short class name). An envelope whose payload cannot rebuild the typed key (JSON delivers an enum as its backing
+value, a date as an array) evicts the whole group instead, with a warning: serving stale data is the failure worth
+preventing.
+
+<!-- illustrative: application query and event classes in the reader's own app/ tree -->
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Ledger;
+
+use Firefly\Cqrs\Attributes\CachedQuery;
+use Firefly\Cqrs\Attributes\InvalidatesQuery;
+use Firefly\Cqrs\Query\Query;
+use Firefly\Domain\DomainEvent;
+
+#[CachedQuery(ttl: 300)]
+final readonly class AccountBalance implements Query
+{
+    public function __construct(public string $account) {}
+}
+
+#[InvalidatesQuery(AccountBalance::class, with: ['account' => 'account'])]
+final readonly class EntryPosted extends DomainEvent
+{
+    public function __construct(public string $account, public int $amount)
+    {
+        parent::__construct();
+    }
+}
+```
+
+Groups are evicted by GENERATIONS, not cache tags, so they work on every store (file and database included):
+an evicted group's entries become unreachable at once and expire on their TTL — set one. The key is the value
+object, so a query whose answer depends on the tenant or the user must carry them as properties.
+
+## Configuration (`firefly.cqrs.*`)
+
+The original keys are snake_case and stay so; the query-cache keys are kebab-case.
 
 | Key | Default | Meaning |
 |---|---|---|
 | `firefly.cqrs.default_destination` | `cqrs.events` | Fallback integration-event destination. |
 | `firefly.cqrs.event_failure_strategy` | `log` | `log` (swallow) or `raise` (re-throw) on a post-commit publish failure. |
-| `firefly.cqrs.query.cache_ttl` | _(unset)_ | Default TTL in seconds passed to `QueryCache::put()` for a `Cacheable` query result. **Unset means "no TTL"**, not zero — so leave the key out unless you want one. The shipped `QueryCache` is `NoOpQueryCache`; a real store arrives with `firefly/cache`. |
+| `firefly.cqrs.query.cache_ttl` | _(unset)_ | Default TTL in seconds for a cached query whose `#[CachedQuery]` names none (and for a `Cacheable` query). **Unset means "no TTL"**, not zero. |
+| `firefly.cqrs.query.cache.provider` | `none` | `none` (NoOp) or `cache` (`CacheQueryCache`). Anything else refuses the boot. |
+| `firefly.cqrs.query.cache.store` | `''` | Laravel cache store (`''` = default). |
+| `firefly.cqrs.query.cache.prefix` | `firefly:cqrs:` | Key prefix. |
+| `firefly.cqrs.query.cache.invalidation` | `[]` | Event type ⇒ list of query classes whose groups it evicts (for events with no local class). |
 
 ## Laravel comparison
 
@@ -145,8 +202,7 @@ edge): the bridge listens for `DomainEvent`s on the in-process `Context` dispatc
 
 ## Known-latent
 
-Read-model / projection scaffolding (→ `firefly/eventsourcing`), real authorization (→ M11), real query
-cache (→ firefly/cache), CQRS metrics + health (→ M12), attribute-driven command validation, the fluent
+Read-model / projection scaffolding (→ `firefly/eventsourcing`), real authorization (→ M11), CQRS metrics + health (→ M12), attribute-driven command validation, the fluent
 builder / distributed-tracing ergonomics, and exactly-once outbox durability (→ SP-4) are deferred and
 documented honestly. The `HandlerManifest` needs no hand-wiring: like every other
 compiled manifest it resolves to the `firefly:cache` artifact if present, otherwise an in-process scan of

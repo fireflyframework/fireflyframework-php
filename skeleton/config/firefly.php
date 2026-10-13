@@ -2716,4 +2716,90 @@ return [
         // 'server' => ['enabled' => false, 'path' => '/feature-flags/flagd.json', 'token' => env('FIREFLY_FEATURE_FLAGS_SERVER_TOKEN', ''), 'allow-anonymous' => false],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Webhooks — firefly/webhooks
+    |--------------------------------------------------------------------------
+    |
+    | Inbound webhooks: POST {path}/{provider} for every provider below. A delivery is size-checked,
+    | signature-verified, held to the replay window when the provider signs a timestamp, deduplicated on its
+    | delivery id, and published to firefly/eda as `event-type` on `destination` (both templates over
+    | {provider} and {type}). Refusals answer problem+json. See docs/modules/webhooks.md.
+    |
+    | `validator`: hmac (default) | stripe | github | twilio | none. Each kind defaults its own header names;
+    | override any of signature-header, signature-prefix, algorithm (sha256), encoding (hex|base64),
+    | timestamp-header, tolerance, idempotency-header, idempotency-field, event-type-header, event-type-field,
+    | destination, public-url (Twilio behind a proxy). A signing kind without a secret refuses the boot.
+    |
+    | The idempotency `store` is 'cache' by default ('memory' forgets every PHP-FPM request; 'database' is the
+    | firefly_webhook_receipts table — `php artisan vendor:publish --tag=firefly-webhooks-migrations`, pruned by
+    | `php artisan firefly:webhooks:prune`).
+    |
+    | Defaults: enabled false, path 'webhooks', max-body-bytes 1048576, destination 'webhooks.{provider}',
+    | event-type 'webhook.{provider}.{type}', replay.tolerance '5m', idempotency.store 'cache',
+    | idempotency.ttl '24h', idempotency.cache-store '', idempotency.connection null, providers [].
+    |
+    */
+
+    'webhooks' => [
+        'enabled' => env('FIREFLY_WEBHOOKS_ENABLED', false),
+
+        // 'path' => 'webhooks',
+        // 'max-body-bytes' => 1048576,
+        // 'destination' => 'webhooks.{provider}',
+        // 'event-type' => 'webhook.{provider}.{type}',
+        // 'replay' => ['tolerance' => '5m'],
+        // 'idempotency' => [
+        //     'store' => env('FIREFLY_WEBHOOKS_IDEMPOTENCY_STORE', 'cache'),
+        //     'ttl' => '24h',
+        //     'cache-store' => '',
+        //     'connection' => null,
+        // ],
+        // 'providers' => [
+        //     'stripe' => ['validator' => 'stripe', 'secret' => env('STRIPE_WEBHOOK_SECRET')],
+        //     'github' => ['validator' => 'github', 'secret' => env('GITHUB_WEBHOOK_SECRET')],
+        //     'twilio' => ['validator' => 'twilio', 'secret' => env('TWILIO_AUTH_TOKEN'), 'public-url' => 'https://api.example.com/webhooks/twilio'],
+        //     'partner' => ['secret' => env('PARTNER_WEBHOOK_SECRET'), 'timestamp-header' => 'X-Firefly-Timestamp', 'signature-header' => 'X-Firefly-Signature', 'idempotency-header' => 'X-Firefly-Delivery'],
+        // ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Callbacks — firefly/callbacks
+    |--------------------------------------------------------------------------
+    |
+    | Outbound callbacks: every firefly/eda event whose type matches `event-types` is POSTed to each matching
+    | subscription, signed with `signature.timestamp-header` and `signature.header` (sha256 HMAC over
+    | "<timestamp>.<body>"), retried with exponential back-off on 408/429/5xx and transport errors, through a
+    | circuit breaker per endpoint, and recorded in the execution log. Attempts run where the event is consumed:
+    | use the queue or a broker eda provider so they run in workers. See docs/modules/callbacks.md.
+    |
+    | registry.store / log.store: 'memory' (subscriptions come from `subscriptions`) or 'database' (the
+    | firefly_callback_* tables — `php artisan vendor:publish --tag=firefly-callbacks-migrations`).
+    | `php artisan firefly:callbacks:list` and `php artisan firefly:callbacks:replay` read the log.
+    |
+    | Defaults: enabled false, event-types [], registry.store 'memory', log.store 'memory', connection null,
+    | subscriptions [], retry.max-attempts 3, retry.initial-delay '1s', retry.multiplier 2.0, retry.max-delay
+    | '30s', http.timeout '10s', http.require-https true, http.allowed-hosts [] (any), circuit-breaker.enabled
+    | true, circuit-breaker.failure-threshold 5, circuit-breaker.wait-duration-in-open '30s', signature.header
+    | 'X-Firefly-Signature', signature.timestamp-header 'X-Firefly-Timestamp'.
+    |
+    */
+
+    'callbacks' => [
+        'enabled' => env('FIREFLY_CALLBACKS_ENABLED', false),
+
+        // 'event-types' => ['order.*', 'invoice.paid'],
+        // 'registry' => ['store' => env('FIREFLY_CALLBACKS_REGISTRY', 'memory')],
+        // 'log' => ['store' => env('FIREFLY_CALLBACKS_LOG', 'memory')],
+        // 'connection' => null,
+        // 'subscriptions' => [
+        //     ['id' => 'partner-orders', 'url' => 'https://partner.example.com/hooks', 'event-types' => ['order.*'], 'secret' => env('PARTNER_CALLBACK_SECRET')],
+        // ],
+        // 'retry' => ['max-attempts' => 3, 'initial-delay' => '1s', 'multiplier' => 2.0, 'max-delay' => '30s'],
+        // 'http' => ['timeout' => '10s', 'require-https' => true, 'allowed-hosts' => ['example.com']],
+        // 'circuit-breaker' => ['enabled' => true, 'failure-threshold' => 5, 'wait-duration-in-open' => '30s'],
+        // 'signature' => ['header' => 'X-Firefly-Signature', 'timestamp-header' => 'X-Firefly-Timestamp'],
+    ],
+
 ];

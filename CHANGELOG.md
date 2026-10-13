@@ -4,6 +4,37 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+### Added
+
+- **CQRS query cache (`firefly.cqrs.query.cache.provider=cache`).** `CacheQueryCache` on any Laravel cache store:
+  `#[CachedQuery(ttl:, group:)]` on a query class caches its results under a key derived from the query value
+  object; `#[InvalidatesQuery]` on an event class evicts one entry or a whole group when the event commits in
+  process or arrives over firefly/eda (`firefly.cqrs.query.cache.invalidation` covers events with no local class).
+  Groups are generations, so eviction works on file and database stores too. The default stays `none`.
+- **Kafka and RabbitMQ for `firefly/messaging` (`firefly.messaging.provider=kafka|rabbitmq`).** Listener
+  containers in `firefly/eda-kafka` and `firefly/eda-rabbitmq`, built on their client factories, with retries and
+  exponential back-off (`firefly.messaging.listener.retry.*`), dead-letter topics / a dead-letter exchange with
+  diagnostic headers (`firefly.messaging.listener.dead-letter.enabled`), at-least-once commits, real consumer
+  groups, and `php artisan firefly:messaging:consume`.
+- **Health indicators for cache stores, queue connections and Redis** (`firefly.management.endpoint.health.
+  {cache,queue,redis}.enabled`, all off by default).
+- **`firefly/webhooks`.** `POST /webhooks/{provider}` per configured provider: HMAC, Stripe, GitHub, Twilio or
+  no signature, a replay window, atomic idempotency on memory, the cache or a portable `firefly_webhook_receipts`
+  table, publishing to firefly/eda as `webhook.{provider}.{type}`, problem+json refusals, `firefly:webhooks:prune`.
+- **`firefly/callbacks`.** Subscriptions on memory or `firefly_callback_subscriptions`; deliveries of matching
+  firefly/eda events as HMAC-SHA256-signed POSTs (`X-Firefly-Timestamp`, `X-Firefly-Signature`), retries with
+  back-off, a circuit breaker per endpoint through firefly/resilience, an execution log on memory or
+  `firefly_callback_executions`, `firefly:callbacks:list` and `firefly:callbacks:replay`.
+- **`firefly.resilience.store.provider`** — `cache` (default) or `memory`.
+
+### Changed
+
+- **A resilience store without atomic locks now refuses to boot** (`ConfigurationException`
+  `RESILIENCE_STORE_LOCKLESS`) instead of silently running breaker, rate-limiter and bulkhead transitions without
+  a critical section. Set `firefly.resilience.store.allow-lockless=true` to accept the race explicitly. A
+  `CacheResilienceStore` constructed by hand over such a store throws from `withLock()` unless built with
+  `allowLockless: true`.
+
 ## [26.10.1] - 2026-10-06
 
 ### Added
