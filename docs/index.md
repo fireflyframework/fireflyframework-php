@@ -126,7 +126,7 @@ Want to see it all working together? The
 [Lumen sample](https://github.com/fireflyframework/fireflyframework-php/tree/main/samples/lumen) is a
 runnable digital-wallet & ledger vertical slice exercising `#[Transactional]`, CQRS, domain events over EDA,
 method security, and a REST layer with RFC-7807 problem-details. The guided, book-style *larafly by example*
-book — 16 chapters plus appendices, bilingual (English + Spanish), building this exact sample — is available
+book — 17 chapters plus appendices, bilingual (English + Spanish), building this exact sample — is available
 as [PDF and EPUB downloads in English and Spanish](book.md).
 
 ## Quick Links

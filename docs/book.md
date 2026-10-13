@@ -1,7 +1,7 @@
 # larafly by example
 
 Learn LaraFly by building **Lumen**, the wallet-and-ledger service included in the framework.
-Both editions cover the same application: a quick start, sixteen chapters, a Laravel cheat-sheet,
+Both editions cover the same application: a quick start, seventeen chapters, a Laravel cheat-sheet,
 and a glossary. Every PHP listing is checked against the repository or linted by PHP.
 
 ## Download the book
