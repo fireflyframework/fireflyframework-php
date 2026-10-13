@@ -47,7 +47,10 @@ final class ConditionEvaluator
         try {
             return (bool) $this->language->evaluate($expression, $values);
         } catch (Throwable $error) {
-            throw new OrchestrationException("Condition [{$expression}] could not be evaluated: {$error->getMessage()}", 'ORCHESTRATION_CONDITION_FAILED', 500, $error);
+            // Whatever the expression's evaluation threw is quoted for the log; it was never written for a
+            // client, so nothing is published (the web layer answers with its opaque sentence).
+            throw (new OrchestrationException("Condition [{$expression}] could not be evaluated: {$error->getMessage()}", 'ORCHESTRATION_CONDITION_FAILED', 500, $error))
+                ->withDetail(null);
         }
     }
 }

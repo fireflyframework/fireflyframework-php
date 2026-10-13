@@ -13,6 +13,7 @@ use Firefly\EventSourcing\Tests\Fixtures\Events\OrderChannel;
 use Firefly\EventSourcing\Tests\Fixtures\Events\OrderPaid;
 use Firefly\EventSourcing\Tests\Fixtures\Events\OrderPlaced;
 use Firefly\EventSourcing\Tests\Fixtures\Events\Untyped;
+use Firefly\EventSourcing\Tests\Fixtures\Guarded\LimitRaised;
 use Firefly\EventSourcing\Tests\Fixtures\Moods\Mood;
 use Firefly\EventSourcing\Tests\Fixtures\Moods\MoodChanged;
 
@@ -62,4 +63,21 @@ it('round-trips a pure enum through its case name, and refuses a stored name tha
         ->and($event)->toEqual(new MoodChanged(Mood::Happy, Mood::Grumpy, 'evt-1', $stored->occurredAt))
         ->and($mapper->toDomainEvent(storedAs('mood.changed', 1, ['mood' => 'Grumpy', 'previous' => null])))->toEqual(new MoodChanged(Mood::Grumpy, null, 'evt-1', $stored->occurredAt))
         ->and(fn () => $mapper->toDomainEvent(storedAs('mood.changed', 1, ['mood' => 'Sleepy'])))->toThrow(EventSerializationException::class, 'mood.changed.mood');
+});
+
+it('quotes a failing constructor in the message for the log and publishes nothing of it', function (): void {
+    $mapper = new EventMapper(new EventTypeRegistry((new EventSourcingScanner)->scan(['Firefly\\EventSourcing\\Tests\\Fixtures\\Guarded\\' => dirname(__DIR__).'/Fixtures/Guarded'])->eventTypes()));
+
+    $failure = null;
+    try {
+        $mapper->toDomainEvent(storedAs('limit.raised', 1, ['limit' => -1]));
+    } catch (EventSerializationException $caught) {
+        $failure = $caught;
+    }
+
+    expect($failure)->toBeInstanceOf(EventSerializationException::class)
+        ->and($failure?->getMessage())->toContain('secret-tenant-7')
+        ->and($failure?->getMessage())->toContain(LimitRaised::class)
+        ->and($failure?->detail())->toBeNull()
+        ->and($failure?->getPrevious())->toBeInstanceOf(InvalidArgumentException::class);
 });

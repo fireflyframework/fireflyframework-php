@@ -34,6 +34,9 @@ use Symfony\Component\HttpFoundation\Response as HttpResponse;
  */
 final class OrchestrationController
 {
+    /** What a refusal with no sentence for the caller answers with; the log has the cause. */
+    public const string WITHHELD = 'An unexpected error occurred.';
+
     public function __construct(
         private readonly Orchestrator $orchestrator,
         private readonly ExecutionPersistenceProvider $persistence,
@@ -160,7 +163,9 @@ final class OrchestrationController
         try {
             return $action();
         } catch (FireflyException $refused) {
-            return new JsonResponse(['error' => $refused->getMessage(), 'code' => $refused->errorCode()], $refused->httpStatus());
+            // detail(), not getMessage(): a refusal that wraps a raw cause withholds its sentence (null), and its
+            // message — the cause quoted verbatim — stays in the log rather than in this response.
+            return new JsonResponse(['error' => $refused->detail() ?? self::WITHHELD, 'code' => $refused->errorCode()], $refused->httpStatus());
         }
     }
 

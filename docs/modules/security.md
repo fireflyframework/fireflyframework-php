@@ -192,8 +192,9 @@ to the log**, at warning, with the principal and its authorities — they used t
 ("Access is denied for [App\Ctrl::admin].") and a PHP class name is not something a person should read on a
 panel. A rule on a command or query handler refuses with the same document through the bus: the CQRS
 wrappers copy the cause's code, status and extension members, so `requiredAuthorities` survives the wrap, and
-only `detail` differs, prefixed with `Processing command [App\…] failed:`. A rule can carry its own product
-code and sentence:
+the two documents are identical, `detail` included: the wrapper's message keeps
+`Processing command [App\…] failed:` for the log, while the `detail()` it publishes is the cause's own
+sentence. A rule can carry its own product code and sentence:
 
 <!-- source: packages/security/tests/Fixtures/SecuredController.php -->
 ```php

@@ -2,8 +2,11 @@
 
 declare(strict_types=1);
 
+use Firefly\Orchestration\Http\OrchestrationController;
+use Firefly\Orchestration\Persistence\ExecutionPersistenceProvider;
 use Firefly\Orchestration\Tests\CapstoneFixtures\Ledger;
 use Firefly\Orchestration\Tests\Support\RestCapstoneTestCase;
+use Firefly\Orchestration\Tests\Support\WithholdingPersistence;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -88,4 +91,15 @@ it('refuses bodies that are not JSON objects and unknown definitions', function 
     /** @var RestCapstoneTestCase $this */
     $this->postJson('/ops/orchestration/sagas/checkout', ['input' => 'nope'])->assertStatus(400)->assertJson(['code' => 'ORCHESTRATION_BAD_REQUEST']);
     $this->postJson('/ops/orchestration/sagas/nope', ['input' => []])->assertNotFound();
+});
+
+it('answers a refusal that withholds its sentence without the raw cause its message quotes', function (): void {
+    /** @var RestCapstoneTestCase $this */
+    $this->app()->instance(ExecutionPersistenceProvider::class, new WithholdingPersistence);
+
+    $response = $this->getJson('/ops/orchestration/executions/e-1')
+        ->assertStatus(500)
+        ->assertExactJson(['error' => OrchestrationController::WITHHELD, 'code' => 'ORCHESTRATION_STORE_FAILED']);
+
+    expect((string) $response->getContent())->not->toContain('10.0.0.7');
 });

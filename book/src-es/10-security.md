@@ -1165,10 +1165,11 @@ it('allows an authorized withdraw and renders an overdraw as 409 problem+json', 
     $this->postJson("/api/v1/wallets/{$id}/withdraw", ['amount_minor' => 999999])
         ->assertStatus(409)
         // …
-        ->assertJsonPath('category', 'business');
+        ->assertJsonPath('category', 'business')
+        ->assertJsonPath('detail', 'cannot withdraw 9999.99 EUR; balance is 20.00 EUR');
 ```
 
-La autoridad concedida es `'ROLE_WALLET_OWNER'` — ya con el prefijo `ROLE_` incorporado — y la expresión de `WithdrawHandler` llama a `hasRole('WALLET_OWNER')`, que `SecurityExpressionRoot::hasRole()` normaliza a la cadena idéntica `'ROLE_WALLET_OWNER'` antes de comprobar la pertenencia; las dos formas de escribirlo se encuentran en el medio. El principal es `owner-4` y el monedero se abre para `owner-4`, y eso es lo que permite que `hasPermission(#command, 'debit')` conceda el cargo. El `409` de la segunda llamada es el contraste importante: la autorización y la validación de dominio son dos capas genuinamente independientes — que se te *permita* retirar no dice nada sobre si la retirada en sí es *válida*, y la propia invariante de no-sobregiro de `Wallet::withdraw()` (Capítulo 6) sigue aplicándose exactamente igual que antes.
+La autoridad concedida es `'ROLE_WALLET_OWNER'` — ya con el prefijo `ROLE_` incorporado — y la expresión de `WithdrawHandler` llama a `hasRole('WALLET_OWNER')`, que `SecurityExpressionRoot::hasRole()` normaliza a la cadena idéntica `'ROLE_WALLET_OWNER'` antes de comprobar la pertenencia; las dos formas de escribirlo se encuentran en el medio. El principal es `owner-4` y el monedero se abre para `owner-4`, y eso es lo que permite que `hasPermission(#command, 'debit')` conceda el cargo. El `409` de la segunda llamada es el contraste importante: la autorización y la validación de dominio son dos capas genuinamente independientes — que se te *permita* retirar no dice nada sobre si la retirada en sí es *válida*, y la propia invariante de no-sobregiro de `Wallet::withdraw()` (Capítulo 6) sigue aplicándose exactamente igual que antes. Su `detail` es la frase del dominio palabra por palabra: el envoltorio del bus guarda la clase del comando para el log y publica la frase propia de la causa.
 
 `samples/lumen/tests/Application/TransferSecurityTest.php` demuestra el mismo guardián directamente contra el `CommandBus`, con el patrón de desenvolver mediante `getPrevious()` que introdujo el Capítulo 7:
 

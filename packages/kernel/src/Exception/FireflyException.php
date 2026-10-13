@@ -35,6 +35,18 @@ use Throwable;
  * over the extensions, so a `['status' => 999]` extension is harmless rather than a way to lie about the
  * status. That rule is enforced where the document is built, not here, because the document is the only
  * place where the two namespaces meet.
+ *
+ * AND THE SENTENCE FOR THE CLIENT IS NOT ALWAYS THE MESSAGE. `detail()` is what the problem document
+ * publishes as `detail`, and by default it is getMessage(), because a message in this taxonomy is written
+ * for the client ("Order 42 does not exist."). A WRAPPER breaks that: CQRS's CommandProcessingException
+ * reads "Processing command [App\Withdraw] failed: <the cause's message>", which is the right line for a
+ * log and the wrong one for a wire — it names a class, and when the cause is a QueryException it carries
+ * the failing SQL and its bindings. So a wrapper says what may be published with `withDetail()`: the
+ * cause's own detail when the cause is authored, and NULL when nothing it holds was written for a client.
+ * Null is not "empty": the web layer reads it as "treat this like an unhandled throwable" and publishes
+ * its opaque sentence (or, with disclosure on, the underlying cause's message), keeping this exception's
+ * code, status, category, severity, title and extension members. getMessage() is never touched, so the
+ * log and the `previous` chain keep every word.
  */
 class FireflyException extends RuntimeException
 {
@@ -42,6 +54,10 @@ class FireflyException extends RuntimeException
     private array $extensions;
 
     private ?string $title;
+
+    private ?string $detail = null;
+
+    private bool $detailAuthored = false;
 
     /**
      * @param  array<string, mixed>  $extensions  RFC 9457 extension members spread into the problem document
@@ -119,6 +135,30 @@ class FireflyException extends RuntimeException
     public function withTitle(?string $title): static
     {
         $this->title = $title;
+
+        return $this;
+    }
+
+    /**
+     * The sentence the problem document publishes as `detail`: getMessage() unless withDetail() said
+     * otherwise, and null when this exception carries no sentence written for a client — see the class
+     * comment for what the web layer does then.
+     */
+    public function detail(): ?string
+    {
+        return $this->detailAuthored ? $this->detail : $this->getMessage();
+    }
+
+    /**
+     * Replaces the published sentence on THIS instance — null withholds it — without touching getMessage(),
+     * which stays the log's.
+     *
+     * @return $this
+     */
+    public function withDetail(?string $detail): static
+    {
+        $this->detail = $detail;
+        $this->detailAuthored = true;
 
         return $this;
     }

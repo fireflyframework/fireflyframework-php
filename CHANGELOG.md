@@ -4,6 +4,28 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+### Changed
+
+- **Over the CQRS bus, `detail` is the cause's own sentence.** A refusal raised inside a handler — a `409` from the
+  domain, a `#[PreAuthorize]` denial — now publishes the same problem document it publishes thrown from a
+  controller, `detail` included, instead of prefixing it with `Processing command [<class>] failed:`; the HTML error
+  page's lede follows. The wrapper's `getMessage()` keeps the prefix for the log. The seam is the kernel's:
+  `FireflyException::detail()` (`getMessage()` by default) is what `ErrorResponse::fromException()` publishes, and
+  `withDetail(?string)` replaces it, with `null` meaning the exception holds no sentence written for a client.
+
+### Security
+
+- **A command or query handler's unhandled throwable no longer reaches the wire.** `CommandProcessingException` and
+  `QueryProcessingException` are `FireflyException`s whose message is `Processing command [<class>] failed: <the
+  cause's message>`, and the web layer published that message as `detail` — so a handler's `QueryException` put its
+  SQL and bindings, and the command's class name, into a 500 problem document with `firefly.web.problem.disclose`
+  off, where the same throwable thrown from a controller answered with the opaque sentence. A wrapper of a cause that
+  is not a `FireflyException` now answers exactly like that controller: `An unexpected error occurred. It has been
+  logged; quote reference <traceId> if you report it.` with disclosure off, and the cause's own message (no prefix)
+  with it on, keeping its own `COMMAND_PROCESSING_ERROR`/`QUERY_PROCESSING_ERROR` code. The same rule now covers the
+  event-sourcing mapper's `EventSerializationException` for an event constructor that threw, the orchestration
+  engine's `ORCHESTRATION_CONDITION_FAILED`, and the orchestration REST surface, which published any refusal's message.
+
 ## [26.10.2] - 2026-10-13
 
 ### Added

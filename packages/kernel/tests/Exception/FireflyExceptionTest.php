@@ -62,3 +62,17 @@ it('accepts extensions and a title through the constructor as well', function ()
     expect($e->extensions())->toBe(['retryable' => true])
         ->and($e->title())->toBe('That cannot be done yet');
 });
+
+it('publishes its message as the detail unless told otherwise', function () {
+    expect((new FireflyException('Order 42 does not exist.', 'NOT_FOUND', 404))->detail())->toBe('Order 42 does not exist.');
+});
+
+it('can replace or withhold the published detail without touching the message the log reads', function () {
+    $replaced = (new FireflyException('Wrapping [App\Withdraw] failed: Overdrawn.', 'X', 409))->withDetail('Overdrawn.');
+    $withheld = (new FireflyException('Wrapping [App\Withdraw] failed: select * from users', 'X'))->withDetail(null);
+
+    expect($replaced->detail())->toBe('Overdrawn.')
+        ->and($replaced->getMessage())->toBe('Wrapping [App\Withdraw] failed: Overdrawn.')
+        ->and($withheld->detail())->toBeNull()
+        ->and($withheld->getMessage())->toBe('Wrapping [App\Withdraw] failed: select * from users');
+});

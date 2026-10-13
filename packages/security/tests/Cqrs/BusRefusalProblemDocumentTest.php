@@ -42,8 +42,10 @@ use Orchestra\Testbench\TestCase;
  | the cause's code, status, category and severity but not its extension members, so the same rule, refusing
  | the same principal, published `requiredAuthorities` from a controller and dropped it from a command.
  |
- | These render both refusals through the real renderer and compare the documents. `detail` is the one member
- | allowed to differ: the bus prefixes the cause's sentence with the command it was processing.
+ | These render both refusals through the real renderer and compare the documents, `detail` included. The
+ | bus's own message still names the command it was processing ("Processing command [...] failed: ..."), but
+ | that line is the log's: the wrapper's detail() is the cause's own sentence, so nothing but the members
+ | that describe the request may differ.
  */
 
 uses(TestCase::class);
@@ -143,7 +145,7 @@ function busRefusalBothWays(string $expression, ?string $code = null, ?string $m
  */
 function busRefusalIdentity(array $document): array
 {
-    return array_diff_key($document, array_flip(['detail', 'instance', 'traceId', 'correlationId', 'timestamp']));
+    return array_diff_key($document, array_flip(['instance', 'traceId', 'correlationId', 'timestamp']));
 }
 
 it('publishes requiredAuthorities for a refused command exactly as it does for a refused controller method', function () {
@@ -159,7 +161,7 @@ it('publishes requiredAuthorities for a refused command exactly as it does for a
         ->and($fromBus['code'])->toBe('ACCESS_DENIED');
 });
 
-it('keeps the rule\'s own code and sentence on a refused command, and only prefixes the sentence', function () {
+it('keeps the rule\'s own code and sentence on a refused command, word for word', function () {
     [$controller, $bus] = busRefusalBothWays("hasAnyRole('MANAGER', 'TENANT_ADMIN')", 'RUN_ROLE_REQUIRED', 'Only a manager may start a run.');
 
     $fromController = busRefusalDocument($controller);
@@ -169,5 +171,7 @@ it('keeps the rule\'s own code and sentence on a refused command, and only prefi
         ->and($fromBus['code'])->toBe('RUN_ROLE_REQUIRED')
         ->and($fromBus['requiredAuthorities'] ?? null)->toBe(['ROLE_MANAGER', 'ROLE_TENANT_ADMIN'])
         ->and($fromController['detail'])->toBe('Only a manager may start a run.')
-        ->and($fromBus['detail'])->toBe('Processing command ['.AdminCommand::class.'] failed: Only a manager may start a run.');
+        ->and($fromBus['detail'])->toBe('Only a manager may start a run.')
+        // The prefix is the log's, and it stays on the message.
+        ->and($bus->getMessage())->toBe('Processing command ['.AdminCommand::class.'] failed: Only a manager may start a run.');
 });
