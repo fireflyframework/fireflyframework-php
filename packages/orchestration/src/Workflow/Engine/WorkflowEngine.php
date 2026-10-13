@@ -255,6 +255,26 @@ final class WorkflowEngine
         });
     }
 
+    /**
+     * Re-drives a workflow a crashed process left in a recoverable status (the recovery sweep's `resume`
+     * action): a PENDING one is begun, a RUNNING or COMPENSATING one is driven from its last checkpoint, so the
+     * step that was running when the process died runs again — make workflow steps idempotent.
+     */
+    public function recover(string $correlationId): ExecutionState
+    {
+        return $this->support->lock->synchronized($correlationId, function () use ($correlationId): ExecutionState {
+            $state = $this->load($correlationId);
+            if (! $state->status->isRecoverable()) {
+                throw new InvalidExecutionStateException("Workflow execution [{$correlationId}] is {$state->status->value}; only an interrupted execution can be recovered.");
+            }
+
+            $definition = $this->registry->get($state->executionName);
+            $context = ExecutionContext::fromState($state);
+
+            return $state->status === ExecutionStatus::Pending ? $this->begin($definition, $context) : $this->drive($definition, $context);
+        });
+    }
+
     public function cancel(string $correlationId): ExecutionState
     {
         return $this->support->lock->synchronized($correlationId, function () use ($correlationId): ExecutionState {

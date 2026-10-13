@@ -11,6 +11,7 @@ use Firefly\Orchestration\Saga\Attributes\OnSagaComplete;
 use Firefly\Orchestration\Saga\Attributes\OnSagaError;
 use Firefly\Orchestration\Saga\Attributes\Saga;
 use Firefly\Orchestration\Saga\Attributes\SagaStep;
+use Firefly\Orchestration\Saga\Attributes\ScheduledSaga;
 use Firefly\Orchestration\Saga\Attributes\StepEvent;
 use Firefly\Orchestration\Saga\Engine\SagaResult;
 use RuntimeException;
@@ -18,6 +19,7 @@ use Throwable;
 
 #[Service]
 #[Saga(name: 'checkout', triggerEventType: 'orders.placed')]
+#[ScheduledSaga(cron: '0 2 * * *', input: '{"orderId": 1, "amount": 5}', description: 'nightly checkout')]
 final class CheckoutSaga
 {
     public function __construct(private readonly Ledger $ledger) {}

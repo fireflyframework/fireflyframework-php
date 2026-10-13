@@ -346,6 +346,17 @@ return [
                     ],
                 ],
             ],
+            30 => [
+                'method' => 'recoveryService',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Orchestration\\Recovery\\RecoveryService',
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
 ];

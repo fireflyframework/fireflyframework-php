@@ -45,6 +45,7 @@ use Firefly\Orchestration\Persistence\CacheExecutionPersistenceProvider;
 use Firefly\Orchestration\Persistence\DatabaseExecutionPersistenceProvider;
 use Firefly\Orchestration\Persistence\ExecutionPersistenceProvider;
 use Firefly\Orchestration\Persistence\MemoryExecutionPersistenceProvider;
+use Firefly\Orchestration\Recovery\RecoveryService;
 use Firefly\Orchestration\Saga\Compensation\CompensationErrorHandlerFactory;
 use Firefly\Orchestration\Saga\Compensation\SagaCompensator;
 use Firefly\Orchestration\Saga\Composition\CompositionDataFlowManager;
@@ -385,6 +386,14 @@ final class OrchestrationAutoConfiguration
     public function deadLetterRetrier(DeadLetterService $deadLetters, Orchestrator $orchestrator): DeadLetterRetrier
     {
         return new DeadLetterRetrier($deadLetters, $orchestrator);
+    }
+
+    #[Bean]
+    #[Lazy]
+    #[ConditionalOnMissingBean(RecoveryService::class)]
+    public function recoveryService(OrchestrationSettings $settings, ExecutionPersistenceProvider $persistence, SagaEngine $sagas, TccEngine $tccs, WorkflowEngine $workflows, Clock $clock, Container $app): RecoveryService
+    {
+        return new RecoveryService($persistence, $sagas, $tccs, $workflows, $settings->recovery, $settings->persistence, $clock, self::logger($app), $settings->backpressure->batchSize);
     }
 
     private static function cacheStore(Container $app, ?string $store): CacheRepository

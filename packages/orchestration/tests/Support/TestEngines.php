@@ -24,6 +24,7 @@ use Firefly\Orchestration\Event\NoOpOrchestrationTracing;
 use Firefly\Orchestration\OrchestrationSettings;
 use Firefly\Orchestration\Persistence\ExecutionPersistenceProvider;
 use Firefly\Orchestration\Persistence\MemoryExecutionPersistenceProvider;
+use Firefly\Orchestration\Recovery\RecoveryService;
 use Firefly\Orchestration\Saga\Compensation\CompensationErrorHandlerFactory;
 use Firefly\Orchestration\Saga\Compensation\SagaCompensator;
 use Firefly\Orchestration\Saga\Composition\CompositionDataFlowManager;
@@ -102,6 +103,8 @@ final class TestEngines
 
     public readonly DeadLetterRetrier $retrier;
 
+    public readonly RecoveryService $recovery;
+
     /**
      * @param  array<string, mixed>  $config
      * @param  array<string, mixed>  $resilience
@@ -176,6 +179,10 @@ final class TestEngines
         );
         $this->orchestrator = new Orchestrator($this->sagas, $this->tccs, $this->workflows, $this->persistence);
         $this->retrier = new DeadLetterRetrier($this->support->deadLetters, $this->orchestrator);
+        $this->recovery = new RecoveryService(
+            $this->persistence, $this->sagas, $this->tccs, $this->workflows,
+            $this->settings->recovery, $this->settings->persistence, $this->clock, $this->logger, $this->settings->backpressure->batchSize,
+        );
     }
 
     /**
