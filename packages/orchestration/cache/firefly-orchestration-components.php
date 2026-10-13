@@ -6,6 +6,43 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\Orchestration\\Actuator\\OrchestrationEndpoint',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Endpoint\\ActuatorEndpoint',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Container\\Container',
+        ],
+    ],
+    1 => [
+        'class' => 'Firefly\\Orchestration\\Actuator\\OrchestrationHealthIndicator',
+        'stereotype' => 'component',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 0,
+        'qualifier' => null,
+        'interfaces' => [
+            0 => 'Firefly\\Actuator\\Health\\ConditionalHealthIndicator',
+            1 => 'Firefly\\Actuator\\Health\\HealthIndicator',
+        ],
+        'beans' => [
+        ],
+        'lazy' => false,
+        'dependencies' => [
+            0 => 'Firefly\\Container\\Container',
+        ],
+    ],
+    2 => [
         'class' => 'Firefly\\Orchestration\\OrchestrationAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,

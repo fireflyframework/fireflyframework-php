@@ -12,6 +12,12 @@ use Firefly\Orchestration\Boot\EventGatewayWiringPass;
 use Firefly\Orchestration\Boot\OrchestrationRegistryPass;
 use Firefly\Orchestration\Boot\OrchestrationSchedulePass;
 use Firefly\Orchestration\Boot\ScheduledExecutionsPass;
+use Firefly\Orchestration\Console\DeadLetterCommand;
+use Firefly\Orchestration\Console\ListExecutionsCommand;
+use Firefly\Orchestration\Console\RetryDeadLetterCommand;
+use Firefly\Orchestration\Console\ShowExecutionCommand;
+use Firefly\Orchestration\Console\SignalWorkflowCommand;
+use Firefly\Orchestration\Console\TickCommand;
 use Firefly\Orchestration\Manifest\OrchestrationManifest;
 use Firefly\Orchestration\Scanner\OrchestrationScanner;
 use Illuminate\Contracts\Container\Container;
@@ -26,6 +32,7 @@ use Illuminate\Contracts\Container\Container;
  *    cached application that has firefly/cli pays nothing;
  *  - contributes the registry, gateway, schedule (the tick and the recovery sweep) and scheduled-execution
  *    (#[ScheduledSaga] / #[ScheduledTcc] / #[ScheduledWorkflow]) passes;
+ *  - registers the firefly:orchestration:* commands (list, show, signal, dlq, dlq:retry, tick) in a console;
  *  - publishes the migration (`--tag=firefly-orchestration-migrations`) and loads it while persistence or
  *    the DLQ is `database`.
  */
@@ -60,6 +67,17 @@ final class OrchestrationWiringProvider extends FireflyServiceProvider
 
     public function boot(): void
     {
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                ListExecutionsCommand::class,
+                ShowExecutionCommand::class,
+                SignalWorkflowCommand::class,
+                DeadLetterCommand::class,
+                RetryDeadLetterCommand::class,
+                TickCommand::class,
+            ]);
+        }
+
         $migrations = dirname(__DIR__).'/database/migrations';
         $this->publishes([$migrations.'/'.self::MIGRATION => $this->app->databasePath('migrations/'.self::MIGRATION)], 'firefly-orchestration-migrations');
 

@@ -15,6 +15,7 @@ use Firefly\Resilience\ResilienceServiceProvider;
 use Firefly\Scheduling\SchedulingServiceProvider;
 use Firefly\Scheduling\SchedulingWiringProvider;
 use Firefly\Testing\FireflyDatabaseTestCase;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\DB;
 
@@ -69,5 +70,27 @@ abstract class OrchestrationCapstoneTestCase extends FireflyDatabaseTestCase
         parent::setUp();
 
         OrchestrationSchema::create(DB::connection()->getSchemaBuilder());
+    }
+
+    /**
+     * Runs an artisan command through the console Kernel and returns its exit code; commandOutput() is everything
+     * it printed. Kernel::call() rather than $this->artisan(), which is declared `PendingCommand|int` and matches
+     * each expected substring against one write at a time (one table row satisfies only the first substring).
+     *
+     * @param  array<string, mixed>  $parameters
+     */
+    public function command(string $name, array $parameters = []): int
+    {
+        return $this->kernel()->call($name, $parameters);
+    }
+
+    public function commandOutput(): string
+    {
+        return $this->kernel()->output();
+    }
+
+    private function kernel(): Kernel
+    {
+        return $this->app()->make(Kernel::class);
     }
 }
