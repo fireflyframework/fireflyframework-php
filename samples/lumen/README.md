@@ -17,9 +17,9 @@ sensitive command, and a thin REST layer with RFC-7807 problem-details.
 samples/lumen/
 ├── src/
 │   ├── Domain/            # Wallet aggregate + Money value object + domain events
-│   ├── Application/       # CQRS: Command/Query + Handler pairs, the LedgerProjector listener
-│   ├── Infrastructure/     # WalletRepository port + EloquentWalletRepository adapter + migrations
-│   └── Web/                # WalletController (#[RestController]) + validated request DTOs
+│   ├── Application/       # CQRS: Command/Query + Handler pairs, listeners, the payout saga + bank port
+│   ├── Infrastructure/     # WalletRepository + EloquentWalletRepository, the simulated bank, migrations
+│   └── Web/                # WalletController, PayoutController (#[RestController]) + validated DTOs
 ├── tests/                  # Pest coverage: domain, infrastructure, application, security, web, integration
 └── config/firefly.php      # Framework configuration (scan paths)
 ```
@@ -57,6 +57,22 @@ HTTP endpoints — none of which contain business logic of their own.
   fault (not-found, overdraw, denied) renders as an RFC-7807
   `application/problem+json` response via the framework's own
   `ProblemDetailsRenderer` — no bespoke error handling in the sample itself.
+- **A compensating saga** — `PayoutSaga` (`#[Saga(name: 'payout')]`) debits the
+  wallet, submits a transfer to the `BankGateway` port and confirms it; when the
+  bank refuses, the completed steps are undone newest first (`cancel`, then
+  `refund`), the execution is checkpointed and dead-lettered by
+  `firefly/orchestration`. `SimulatedBankGateway` is the adapter.
+- **Webhooks in, callbacks out** — `CardTopUpListener` deposits the card
+  processor's signed `top_up.succeeded` webhook (`firefly/webhooks`, verified,
+  deduplicated); `firefly/callbacks` posts signed `FundsDeposited` and
+  `FundsWithdrawn` callbacks to a subscribed partner.
+- **A cached balance** — `GetBalance` is a `#[CachedQuery]`; `FundsDeposited`
+  and `FundsWithdrawn` evict exactly the wallet they changed
+  (`#[InvalidatesQuery]`).
+- **The portable outbox** — under `firefly.eda.provider=database` the same
+  domain events are written to `firefly_eda_outbox` in the wallet's own
+  transaction and delivered by `php artisan firefly:eda:consume`, proven on
+  PostgreSQL, MySQL, MariaDB, SQL Server and SQLite.
 
 ## REST API
 
@@ -66,6 +82,7 @@ HTTP endpoints — none of which contain business logic of their own.
 | POST   | `/api/v1/wallets/{id}/deposit`            | Deposit funds (minor units)               |
 | POST   | `/api/v1/wallets/{id}/withdraw`           | Withdraw funds (minor units) — secured    |
 | POST   | `/api/v1/wallets/transfers`               | Transfer funds between two wallets        |
+| POST   | `/api/v1/wallets/{id}/payouts`            | Pay out to a bank account (saga) — secured |
 | GET    | `/api/v1/wallets/{id}/balance`            | Fetch just the balance                    |
 | GET    | `/api/v1/wallets/{id}/ledger`             | Fetch the wallet's projected ledger rows  |
 | GET    | `/api/v1/wallet-rollout`                  | Gated rollout probe; 404 while dark       |
@@ -77,6 +94,8 @@ principal at all it renders a 401 `application/problem+json` response
 (`AUTHENTICATION_FAILED`: authenticate first), and with a principal that is
 signed in but lacks the role a 403 (`ACCESS_DENIED`). The endpoint is
 secured, not broken.
+
+The payout endpoint runs the same Withdraw first, so it needs the same principal; a refusal there is the withdraw's own 401/403/404/409, and a refusal by the bank afterwards is a 409 PAYOUT_FAILED with the money back in the wallet.
 
 The optional feature-flag example keeps `wallet-balance-v2` off and `wallet-checkout-view` at `legacy` in the
 test harness. `WalletRollout` reads both through the real `FeatureFlags` client; a separate route carries
