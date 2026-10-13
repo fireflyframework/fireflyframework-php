@@ -34,7 +34,8 @@ use Throwable;
  *    recovery or an operator.
  *  - BEST_EFFORT: reverse completion order, every compensation attempted, FAIL_SAGA ignored.
  *
- * The error handler's RETRY answer re-runs the compensation after the step's compensation backoff; a handler
+ * The error handler's RETRY answer re-runs the compensation after the step's compensation backoff (under
+ * CIRCUIT_BREAKER through the saga's breaker, so retries count towards its threshold); a handler
  * that keeps answering RETRY is cut off after MAX_HANDLER_RETRIES and treated as CONTINUE.
  */
 final class SagaCompensator
@@ -134,7 +135,11 @@ final class SagaCompensator
                 continue;
             }
 
-            $this->onFailure($saga, $context, $stepId, $error, honourFailSaga: true);
+            // The handler's retries go through the same breaker: they count towards its failure threshold, and a
+            // retry it refuses — or one that opens it — stops the sweep like any other open circuit.
+            if ($this->onFailure($saga, $context, $stepId, $error, honourFailSaga: true, breaker: $breaker)) {
+                $open = true;
+            }
         }
 
         if ($left !== []) {
@@ -183,7 +188,13 @@ final class SagaCompensator
         return null;
     }
 
-    private function onFailure(SagaDefinition $saga, ExecutionContext $context, string $stepId, Throwable $error, bool $honourFailSaga): void
+    /**
+     * Asks the error handler what to do with a failed compensation and carries out its answer. Under
+     * CIRCUIT_BREAKER `$breaker` is the saga's breaker and every RETRY runs through it; the method then
+     * returns true when that breaker refused a retry or opened after one, so the caller stops the sweep.
+     * Without a breaker it always returns false.
+     */
+    private function onFailure(SagaDefinition $saga, ExecutionContext $context, string $stepId, Throwable $error, bool $honourFailSaga, ?CircuitBreaker $breaker = null): bool
     {
         $step = $saga->steps[$stepId];
 
@@ -191,13 +202,13 @@ final class SagaCompensator
             $decision = $this->handler->handle($saga->name, $stepId, $error, $attempt);
 
             if ($decision === CompensationErrorResult::Continue || $decision === CompensationErrorResult::SkipStep) {
-                return;
+                return false;
             }
 
             if ($decision === CompensationErrorResult::MarkCompensated) {
                 $this->markCompensated($saga, $context, $stepId);
 
-                return;
+                return false;
             }
 
             if ($decision === CompensationErrorResult::FailSaga) {
@@ -205,7 +216,7 @@ final class SagaCompensator
                     throw new CompensationException("Saga [{$saga->name}] stopped compensating at step [{$stepId}]: {$error->getMessage()}", $error);
                 }
 
-                return;
+                return false;
             }
 
             $backoff = $step->compensationOptions()->backoffMs;
@@ -213,9 +224,16 @@ final class SagaCompensator
                 usleep($backoff * 1000);
             }
 
-            $retryError = $this->attempt($saga, $context, $stepId, new StepOptions(timeoutMs: $step->compensationOptions()->timeoutMs), null);
+            try {
+                $retryError = $this->attempt($saga, $context, $stepId, new StepOptions(timeoutMs: $step->compensationOptions()->timeoutMs), $breaker);
+            } catch (CircuitBreakerOpenException) {
+                return true;
+            }
             if ($retryError === null) {
-                return;
+                return false;
+            }
+            if ($breaker !== null && $breaker->state() === 'open') {
+                return true;
             }
             $error = $retryError;
         }
@@ -223,6 +241,8 @@ final class SagaCompensator
         $this->support->logger->warning("Saga [{$saga->name}] stopped retrying the compensation of step [{$stepId}] after ".self::MAX_HANDLER_RETRIES.' handler retries.', [
             'correlationId' => $context->correlationId,
         ]);
+
+        return false;
     }
 
     private function markCompensated(SagaDefinition $saga, ExecutionContext $context, string $stepId): void

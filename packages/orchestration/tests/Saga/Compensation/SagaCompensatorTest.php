@@ -271,3 +271,37 @@ it('CIRCUIT_BREAKER refuses the next execution of the same saga while its breake
         ->and($second->stepStatus('a'))->toBe(StepStatus::Done)
         ->and(implode("\n", $logger->messages('warning')))->toContain('left [b, a] uncompensated');
 });
+
+it('CIRCUIT_BREAKER runs the handler retries through the saga breaker and stops the sweep once they open it', function (): void {
+    $log = [];
+    $logger = new RecordingLogger;
+    $resilience = ResilienceRegistry::fromConfig(new Config(new Repository(['firefly' => ['resilience' => ['circuit-breaker' => ['orchestration-compensation-order' => ['failure-threshold' => 2]]]]])), new InMemoryResilienceStore);
+    $saga = orchestrationCompensationSaga(['a' => [], 'b' => ['a'], 'c' => ['b']], ['c' => PHP_INT_MAX], $log);
+    $context = orchestrationCompletedContext($saga, ['a', 'b', 'c']);
+
+    orchestrationCompensator(CompensationPolicy::CircuitBreaker, new RetryWithBackoffCompensationErrorHandler(3), logger: $logger, resilience: $resilience)->compensate($saga, $context);
+
+    // The first try and ONE retry reach the breaker's threshold of two; the remaining two retries the handler
+    // asked for never hit the failing dependency, and the sweep leaves b and a for recovery.
+    expect($log)->toBe(['c', 'c'])
+        ->and($context->attempts('c:compensate'))->toBe(2)
+        ->and($resilience->circuitBreaker('orchestration-compensation-order')->state())->toBe('open')
+        ->and($context->stepStatus('c'))->toBe(StepStatus::CompensationFailed)
+        ->and($context->stepStatus('b'))->toBe(StepStatus::Done)
+        ->and($context->stepStatus('a'))->toBe(StepStatus::Done)
+        ->and(implode("\n", $logger->messages('warning')))->toContain('left [b, a] uncompensated');
+});
+
+it('CIRCUIT_BREAKER counts a handler retry that succeeds as a breaker success and carries on', function (): void {
+    $log = [];
+    $resilience = ResilienceRegistry::fromConfig(new Config(new Repository(['firefly' => ['resilience' => ['circuit-breaker' => ['orchestration-compensation-order' => ['failure-threshold' => 2]]]]])), new InMemoryResilienceStore);
+    $saga = orchestrationCompensationSaga(['a' => [], 'b' => ['a']], ['b' => 1], $log);
+    $context = orchestrationCompletedContext($saga, ['a', 'b']);
+
+    orchestrationCompensator(CompensationPolicy::CircuitBreaker, new RetryWithBackoffCompensationErrorHandler(3), resilience: $resilience)->compensate($saga, $context);
+
+    expect($log)->toBe(['b', 'b', 'a'])
+        ->and($context->stepStatus('b'))->toBe(StepStatus::Compensated)
+        ->and($context->stepStatus('a'))->toBe(StepStatus::Compensated)
+        ->and($resilience->circuitBreaker('orchestration-compensation-order')->state())->toBe('closed');
+});
