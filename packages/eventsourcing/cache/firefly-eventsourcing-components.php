@@ -203,6 +203,7 @@ return [
                 'lazy' => true,
                 'dependencies' => [
                     0 => 'Firefly\\Container\\Container',
+                    1 => 'Illuminate\\Container\\Container',
                 ],
             ],
             13 => [
@@ -219,6 +220,51 @@ return [
                     2 => 'Firefly\\EventSourcing\\Projection\\ProjectionRegistry',
                     3 => 'Firefly\\EventSourcing\\EventSourcingSettings',
                     4 => 'Illuminate\\Container\\Container',
+                ],
+            ],
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    2 => [
+        'class' => 'Firefly\\EventSourcing\\Orchestration\\EventSourcedOrchestrationAutoConfiguration',
+        'stereotype' => 'configuration',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 900,
+        'qualifier' => null,
+        'interfaces' => [
+        ],
+        'beans' => [
+            0 => [
+                'method' => 'executionReadModelProjection',
+                'returns' => 'Firefly\\EventSourcing\\Orchestration\\ExecutionReadModelProjection',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => true,
+                'dependencies' => [
+                    0 => 'Firefly\\EventSourcing\\Aggregate\\EventSourcingSupport',
+                    1 => 'Firefly\\EventSourcing\\EventSourcingSettings',
+                    2 => 'Illuminate\\Container\\Container',
+                ],
+            ],
+            1 => [
+                'method' => 'eventSourcedExecutionPersistenceProvider',
+                'returns' => 'Firefly\\Orchestration\\Persistence\\ExecutionPersistenceProvider',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => true,
+                'dependencies' => [
+                    0 => 'Firefly\\EventSourcing\\Aggregate\\EventSourcingSupport',
+                    1 => 'Firefly\\EventSourcing\\Orchestration\\ExecutionReadModelProjection',
+                    2 => 'Firefly\\EventSourcing\\EventSourcingSettings',
+                    3 => 'Illuminate\\Container\\Container',
                 ],
             ],
         ],

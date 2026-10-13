@@ -172,4 +172,47 @@ return [
             ],
         ],
     ],
+    1 => [
+        'class' => 'Firefly\\EventSourcing\\Orchestration\\EventSourcedOrchestrationAutoConfiguration',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+            0 => [
+                'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                'args' => [
+                    0 => 'firefly.orchestration.persistence.provider',
+                    1 => 'event-sourced',
+                    2 => false,
+                ],
+            ],
+        ],
+        'beanConditions' => [
+            0 => [
+                'method' => 'executionReadModelProjection',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\EventSourcing\\Orchestration\\ExecutionReadModelProjection',
+                        ],
+                    ],
+                ],
+            ],
+            1 => [
+                'method' => 'eventSourcedExecutionPersistenceProvider',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Orchestration\\Persistence\\ExecutionPersistenceProvider',
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ],
 ];

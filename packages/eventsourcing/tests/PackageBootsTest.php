@@ -72,8 +72,35 @@ it('loads the migrations only while an eventsourcing store is database, and publ
     $databaseApp->make('migrator');
 
     expect($memory->paths)->toBe([])
-        ->and($database->paths)->toBe([EventSourcingWiringProvider::MIGRATIONS])
-        ->and(ServiceProvider::pathsToPublish(EventSourcingWiringProvider::class, 'firefly-eventsourcing-migrations'))->toHaveKey(EventSourcingWiringProvider::MIGRATIONS);
+        ->and($database->paths)->toBe([EventSourcingWiringProvider::MIGRATIONS.'/'.EventSourcingWiringProvider::TABLES_MIGRATION])
+        ->and(ServiceProvider::pathsToPublish(EventSourcingWiringProvider::class, 'firefly-eventsourcing-migrations'))->toHaveKey(EventSourcingWiringProvider::MIGRATIONS.'/'.EventSourcingWiringProvider::TABLES_MIGRATION)
+        ->and(ServiceProvider::pathsToPublish(EventSourcingWiringProvider::class, 'firefly-eventsourcing-orchestration-migrations'))->toHaveKey(EventSourcingWiringProvider::MIGRATIONS.'/'.EventSourcingWiringProvider::ORCHESTRATION_MIGRATION);
+});
+
+it('loads the orchestration read-model migration only while orchestration persistence is event-sourced over the database store', function (): void {
+    $record = static function (array $config): array {
+        $migrator = new class
+        {
+            /** @var list<string> */
+            public array $paths = [];
+
+            public function path(string $path): void
+            {
+                $this->paths[] = $path;
+            }
+        };
+        $app = fireflyApplication(['firefly' => $config], [EventSourcingServiceProvider::class, EventSourcingWiringProvider::class]);
+        $app->bind('migrator', static fn (): object => $migrator);
+        $app->make('migrator');
+
+        return $migrator->paths;
+    };
+    $tables = EventSourcingWiringProvider::MIGRATIONS.'/'.EventSourcingWiringProvider::TABLES_MIGRATION;
+    $readModel = EventSourcingWiringProvider::MIGRATIONS.'/'.EventSourcingWiringProvider::ORCHESTRATION_MIGRATION;
+
+    expect($record(['orchestration' => ['persistence' => ['provider' => 'event-sourced']]]))->toBe([])
+        ->and($record(['eventsourcing' => ['store' => ['provider' => 'database']]]))->toBe([$tables])
+        ->and($record(['eventsourcing' => ['store' => ['provider' => 'database']], 'orchestration' => ['persistence' => ['provider' => 'event-sourced']]]))->toBe([$tables, $readModel]);
 });
 
 it('binds memory checkpoints, an empty projection registry and a runner by default', function (): void {

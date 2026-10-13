@@ -24,6 +24,7 @@ use Firefly\EventSourcing\Metadata\AuthenticatedUserMetadataContributor;
 use Firefly\EventSourcing\Metadata\CorrelationIdMetadataContributor;
 use Firefly\EventSourcing\Metadata\EventMetadataContributor;
 use Firefly\EventSourcing\Metadata\MetadataResolver;
+use Firefly\EventSourcing\Orchestration\ExecutionReadModelProjection;
 use Firefly\EventSourcing\Projection\CheckpointStore;
 use Firefly\EventSourcing\Projection\DatabaseCheckpointStore;
 use Firefly\EventSourcing\Projection\MemoryCheckpointStore;
@@ -214,12 +215,20 @@ final class EventSourcingAutoConfiguration
     #[Bean]
     #[Lazy]
     #[ConditionalOnMissingBean(ProjectionRegistry::class)]
-    public function projectionRegistry(FireflyContainer $beans): ProjectionRegistry
+    public function projectionRegistry(FireflyContainer $beans, Container $app): ProjectionRegistry
     {
         $registry = new ProjectionRegistry;
         foreach ($beans->getAll(Projection::class) as $projection) {
             if ($projection instanceof Projection) {
                 $registry->register($projection);
+            }
+        }
+
+        // The event-sourced orchestration read model is a #[Bean], not a scanned component, so getAll() cannot see it.
+        if ($app->bound(ExecutionReadModelProjection::class)) {
+            $readModel = $app->make(ExecutionReadModelProjection::class);
+            if (! $registry->has($readModel->name())) {
+                $registry->register($readModel);
             }
         }
 
