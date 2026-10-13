@@ -11,6 +11,9 @@ use Firefly\Webhooks\WebhookRequest;
  * Twilio (validator `twilio`): `X-Twilio-Signature: base64(HMAC-SHA1(auth token, <signed string>))`, where the
  * signed string is the full URL followed by every POST parameter, sorted by name, as name + value. A JSON callback
  * signs the URL alone and carries the body's SHA-256 in the `bodySHA256` query parameter, which is checked first.
+ * The branch is chosen by the URL, as twilio-php's RequestValidator does, never by the Content-Type an attacker can
+ * rewrite: a URL carrying `bodySHA256` always has its body checked; otherwise only a form-encoded request is signed
+ * as URL + parameters, and any other request must have an empty body, since nothing would cover its bytes.
  * Twilio signs no timestamp: replays are stopped by the idempotency store keyed on `I-Twilio-Idempotency-Token`.
  * The URL must be the one Twilio called — set the provider's public-url behind a proxy that rewrites the host.
  */
@@ -28,15 +31,21 @@ final class TwilioSignatureValidator implements SignatureValidator
             throw WebhookRejectedException::signatureInvalid($request->provider, "the {$this->header} header is missing");
         }
 
-        if (str_contains($request->contentType, 'json')) {
-            parse_str((string) parse_url($request->url, PHP_URL_QUERY), $query);
-            $bodyHash = $query['bodySHA256'] ?? null;
+        parse_str((string) parse_url($request->url, PHP_URL_QUERY), $query);
+        $contentType = strtolower(trim(explode(';', $request->contentType)[0]));
+
+        if (array_key_exists('bodySHA256', $query)) {
+            $bodyHash = $query['bodySHA256'];
             if (! is_string($bodyHash) || ! hash_equals(hash('sha256', $request->body), strtolower($bodyHash))) {
                 throw WebhookRejectedException::signatureInvalid($request->provider, 'the bodySHA256 parameter does not match the body');
             }
             $signed = $request->url;
-        } else {
+        } elseif ($contentType === 'application/x-www-form-urlencoded') {
             $signed = self::signedForm($request->url, $request->form);
+        } elseif ($request->body === '') {
+            $signed = $request->url;
+        } else {
+            throw WebhookRejectedException::signatureInvalid($request->provider, 'a body that is neither form-encoded nor covered by bodySHA256 is not signed');
         }
 
         if (! hash_equals(base64_encode(hash_hmac('sha1', $signed, $this->authToken, true)), $signature)) {

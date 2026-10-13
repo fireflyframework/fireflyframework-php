@@ -123,6 +123,35 @@ it('verifies Twilio JSON callbacks through the bodySHA256 parameter', function (
     expect(w4Rejection(fn () => $validator->verify(WebhookRequests::make('twilio', $body.'x', ['X-Twilio-Signature' => $signature], [], $url)))->getMessage())->toContain('bodySHA256');
 });
 
+it('checks bodySHA256 whatever the content type, so a replayed JSON signature cannot carry a forged body', function () {
+    $body = '{"EventType":"onMessageAdded"}';
+    $url = 'https://hooks.example.com/webhooks/twilio?bodySHA256='.hash('sha256', $body);
+    $signature = base64_encode(hash_hmac('sha1', $url, 'token', true));
+    $validator = new TwilioSignatureValidator('token');
+
+    $validator->verify(WebhookRequests::make('twilio', $body, ['X-Twilio-Signature' => $signature], [], $url, ''));
+
+    foreach (['', 'text/plain', 'application/octet-stream', 'application/x-www-form-urlencoded'] as $contentType) {
+        $forged = WebhookRequests::make('twilio', '{"EventType":"forged"}', ['X-Twilio-Signature' => $signature], [], $url, $contentType);
+
+        expect(w4Rejection(fn () => $validator->verify($forged))->getMessage())->toContain('bodySHA256');
+    }
+});
+
+it('rejects a Twilio request whose body is neither form-encoded nor covered by bodySHA256', function () {
+    $url = 'https://hooks.example.com/webhooks/twilio';
+    $signature = base64_encode(hash_hmac('sha1', $url, 'token', true));
+    $validator = new TwilioSignatureValidator('token');
+
+    $validator->verify(WebhookRequests::make('twilio', '', ['X-Twilio-Signature' => $signature], [], $url, ''));
+
+    foreach (['', 'text/plain', 'application/json'] as $contentType) {
+        $request = WebhookRequests::make('twilio', '{"EventType":"forged"}', ['X-Twilio-Signature' => $signature], [], $url, $contentType);
+
+        expect(w4Rejection(fn () => $validator->verify($request))->errorCode())->toBe('WEBHOOK_SIGNATURE_INVALID');
+    }
+});
+
 it('accepts anything with the NoOp validator, and the factory picks the validator for each kind', function () {
     (new NoOpSignatureValidator)->verify(WebhookRequests::make('open', 'anything'));
     $factory = new SignatureValidatorFactory(w4Clock());
