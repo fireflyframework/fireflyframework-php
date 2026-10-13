@@ -8,6 +8,7 @@ use Firefly\Callbacks\Subscription\CallbackSubscription;
 use Firefly\Callbacks\Subscription\SubscriptionRegistry;
 use Firefly\Callbacks\Tests\Support\CallbacksArtisan;
 use Firefly\Callbacks\Tests\Support\CallbacksCapstoneTestCase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
 uses(CallbacksCapstoneTestCase::class);
@@ -88,4 +89,25 @@ it('refuses to replay to a deactivated subscription unless --include-inactive is
         ->expectsOutputToContain("{$failed->id}: delivered after 4 attempt(s)")
         ->assertExitCode(0);
     Http::assertSentCount(4);
+});
+
+it('replays to the subscription\'s current URL and reports the destination change', function () {
+    /** @var CallbacksCapstoneTestCase $this */
+    Http::fake(['partner.example.com/*' => Http::response('', 503), 'moved.example.com/*' => Http::response('', 204)]);
+    $this->events->publish('orders', 'order.created', ['id' => 12]);
+    $failed = $this->app()->make(ExecutionLog::class)->recent(1, CallbackStatus::Failed)[0];
+
+    $registry = $this->app()->make(SubscriptionRegistry::class);
+    $current = $registry->find('sub-orders');
+    expect($current)->not->toBeNull();
+    /** @var CallbackSubscription $current */
+    $registry->save(new CallbackSubscription($current->id, $current->name, 'https://moved.example.com/hooks/orders', $current->eventTypes, $current->secret, $current->headers, true, $current->maxAttempts));
+
+    CallbacksArtisan::pending($this->artisan('firefly:callbacks:replay', ['ids' => [$failed->id]]))
+        ->expectsOutputToContain("{$failed->id}: destination changed from https://partner.example.com/hooks/orders to https://moved.example.com/hooks/orders")
+        ->expectsOutputToContain("{$failed->id}: delivered after 4 attempt(s)")
+        ->assertExitCode(0);
+
+    Http::assertSent(static fn (Request $request): bool => $request->url() === 'https://moved.example.com/hooks/orders');
+    expect($this->app()->make(ExecutionLog::class)->find($failed->id)?->url)->toBe('https://moved.example.com/hooks/orders');
 });

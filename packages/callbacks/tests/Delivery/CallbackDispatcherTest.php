@@ -93,3 +93,19 @@ it('refuses to replay to a deactivated subscription and leaves the log untouched
         ->and($sender->sent)->toHaveCount(2)
         ->and($log->find($failed->id)?->status)->toBe(CallbackStatus::Delivered);
 });
+
+it('replays to the subscription\'s current URL after its endpoint changed, and logs the new destination', function () {
+    $sender = new ScriptedCallbackSender([500, 204]);
+    $subscriptions = new InMemorySubscriptionRegistry([new CallbackSubscription('orders', 'orders', 'https://a.example.com/hooks', ['order.*'], 's')]);
+    $log = new InMemoryExecutionLog;
+    $deliverer = new CallbackDeliverer(new CallbacksSettings(maxAttempts: 1), $sender, new CallbackSigner, null, static function (float $s): void {});
+    $dispatcher = new CallbackDispatcher($subscriptions, $log, $deliverer);
+    $failed = $dispatcher->dispatch(new EventEnvelope('order.created', 'orders', [], [], 'evt-5'))[0];
+
+    $subscriptions->save(new CallbackSubscription('orders', 'orders', 'https://moved.example.com/hooks', ['order.*'], 's'));
+    $replayed = $dispatcher->replay($failed);
+
+    expect($replayed?->status)->toBe(CallbackStatus::Delivered)
+        ->and($sender->sent[1]['url'])->toBe('https://moved.example.com/hooks')
+        ->and($log->find($failed->id)?->url)->toBe('https://moved.example.com/hooks');
+});

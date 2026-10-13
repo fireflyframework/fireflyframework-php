@@ -57,6 +57,25 @@ final readonly class CallbackExecution
         return new self($id, $subscription->id, $envelope->eventId, $envelope->eventType, $subscription->url, $body, CallbackStatus::Pending, 0, null, null, $now, $now);
     }
 
+    /** The same execution aimed at another destination: the subscription's current URL, after its endpoint changed. */
+    public function withUrl(string $url): self
+    {
+        return new self(
+            $this->id,
+            $this->subscriptionId,
+            $this->eventId,
+            $this->eventType,
+            $url,
+            $this->body,
+            $this->status,
+            $this->attempts,
+            $this->responseStatus,
+            $this->lastError,
+            $this->createdAt,
+            $this->updatedAt,
+        );
+    }
+
     public function withOutcome(CallbackStatus $status, int $attempts, ?int $responseStatus, ?string $lastError, int $now): self
     {
         return new self(

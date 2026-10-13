@@ -152,3 +152,28 @@ it('refuses to deliver to an inactive subscription without sending anything, unl
     expect($forced->status)->toBe(CallbackStatus::Delivered)
         ->and($sender->sent)->toHaveCount(1);
 });
+
+it('delivers to the subscription\'s current URL, not the one stored on the execution, and records the change', function () {
+    $sender = new ScriptedCallbackSender([204]);
+    [$deliverer] = w4Deliverer($sender);
+    $execution = w4Execution(w4Partner(url: 'https://old.example.com/hooks'));
+
+    $result = $deliverer->deliver(w4Partner(url: 'https://new.example.com/hooks'), $execution);
+
+    expect($result->status)->toBe(CallbackStatus::Delivered)
+        ->and($sender->sent[0]['url'])->toBe('https://new.example.com/hooks')
+        ->and($result->url)->toBe('https://new.example.com/hooks');
+});
+
+it('runs the destination refusal on the subscription\'s current URL, whatever the stored one passed', function () {
+    $sender = new ScriptedCallbackSender([204]);
+    [$deliverer] = w4Deliverer($sender, new CallbacksSettings(allowedHosts: ['partner.example.com']));
+    $execution = w4Execution(w4Partner());
+
+    $result = $deliverer->deliver(w4Partner(url: 'https://169.254.169.254/latest/meta-data'), $execution);
+
+    expect($result->status)->toBe(CallbackStatus::Failed)
+        ->and($result->lastError)->toContain('allowed-hosts')
+        ->and($result->url)->toBe('https://169.254.169.254/latest/meta-data')
+        ->and($sender->sent)->toBe([]);
+});

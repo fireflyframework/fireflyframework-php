@@ -13,9 +13,10 @@ use Illuminate\Contracts\Container\Container;
 
 /**
  * Sends logged deliveries again: the executions named by id, and/or with --failed the most recent failed ones. Each
- * is re-sent to its original URL with its ORIGINAL body, re-signed with a fresh timestamp, under the subscription's
- * current attempt budget and the endpoint's breaker; its attempts keep counting. A deactivated subscription is
- * refused (and its execution left as logged) unless --include-inactive is passed, which the output announces. Exits 1 if any replay did not end
+ * is re-sent to its subscription's CURRENT URL (a changed endpoint is reported, and recorded on the execution) with
+ * its ORIGINAL body, re-signed with a fresh timestamp, under the subscription's current attempt budget and the
+ * endpoint's breaker; its attempts keep counting. A deactivated subscription is refused, its execution left as
+ * logged, unless --include-inactive is passed, which the output announces. Exits 1 if any replay did not end
  * delivered, so a scheduled replay surfaces in the scheduler's output.
  */
 final class ReplayCallbacksCommand extends Command
@@ -83,6 +84,10 @@ final class ReplayCallbacksCommand extends Command
                 $allDelivered = false;
 
                 continue;
+            }
+
+            if ($result->url !== $execution->url) {
+                $this->warn("{$result->id}: destination changed from {$execution->url} to {$result->url}");
             }
 
             $line = "{$result->id}: {$result->status->value} after {$result->attempts} attempt(s)".($result->lastError !== null ? " — {$result->lastError}" : '');

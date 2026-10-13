@@ -18,6 +18,9 @@ use Throwable;
  *   * An inactive subscription is refused before anything is sent: failed, "subscription [id] is inactive". This is
  *     the one delivery path, so dispatch and replay alike fail closed; only a caller that explicitly includes
  *     inactive subscriptions (`firefly:callbacks:replay --include-inactive`) gets past it.
+ *   * The destination is the subscription's CURRENT URL, never the one stored on the execution: an endpoint changed
+ *     since the execution was logged is delivered to (and checked) at its new address, and the returned execution
+ *     carries that URL, so the log records where it was actually sent.
  *   * The URL must be http(s) — https unless firefly.callbacks.http.require-https is false — and, when
  *     firefly.callbacks.http.allowed-hosts names hosts, on one of them or a subdomain (PyFly's authorized domains:
  *     the guard against a subscription aimed at an internal address).
@@ -58,6 +61,10 @@ final class CallbackDeliverer
     {
         if (! $subscription->active && ! $includeInactive) {
             return $execution->withOutcome(CallbackStatus::Failed, $execution->attempts, null, "subscription [{$subscription->id}] is inactive", ($this->clock)());
+        }
+
+        if ($execution->url !== $subscription->url) {
+            $execution = $execution->withUrl($subscription->url);
         }
 
         $refusal = $this->refusal($execution->url);
