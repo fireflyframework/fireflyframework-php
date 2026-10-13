@@ -2365,6 +2365,19 @@ return [
         'retry_delay' => 0.0,
 
         /*
+         | Where a listener's envelope goes once its retries are exhausted, under EVERY provider. 'memory'
+         | keeps it in the process (lost when it exits); 'database' writes it to firefly_eda_dead_letters
+         | on `connection` (UNSET = the default connection) — run `php artisan migrate` — and
+         | `php artisan firefly:eda:dead-letters:replay` republishes it.
+         |
+         | Defaults: store 'memory', connection unset.
+        */
+        'dead-letter' => [
+            'store' => env('FIREFLY_EDA_DEAD_LETTER_STORE', 'memory'),
+            // 'connection' => 'mysql',
+        ],
+
+        /*
          | Broker destinations `firefly:eda:consume` binds when `--destination` is not passed. Must be a
          | list of strings.
          |
