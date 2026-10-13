@@ -155,6 +155,17 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
   hasPermission(#command, 'debit'))`, answered by the sample's `WalletPermissionEvaluator`, which grants the debit
   only to the wallet's owner and refuses unknown targets and permissions; Chapters 4, 6, 9A, 9B and 10 of the book
   follow, in both editions.
+- **The Lumen sample let anyone, even an anonymous caller, transfer money out of any wallet.** `TransferHandler`
+  (`POST /api/v1/wallets/transfers`) had no `#[PreAuthorize]`. It now carries the same rule as `WithdrawHandler`,
+  and `WalletPermissionEvaluator` grants `debit` on a `Transfer` only to the owner of its source wallet: an
+  anonymous transfer is a 401, a non-owner's a 403, and neither moves money on either wallet. Chapters 6, 9 and 10
+  and the README follow in both editions, and Chapter 10's exercise 2, which asked the reader to add this guard, now
+  asks them to guard a read.
+- **A refused command or query lost its `requiredAuthorities`.** `CommandProcessingException` and
+  `QueryProcessingException` copied the cause's code, status, category and severity but not its RFC 9457 extension
+  members or title, so the problem document of a `#[PreAuthorize]` refused at the bus dropped the
+  `requiredAuthorities` the same refusal publishes from a controller (and any handler fault lost its `field`,
+  `allowed` or own title). Both wrappers now carry them; only `detail`, which names the message class, differs.
 - **`firefly:callbacks:replay` honors deactivation and endpoint changes.** The deliverer refuses an inactive
   subscription on every path (replay needs `--include-inactive`, which the output reports), and every delivery goes
   to the subscription's current URL — checked against `http.require-https` / `http.allowed-hosts` — instead of the
