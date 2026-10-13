@@ -9,7 +9,6 @@ use Firefly\EventSourcing\Event\NewEvent;
 use Firefly\EventSourcing\Snapshot\SnapshotStore;
 use Firefly\EventSourcing\Store\EventSourcingSchema;
 use Firefly\EventSourcing\Store\EventStore;
-use Firefly\Security\Core\SecurityContextHolder;
 use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -23,8 +22,6 @@ use Lumen\Infrastructure\Loan\LoanRepository;
 use Lumen\Tests\EventSourcing\LumenEventSourcingOutboxTestCase;
 
 uses(LoanLedgerIntegrationTestCase::class);
-
-afterEach(fn () => SecurityContextHolder::clearContext());
 
 /**
  * The event-sourced loan on a REAL server per lane — PostgreSQL, MySQL, MariaDB, SQL Server (CI) and a SQLite file:

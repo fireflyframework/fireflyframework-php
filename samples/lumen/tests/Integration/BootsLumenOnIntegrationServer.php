@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Lumen\Tests\Integration;
 
+use Firefly\Security\Core\SecurityContextHolder;
 use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Support\Facades\Artisan;
@@ -49,6 +50,8 @@ trait BootsLumenOnIntegrationServer
     protected function tearDown(): void
     {
         if ($this->app !== null) {
+            // Only a booted application has a Context to clear; a skipped lane never booted one.
+            SecurityContextHolder::clearContext();
             $this->app->make('db')->disconnect('lumen-it');
         }
 

@@ -7,14 +7,11 @@ namespace Lumen\Tests\Integration;
 use Firefly\EventSourcing\Store\EventStore;
 use Firefly\Orchestration\Persistence\OrchestrationSchema;
 use Firefly\Orchestration\Saga\Engine\SagaEngine;
-use Firefly\Security\Core\SecurityContextHolder;
 use Firefly\Testing\Integration\IntegrationDsn;
 use Illuminate\Support\Facades\DB;
 use Lumen\Application\Query\GetBalance;
 
 uses(EventSourcedPayoutIntegrationTestCase::class);
-
-afterEach(fn () => SecurityContextHolder::clearContext());
 
 /** The payout saga on firefly.orchestration.persistence.provider=event-sourced, on a real server per lane. */
 it('runs the payout saga on the event-sourced store and keeps its read model', function (string $lane) {
