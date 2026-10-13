@@ -114,6 +114,34 @@ it("republishes to the listener's own dead-letter topic with the diagnostic head
         ->and($channel->acked)->toBe([3]);
 });
 
+it("gives a listener's dead-letter topic a bound parking queue, so the direct exchange cannot drop the dead letter", function () {
+    $channel = new FakeAmqpMessagingChannel;
+    $broker = w4RabbitBroker($channel);
+    $broker->subscribeListener('orders', static function (): void {}, null, new ListenerOptions(1, null, 'orders.parked'));
+    $broker->subscribeListener('invoices', static function (): void {}, 'billing', new ListenerOptions(1, null, 'orders.parked'));
+
+    $broker->poll(10);
+
+    expect($channel->queues)->toHaveKey('firefly.orders.parked')
+        ->and($channel->queues['firefly.orders.parked'])->toBe(['x-dead-letter-exchange' => 'firefly.messages.dlx', 'x-dead-letter-routing-key' => 'firefly.orders.parked'])
+        ->and($channel->queues['firefly.orders.parked.dlq'])->toBe([])
+        ->and($channel->bindings)->toContain(['firefly.orders.parked', 'firefly.messages', 'orders.parked'])
+        ->and($channel->bindings)->toContain(['firefly.orders.parked.dlq', 'firefly.messages.dlx', 'firefly.orders.parked'])
+        ->and(array_filter($channel->bindings, static fn (array $binding): bool => $binding[0] === 'firefly.orders.parked'))->toHaveCount(1);
+});
+
+it('declares no parking queue for a dead-letter topic a subscription already consumes', function () {
+    $channel = new FakeAmqpMessagingChannel;
+    $broker = w4RabbitBroker($channel);
+    $broker->subscribeListener('orders', static function (): void {}, null, new ListenerOptions(1, null, 'orders.parked'));
+    $broker->subscribeListener('orders.parked', static function (): void {}, 'parking', new ListenerOptions);
+
+    $broker->poll(10);
+
+    expect($channel->queues)->not->toHaveKey('firefly.orders.parked')
+        ->and($channel->bindings)->toContain(['parking', 'firefly.messages', 'orders.parked']);
+});
+
 it('acks and logs after the last attempt when dead letters are off', function () {
     $channel = new FakeAmqpMessagingChannel;
     $broker = w4RabbitBroker($channel, deadLetters: false);

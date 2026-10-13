@@ -28,8 +28,15 @@ use Psr\Log\LoggerInterface;
  * republishing to the exchange under that routing key, with the diagnostic headers, and acknowledging; otherwise
  * the delivery is REJECTED without requeue and the broker's dead-letter exchange moves it to `<queue>.dlq` with its
  * x-death history — RabbitMQ's own DLX, the eda adapter's choice too. With dead letters off it is acknowledged and
- * logged. A republish that fails throws out of poll() unacknowledged: the channel dies with the worker and the
- * broker redelivers.
+ * logged.
+ *
+ * A direct exchange silently drops a message no queue is bound for, so a deadLetterTopic always gets a home before
+ * the first delivery: unless a subscription of this broker already consumes that topic, a durable parking queue
+ * `firefly.<deadLetterTopic>` is declared and bound under it — the very queue (same arguments, same `.dlq`) a
+ * group-less listener of that topic would declare later, so subscribing to the parked topic afterwards drains what
+ * was parked instead of clashing with it. A republish that fails on the socket throws out of poll()
+ * unacknowledged: the channel dies with the worker and the broker redelivers. Deleting the parking queue by hand
+ * while its listener fails is the one way left to lose a parked message, as with any unbound routing key.
  *
  * One queue serves one topic; two listeners of one group on one topic share the queue (and its DLX route), which is
  * why one failing listener rejects the delivery for both — give listeners their own group when that matters.
@@ -147,18 +154,42 @@ final class RabbitMqMessageBroker implements ListenerContainerBroker
         $this->channel->declareExchange($dlx, 'direct');
         $this->channel->qos($this->prefetch);
 
+        $consumedTopics = [];
         foreach ($this->queues as $queue => $subscription) {
             $queue = (string) $queue;
-            $this->channel->declareQueue($queue, ['x-dead-letter-exchange' => $dlx, 'x-dead-letter-routing-key' => $queue]);
-            $this->channel->bindQueue($queue, $this->exchange, $subscription['topic']);
-            $this->channel->declareQueue($queue.'.dlq', []);
-            $this->channel->bindQueue($queue.'.dlq', $dlx, $queue);
+            $this->declareBoundQueue($queue, $subscription['topic'], $dlx);
             $this->channel->consume($queue, function (AmqpDelivery $delivery): void {
                 $this->pending[] = $delivery;
             });
+            $consumedTopics[$subscription['topic']] = true;
+        }
+
+        foreach ($this->queues as $subscription) {
+            foreach ($subscription['listeners'] as $listener) {
+                $parked = $listener['options']->deadLetterTopic;
+                if ($parked === null || isset($consumedTopics[$parked])) {
+                    continue;
+                }
+
+                $this->declareBoundQueue(self::queueNameOf($parked, null), $parked, $dlx);
+                $consumedTopics[$parked] = true;
+            }
         }
 
         $this->consuming = true;
+    }
+
+    /**
+     * A durable queue bound to its topic on the exchange, with its dead-letter route into `<queue>.dlq` on the DLX —
+     * one shape for a subscription's queue and a dead-letter topic's parking queue, so the two never disagree on
+     * arguments (RabbitMQ refuses a redeclare with different ones).
+     */
+    private function declareBoundQueue(string $queue, string $topic, string $dlx): void
+    {
+        $this->channel->declareQueue($queue, ['x-dead-letter-exchange' => $dlx, 'x-dead-letter-routing-key' => $queue]);
+        $this->channel->bindQueue($queue, $this->exchange, $topic);
+        $this->channel->declareQueue($queue.'.dlq', []);
+        $this->channel->bindQueue($queue.'.dlq', $dlx, $queue);
     }
 
     private function dispatch(AmqpDelivery $delivery): void

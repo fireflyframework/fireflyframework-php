@@ -2604,7 +2604,9 @@ return [
              | requeue and its dead-letter exchange moves it into `<queue>.dlq`), with x-original-topic, x-exception,
              | x-exception-message and x-delivery-attempts headers, and only then acknowledged. false: it is
              | logged and skipped — an explicit choice to lose it. A listener that names its own
-             | deadLetterTopic is always dead-lettered there.
+             | deadLetterTopic is always dead-lettered there (RabbitMQ declares and binds a durable
+             | `firefly.<deadLetterTopic>` parking queue for it unless a subscription already consumes that topic,
+             | so the direct exchange never drops the dead letter as unroutable).
              |
              | Default: true.
             */
