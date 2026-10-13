@@ -20,7 +20,9 @@ use Throwable;
  *
  * evictGroup() replaces the generation with an eviction marker; the next lookup starts a fresh random one, and no
  * entry written under an older generation is reachable again — they expire on their own TTL (which is why the module
- * guide tells you to set one). The marker is what narrows the classic read/evict race: a handler that looked the
+ * guide tells you to set one). An entry stored with no TTL is given GENERATION_TTL instead of living forever: it can
+ * never outlive the generation that makes it reachable, and forever entries orphaned by an eviction would pile up
+ * without bound on the file and database stores, which have no LRU to reclaim them. The marker is what narrows the classic read/evict race: a handler that looked the
  * group up before a commit and stores after the commit's eviction finds the marker, not a generation, and its store
  * is dropped, so the stale result it read is never cached. Only store() is held back by the marker; a store into a
  * group that never had a generation (a put() with no get() before it) starts one, as it always has. What remains is
@@ -101,12 +103,13 @@ final class CacheQueryCache implements GroupedQueryCache
                 return;
             }
 
-            $entry = $this->entryKey($group, $generation, $key);
-            if ($ttl === null) {
-                $this->cache->forever($entry, $value);
-            } else {
-                $this->cache->put($entry, $value, max(1, $ttl));
-            }
+            // "No expiry" is bounded by the generation: an entry is unreachable once its generation is evicted or
+            // lapses, so a forever() entry would only be an orphan the file and database stores never reclaim.
+            $this->cache->put(
+                $this->entryKey($group, $generation, $key),
+                $value,
+                $ttl === null ? self::GENERATION_TTL : max(1, $ttl),
+            );
         } catch (Throwable $e) {
             $this->report('store', $group, $e);
         }

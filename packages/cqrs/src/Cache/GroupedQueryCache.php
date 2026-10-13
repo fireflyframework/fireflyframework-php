@@ -15,7 +15,10 @@ interface GroupedQueryCache extends QueryCache
     /** The cached value, or null on a miss. */
     public function lookup(string $group, string $key): mixed;
 
-    /** Stores a non-null value for $ttl seconds (null = no expiry). */
+    /**
+     * Stores a non-null value for $ttl seconds. null means no TTL of its own: the entry lives until its group is
+     * evicted, or for as long as the implementation keeps the group itself (CacheQueryCache: GENERATION_TTL).
+     */
     public function store(string $group, string $key, mixed $value, ?int $ttl): void;
 
     public function evictKey(string $group, string $key): void;

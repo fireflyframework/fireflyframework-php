@@ -126,6 +126,25 @@ it('expires an entry after its TTL', function (string $store) {
     expect($cache->lookup('balances', 'k1'))->toBeNull();
 })->with('w4 query cache stores');
 
+it('bounds an entry stored with no TTL by the generation TTL, so an evicted group leaves no forever orphans', function (string $store) {
+    Carbon::setTestNow('2026-10-12 10:00:00');
+    $repository = w4QueryCacheRepository($store);
+    $cache = new CacheQueryCache($repository);
+    $cache->store('balances', 'k1', 1, null);
+
+    $generation = $repository->get(CacheQueryCache::DEFAULT_PREFIX.'g:'.hash('sha256', 'balances'));
+    expect($generation)->toBeString();
+    $entry = CacheQueryCache::DEFAULT_PREFIX.'q:'.hash('sha256', "balances\x1f".(is_string($generation) ? $generation : '')."\x1fk1");
+
+    // The eviction makes the entry unreachable; the raw row must still lapse instead of living forever.
+    $cache->evictGroup('balances');
+    Carbon::setTestNow(Carbon::parse('2026-10-12 10:00:00')->addSeconds(CacheQueryCache::GENERATION_TTL - 1));
+    expect($repository->get($entry))->toBe(1);
+
+    Carbon::setTestNow(Carbon::parse('2026-10-12 10:00:00')->addSeconds(CacheQueryCache::GENERATION_TTL + 1));
+    expect($repository->get($entry))->toBeNull();
+})->with('w4 query cache stores');
+
 it('never stores null, so null stays a miss', function () {
     $cache = new CacheQueryCache($store = new Repository(new ArrayStore));
     $cache->store('balances', 'k1', null, 60);
