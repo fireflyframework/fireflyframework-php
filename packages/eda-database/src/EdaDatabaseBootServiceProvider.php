@@ -4,10 +4,11 @@ declare(strict_types=1);
 
 namespace Firefly\Eda\Database;
 
+use Firefly\Eda\Database\Console\OutboxRelayCommand;
 use Illuminate\Support\ServiceProvider;
 
 /**
- * Ships the outbox migrations (and, from the relay task on, firefly:outbox:relay) through auto-discovery when
+ * Ships the outbox migrations and the OPTIONAL firefly:outbox:relay command through auto-discovery when
  * firefly.eda.provider=database. EdaPostgresBootServiceProvider loads the SAME directory under provider=postgres —
  * there is one outbox table and one set of migrations whichever provider writes it.
  */
@@ -22,5 +23,9 @@ final class EdaDatabaseBootServiceProvider extends ServiceProvider
         }
 
         $this->loadMigrationsFrom(self::MIGRATIONS);
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([OutboxRelayCommand::class]);
+        }
     }
 }

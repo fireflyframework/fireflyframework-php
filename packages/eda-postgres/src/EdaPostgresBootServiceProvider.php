@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Firefly\Eda\Postgres;
 
+use Firefly\Eda\Database\Console\OutboxRelayCommand;
 use Firefly\Eda\Database\EdaDatabaseBootServiceProvider;
-use Firefly\Eda\Postgres\Console\OutboxRelayCommand;
 use Illuminate\Support\ServiceProvider;
 
 /**

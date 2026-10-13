@@ -2327,14 +2327,15 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Events — firefly/eda (+ eda-rabbitmq / eda-postgres / eda-kafka)
+    | Events — firefly/eda (+ eda-database / eda-rabbitmq / eda-postgres / eda-kafka)
     |--------------------------------------------------------------------------
     |
     | `provider` selects the EventPublisher adapter:
     |   'memory'   — in-process bus. The default; listeners run synchronously.
     |   'queue'    — Laravel queue; listeners run in `queue:work`.
+    |   'database' — requires firefly/eda-database; the same-transaction outbox on any database.
     |   'rabbitmq' — requires firefly/eda-rabbitmq.
-    |   'postgres' — requires firefly/eda-postgres; enables the same-transaction outbox.
+    |   'postgres' — requires firefly/eda-postgres; the database outbox plus pg_notify/LISTEN.
     |   'kafka'    — requires firefly/eda-kafka and ext-rdkafka.
     |
     | The broker providers are consumed by `php artisan firefly:eda:consume`; 'queue' uses
@@ -2413,9 +2414,37 @@ return [
         // ],
 
         /*
-         | provider=postgres — the same-transaction outbox. `connection` UNSET means the default database
-         | connection. `channel` is the LISTEN/NOTIFY channel; `max_attempts` bounds relay retries before
-         | a row is marked FAILED.
+         | provider=database — and provider=postgres, which reads the same block — the same-transaction
+         | outbox (firefly/eda-database). `connection` UNSET means the default database connection.
+         | `claim-strategy` decides how a consumer or relay takes rows: 'auto' asks the server (SKIP LOCKED
+         | on PostgreSQL, MySQL 8.0.1+ and MariaDB 10.6+; READPAST on SQL Server; a conditional-UPDATE lease
+         | everywhere else), or force 'skip-locked' | 'read-past' | 'optimistic-lease'. A claimed row
+         | belongs to its claimant for `lease-seconds` — size it above your slowest listener. An idle consumer
+         | sleeps `poll-interval-ms` between claims (provider=postgres waits on NOTIFY instead).
+         | `relay.downstream-provider` is only read by `php artisan firefly:outbox:relay`.
+         |
+         | Every key falls back to its firefly.eda.postgres.* spelling below when it is unset.
+         |
+         | Defaults: connection unset, channel 'firefly_eda_events', max-attempts 3, claim-strategy 'auto',
+         | lease-seconds 300, poll-interval-ms 500, relay.downstream-provider unset.
+        */
+        // 'database' => [
+        //     'connection' => 'mysql',
+        //     'channel' => 'firefly_eda_events',
+        //     'max-attempts' => 3,
+        //     'claim-strategy' => env('FIREFLY_EDA_CLAIM_STRATEGY', 'auto'),
+        //     'lease-seconds' => 300,
+        //     'poll-interval-ms' => 500,
+        //     'relay' => [
+        //         'downstream-provider' => 'rabbitmq',
+        //     ],
+        // ],
+
+        /*
+         | provider=postgres — the legacy spelling of the block above (each key here is an alias of its
+         | firefly.eda.database.* twin); `channel` is also the LISTEN/NOTIFY channel. `connection` UNSET
+         | means the default database connection; `max_attempts` bounds relay retries before a row is
+         | marked FAILED.
          |
          | `relay.downstream_provider` is OPTIONAL and only used by `php artisan firefly:outbox:relay`,
          | which forwards committed outbox rows to a SECOND broker. It takes 'rabbitmq', 'kafka', an
