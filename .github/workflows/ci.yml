@@ -77,6 +77,8 @@ jobs:
   integration:
     name: Integration (${{ matrix.lane }})
     runs-on: ubuntu-latest
+    # A lock wait that never times out must fail the lane, not hold a runner for six hours.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -165,6 +167,7 @@ jobs:
   brokers:
     name: Integration (brokers)
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     services:
       rabbitmq:
         image: rabbitmq:3.13-alpine
