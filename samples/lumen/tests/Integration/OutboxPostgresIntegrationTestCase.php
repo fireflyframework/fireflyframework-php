@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Lumen\Tests\Integration;
 
+use Firefly\Eda\EdaConsumerServiceProvider;
 use Firefly\Eda\Postgres\EdaPostgresServiceProvider;
 use Firefly\Eda\Postgres\Outbox\OutboxSchema;
 use Illuminate\Contracts\Config\Repository;
@@ -32,10 +33,16 @@ abstract class OutboxPostgresIntegrationTestCase extends LumenTestCase
         return extension_loaded('pdo_pgsql') && getenv('FIREFLY_PG_DSN') !== false;
     }
 
-    /** @return list<class-string<ServiceProvider>> */
+    /**
+     * The postgres outbox plus the provider that registers firefly:eda:consume. A real app gets the consume command
+     * through package auto-discovery; Testbench ignores discovery, so the round-trip names it like
+     * EdaConsumeCommandTestCase does.
+     *
+     * @return list<class-string<ServiceProvider>>
+     */
     protected function fireflyProviders(): array
     {
-        return [...parent::fireflyProviders(), EdaPostgresServiceProvider::class];
+        return [...parent::fireflyProviders(), EdaPostgresServiceProvider::class, EdaConsumerServiceProvider::class];
     }
 
     /** @return array<string, mixed> */
