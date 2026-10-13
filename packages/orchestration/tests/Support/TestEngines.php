@@ -24,6 +24,8 @@ use Firefly\Orchestration\Persistence\ExecutionPersistenceProvider;
 use Firefly\Orchestration\Persistence\MemoryExecutionPersistenceProvider;
 use Firefly\Orchestration\Saga\Compensation\CompensationErrorHandlerFactory;
 use Firefly\Orchestration\Saga\Compensation\SagaCompensator;
+use Firefly\Orchestration\Saga\Composition\CompositionDataFlowManager;
+use Firefly\Orchestration\Saga\Composition\SagaCompositor;
 use Firefly\Orchestration\Saga\Engine\SagaEngine;
 use Firefly\Orchestration\Saga\Engine\SagaExecutionOrchestrator;
 use Firefly\Orchestration\Saga\Registry\SagaRegistry;
@@ -70,6 +72,8 @@ final class TestEngines
     public readonly SagaCompensator $compensator;
 
     public readonly SagaEngine $sagas;
+
+    public readonly SagaCompositor $compositor;
 
     /**
      * @param  array<string, mixed>  $config
@@ -124,6 +128,7 @@ final class TestEngines
             $resilienceStore,
         );
         $this->sagas = new SagaEngine($this->sagaRegistry, new SagaExecutionOrchestrator($this->invoker, $this->support), $this->compensator, $this->support, $this->settings->saga);
+        $this->compositor = new SagaCompositor($this->sagas, $this->events, $this->conditions, new CompositionDataFlowManager);
     }
 
     /**
