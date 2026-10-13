@@ -45,6 +45,14 @@ use Throwable;
  * sentence and its real message stays in the exception, where the log has it. When the caller knows the
  * request's correlation id it passes it as `$reference`, and the fixed sentence names it — so the one thing
  * a person can do with an opaque 5xx, quote it, is possible from the body alone.
+ *
+ * A WRAPPER WITH NOTHING AUTHORED IS THE SAME ACCIDENT IN A FIREFLY COAT. DefaultCommandBus wraps a handler's
+ * QueryException in a CommandProcessingException — a FireflyException, so the first case used to return it
+ * untouched and its message, "Processing command [App\Withdraw] failed: <the SQL and its bindings>", went
+ * out as `detail` with disclosure off. A FireflyException whose detail() is null is therefore mapped like
+ * an unhandled throwable FOR THE SENTENCE ONLY — opaque unless `$disclose`, and then the message of the
+ * throwable it wraps — while its own code, status, category, severity, title and extension members are
+ * kept, because those were never the problem. The wrapper stays `previous`, so the log loses nothing.
  */
 final class ProblemMapper
 {
@@ -67,6 +75,7 @@ final class ProblemMapper
     public static function toFireflyException(Throwable $e, bool $disclose = true, ?string $reference = null): FireflyException
     {
         return match (true) {
+            $e instanceof FireflyException && $e->detail() === null => self::withheld($e, $disclose, $reference),
             $e instanceof FireflyException => $e,
             self::isExecutionTimeLimit($e) => self::executionTimeExceeded($e, $reference),
             $e instanceof MethodNotAllowedHttpException => self::methodNotAllowed($e),
@@ -125,7 +134,9 @@ final class ProblemMapper
 
         $mapped = self::toFireflyException($e, disclose: false);
 
-        return $mapped->httpStatus() < 500 ? $mapped->getMessage() : '';
+        // detail(), not getMessage(): over the CQRS bus the message names the command class in front of the
+        // sentence, and the page says what the problem document says.
+        return $mapped->httpStatus() < 500 ? ($mapped->detail() ?? '') : '';
     }
 
     /**
@@ -324,6 +335,33 @@ final class ProblemMapper
             ErrorCategory::Infrastructure,
             ErrorSeverity::Error,
             $e,
+        );
+    }
+
+    /**
+     * A FireflyException with no sentence for a client, re-stated with one: the opaque sentence, or — when
+     * the deployment discloses — the message of the throwable underneath every such wrapper, which is what
+     * that throwable would have published had a controller thrown it. Everything but the sentence is the
+     * wrapper's own.
+     */
+    private static function withheld(FireflyException $e, bool $disclose, ?string $reference): FireflyException
+    {
+        $cause = $e;
+        while ($cause instanceof FireflyException && $cause->detail() === null && $cause->getPrevious() !== null) {
+            $cause = $cause->getPrevious();
+        }
+
+        $message = $cause instanceof FireflyException ? ($cause->detail() ?? $cause->getMessage()) : $cause->getMessage();
+
+        return new FireflyException(
+            $disclose && $message !== '' ? $message : self::opaque($reference),
+            $e->errorCode(),
+            $e->httpStatus(),
+            $e->category(),
+            $e->severity(),
+            $e,
+            $e->extensions(),
+            $e->title(),
         );
     }
 
