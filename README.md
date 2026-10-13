@@ -158,7 +158,7 @@ LaraFly is not a fork of Laravel and does not hide it — every package layers c
 `Illuminate\Container`, Eloquent, the HTTP kernel, and the queue/cache/scheduler, so everything you already
 know about Laravel keeps working underneath.
 
-Five capabilities in that list are recent enough — and far enough from what teams assume a PHP framework
+Six capabilities in that list are recent enough — and far enough from what teams assume a PHP framework
 will have — that they are worth naming outright:
 
 - **Both halves of OAuth2, as two packages you install.**
@@ -196,11 +196,17 @@ will have — that they are worth naming outright:
 - **Work that spans systems.** [`firefly/orchestration`](docs/modules/orchestration.md) runs sagas whose
   completed steps are compensated newest first when a later one fails, TCC transactions that reserve with every
   participant before confirming any, and durable workflows that wait for signals and timers across processes —
-  every step checkpointed (memory, cache or a portable database store), stale executions recovered, failures
+  every step checkpointed (memory, cache, a portable database store or the event store), stale executions recovered, failures
   dead-lettered. [`firefly/webhooks`](docs/modules/webhooks.md) verifies Stripe, GitHub, Twilio or HMAC
   signatures, refuses replays and duplicates and publishes the rest to the event bus;
   [`firefly/callbacks`](docs/modules/callbacks.md) sends the bus's events to subscribers as signed, retried POSTs
   behind a circuit breaker per endpoint.
+- **Event sourcing, on any database.** [`firefly/eventsourcing`](docs/modules/eventsourcing.md) stores an
+  aggregate as its events — appended under optimistic concurrency to a portable event store, read back from the
+  newest snapshot, moved forward by upcasters when an event's shape changes — and keeps read models current from a
+  global stream numbered in commit order, so a projection's checkpoint never skips an event that committed late.
+  Appended events can be published through the database outbox in the append's own transaction, and sagas,
+  TCCs and workflows can store their executions as event streams.
 
 ### Who is LaraFly for?
 
@@ -1175,12 +1181,7 @@ accurately:
   credentials, refresh rotation, introspection, revocation, userinfo and RP-initiated logout). IdP adapters
   beyond those presets (Cognito, internal-db) and MFA are deferred to their own future packages, matching the
   Java Firefly Framework's module topology.
-- **Event sourcing in the tutorial and the book.** Event stores, aggregates, snapshots, upcasters and
-  checkpointed, rebuildable projections ship in [`firefly/eventsourcing`](docs/modules/eventsourcing.md),
-  shaped after the Java library and PyFly's `pyfly.eventsourcing`. What remains is the walkthrough: the
-  sample's `LedgerProjector` still builds its read model from a plain `#[EventListener]`, and neither the
-  tutorial nor the book has a chapter on the package.
-- **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES, through a database outbox and a saga), the *larafly by example*
+- **Documentation.** The end-to-end [tutorial](docs/tutorial.md) (EN + ES, through a database outbox, a saga and an event-sourced journal), the *larafly by example*
   [book](book/README.md) (19 chapters + appendices, EN + ES, PDF + EPUB), and a
   [docs table of contents](docs/README.md) all shipped with the documentation-parity milestone.
   Deeper guides (more recipes, more diagrams) continue to grow from here.
