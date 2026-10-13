@@ -9,9 +9,12 @@ use Firefly\Container\Attributes\Bean;
 use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
+use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
 use Firefly\Cqrs\Cache\CacheQueryCache;
+use Firefly\Cqrs\Cache\InvalidationRule;
 use Firefly\Cqrs\Cache\NoOpQueryCache;
 use Firefly\Cqrs\Cache\QueryCache;
+use Firefly\Cqrs\Cache\QueryCacheInvalidator;
 use Firefly\Cqrs\Cache\QueryCachePolicies;
 use Firefly\Cqrs\Command\CommandBus;
 use Firefly\Cqrs\Command\DefaultCommandBus;
@@ -142,6 +145,36 @@ final class CqrsAutoConfiguration
             $config->string('firefly.cqrs.query.cache.prefix', CacheQueryCache::DEFAULT_PREFIX),
             $this->logger($container),
         );
+    }
+
+    /**
+     * The invalidator behind #[InvalidatesQuery], bound only with the real cache. Its rules are the compiled
+     * attribute rules plus firefly.cqrs.query.cache.invalidation — `event type => [query classes]` — for events this
+     * process has no class for (another service's envelope); those evict the queries' whole groups. A malformed
+     * entry refuses the boot.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.cqrs.query.cache.provider', havingValue: 'cache')]
+    #[ConditionalOnMissingBean(QueryCacheInvalidator::class)]
+    public function queryCacheInvalidator(QueryCache $cache, HandlerManifest $manifest, Config $config, Container $container): QueryCacheInvalidator
+    {
+        $rules = $manifest->invalidations();
+
+        foreach ($config->array('firefly.cqrs.query.cache.invalidation', []) as $eventType => $queries) {
+            if (! is_string($eventType) || ! is_array($queries)) {
+                throw new CqrsConfigurationException('firefly.cqrs.query.cache.invalidation must map an event type to a list of query classes.');
+            }
+
+            foreach ($queries as $query) {
+                if (! is_string($query) || ! class_exists($query)) {
+                    throw new CqrsConfigurationException("firefly.cqrs.query.cache.invalidation.{$eventType} names ".get_debug_type($query).' that is not a query class.');
+                }
+
+                $rules[] = new InvalidationRule('', $eventType, $query);
+            }
+        }
+
+        return new QueryCacheInvalidator($cache, QueryCachePolicies::fromManifest($manifest), $rules, $this->logger($container));
     }
 
     #[Bean]

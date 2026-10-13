@@ -108,6 +108,21 @@ return [
                 ],
             ],
             8 => [
+                'method' => 'queryCacheInvalidator',
+                'returns' => 'Firefly\\Cqrs\\Cache\\QueryCacheInvalidator',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Cqrs\\Cache\\QueryCache',
+                    1 => 'Firefly\\Cqrs\\Handler\\HandlerManifest',
+                    2 => 'Firefly\\Config\\Config',
+                    3 => 'Illuminate\\Container\\Container',
+                ],
+            ],
+            9 => [
                 'method' => 'commandEventPublisher',
                 'returns' => 'Firefly\\Cqrs\\Event\\CommandEventPublisher',
                 'name' => null,
@@ -122,7 +137,7 @@ return [
                     3 => 'Firefly\\Cqrs\\Correlation\\CorrelationContext',
                 ],
             ],
-            9 => [
+            10 => [
                 'method' => 'domainEventBridge',
                 'returns' => 'Firefly\\Cqrs\\Event\\DomainEventBridge',
                 'name' => null,
@@ -136,7 +151,7 @@ return [
                     2 => 'Illuminate\\Container\\Container',
                 ],
             ],
-            10 => [
+            11 => [
                 'method' => 'commandBus',
                 'returns' => 'Firefly\\Cqrs\\Command\\CommandBus',
                 'name' => null,
@@ -153,7 +168,7 @@ return [
                     5 => 'Firefly\\Cqrs\\Tracing\\CqrsTracing',
                 ],
             ],
-            11 => [
+            12 => [
                 'method' => 'queryBus',
                 'returns' => 'Firefly\\Cqrs\\Query\\QueryBus',
                 'name' => null,
