@@ -16,7 +16,8 @@ use Firefly\Orchestration\Core\TriggerMode;
  * A durable workflow (jafly WorkflowDefinition). Layers are computed and the definition validated at
  * construction: the topology, every step keyed by its own id (so the array form round-trips unchanged), and
  * every `compensatable` step having a compensation (a "missing compensation" the boot must refuse rather than
- * discover on the first failure).
+ * discover on the first failure), and every step's wait well formed (WaitDefinition::validate(); the builder
+ * skips the attribute scanner, so this is the one gate every path goes through).
  */
 final readonly class WorkflowDefinition
 {
@@ -57,6 +58,7 @@ final readonly class WorkflowDefinition
             if ($step->compensatable && $step->compensation === null) {
                 throw new TopologyValidationException("Workflow [{$id}] step [{$step->id}] is compensatable but declares no compensation (compensationMethod or #[CompensationStep]).");
             }
+            $step->wait?->validate("Workflow [{$id}] step [{$step->id}]");
         }
 
         $this->layers = TopologyBuilder::layers("Workflow [{$id}]", $dependencies);

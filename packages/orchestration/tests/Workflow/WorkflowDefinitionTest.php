@@ -76,3 +76,33 @@ it('refuses a step filed under a key that is not its own id', function (): void 
 it('refuses a dependency on a step it does not declare', function (): void {
     new WorkflowDefinition('w', ['a' => new WorkflowStepDefinition('a', new ClosureInvocation(static fn (): null => null), ['ghost'])]);
 })->throws(TopologyValidationException::class, 'Workflow [w]: step [a] depends on [ghost], which is not a step of it.');
+
+function orchestrationWaitingWorkflow(WaitDefinition $wait): WorkflowDefinition
+{
+    return new WorkflowDefinition('w', ['s' => new WorkflowStepDefinition('s', new ClosureInvocation(static fn (): null => null), wait: $wait)]);
+}
+
+it('refuses a malformed wait', function (WaitDefinition $wait, string $message): void {
+    expect(fn () => orchestrationWaitingWorkflow($wait))->toThrow(TopologyValidationException::class, $message);
+})->with([
+    'empty any' => [WaitDefinition::any([]), 'Workflow [w] step [s] has a wait for any with no signals and no timers.'],
+    'empty all' => [WaitDefinition::all([]), 'Workflow [w] step [s] has a wait for all with no signals and no timers.'],
+    'unknown kind' => [new WaitDefinition('sometimes', [new SignalWait('go')]), 'Workflow [w] step [s] waits with an unknown kind [sometimes]'],
+    'signal without a signal' => [new WaitDefinition(WaitDefinition::SIGNAL), 'Workflow [w] step [s] has a signal wait that must name exactly one signal and no timers (it has 0 signals and 0 timers).'],
+    'signal with a timer' => [new WaitDefinition(WaitDefinition::SIGNAL, [new SignalWait('go')], [new TimerWait('t', 1)]), 'it has 1 signals and 1 timers'],
+    'timer without a timer' => [new WaitDefinition(WaitDefinition::TIMER), 'Workflow [w] step [s] has a timer wait that must name exactly one timer and no signals'],
+    'negative delay' => [WaitDefinition::timer(-1, 't'), 'Workflow [w] step [s] waits for timer [t] with a negative delay (-1 ms).'],
+    'negative timeout' => [WaitDefinition::signal('go', -5), 'Workflow [w] step [s] waits for signal [go] with a negative timeout (-5 ms).'],
+    'blank signal' => [WaitDefinition::signal(''), 'Workflow [w] step [s] waits for a signal with a blank name.'],
+    'duplicate signal' => [WaitDefinition::all([new SignalWait('go'), new SignalWait('go')]), 'Workflow [w] step [s] waits for signal [go] twice.'],
+    'duplicate timer' => [WaitDefinition::any([], [new TimerWait('t', 1), new TimerWait('t', 2)]), 'Workflow [w] step [s] waits for timer [t] twice.'],
+]);
+
+it('refuses a manifest wait with a missing or unknown kind instead of reading it as a signal wait', function (): void {
+    expect(fn () => WaitDefinition::fromArray(['signals' => [['name' => 'go']]]))
+        ->toThrow(TopologyValidationException::class, 'A workflow wait has no kind; expected one of [signal, timer, all, any].')
+        ->and(fn () => WaitDefinition::fromArray(['kind' => 'maybe']))
+        ->toThrow(TopologyValidationException::class, 'A workflow wait has an unknown kind [maybe]')
+        ->and(fn () => WorkflowDefinition::fromArray(['id' => 'w', 'steps' => [['id' => 's', 'invocation' => [], 'wait' => ['kind' => 'any']]]]))
+        ->toThrow(TopologyValidationException::class, 'Workflow [w] step [s] has a wait for any with no signals and no timers.');
+});

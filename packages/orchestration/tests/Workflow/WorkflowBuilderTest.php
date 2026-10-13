@@ -58,3 +58,7 @@ it('passes the input through a wait-only or child-only step and names a default 
         ->and($spawn->invocation->setVariable())->toBe('childId')
         ->and($spawn->compensatable)->toBeFalse();
 });
+
+it('refuses an empty wait-for-any built through the DSL', function (): void {
+    WorkflowBuilder::workflow('stuck')->step('hold')->waitForAny([])->add()->build();
+})->throws(TopologyValidationException::class, 'Workflow [stuck] step [hold] has a wait for any with no signals and no timers.');

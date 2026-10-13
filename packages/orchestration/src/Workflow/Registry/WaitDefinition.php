@@ -4,9 +4,16 @@ declare(strict_types=1);
 
 namespace Firefly\Orchestration\Workflow\Registry;
 
+use Firefly\Orchestration\Core\Exception\TopologyValidationException;
 use Firefly\Orchestration\Core\Rows;
 
-/** What a step waits for before it runs: one signal, one timer, all of a set, or any of a set. */
+/**
+ * What a step waits for before it runs: one signal, one timer, all of a set, or any of a set. The value object
+ * itself accepts anything so a compiled manifest and the builder share one gate: WorkflowDefinition calls
+ * validate() for every step, which refuses an unknown kind, a SIGNAL or TIMER wait without exactly its one
+ * member, an empty ALL or ANY set (an empty ANY suspends forever and an empty ALL resolves at once), a negative
+ * delay or timeout, a blank or duplicate signal name or timer id.
+ */
 final readonly class WaitDefinition
 {
     public const string SIGNAL = 'signal';
@@ -26,6 +33,64 @@ final readonly class WaitDefinition
         public array $signals = [],
         public array $timers = [],
     ) {}
+
+    /** @return list<string> */
+    public static function kinds(): array
+    {
+        return [self::SIGNAL, self::TIMER, self::ALL, self::ANY];
+    }
+
+    /**
+     * Refuses a wait the engine could not honor. `$where` names the owner, as in "Workflow [w] step [s]".
+     *
+     * @throws TopologyValidationException
+     */
+    public function validate(string $where): void
+    {
+        if (! in_array($this->kind, self::kinds(), true)) {
+            throw new TopologyValidationException("{$where} waits with an unknown kind [{$this->kind}]; expected one of [".implode(', ', self::kinds()).'].');
+        }
+
+        $signals = count($this->signals);
+        $timers = count($this->timers);
+        if ($this->kind === self::SIGNAL && ($signals !== 1 || $timers !== 0)) {
+            throw new TopologyValidationException("{$where} has a signal wait that must name exactly one signal and no timers (it has {$signals} signals and {$timers} timers).");
+        }
+        if ($this->kind === self::TIMER && ($timers !== 1 || $signals !== 0)) {
+            throw new TopologyValidationException("{$where} has a timer wait that must name exactly one timer and no signals (it has {$timers} timers and {$signals} signals).");
+        }
+        if (($this->kind === self::ALL || $this->kind === self::ANY) && $signals + $timers === 0) {
+            throw new TopologyValidationException("{$where} has a wait for {$this->kind} with no signals and no timers.");
+        }
+
+        $names = [];
+        foreach ($this->signals as $signal) {
+            if ($signal->name === '') {
+                throw new TopologyValidationException("{$where} waits for a signal with a blank name.");
+            }
+            if ($signal->timeoutMs < 0) {
+                throw new TopologyValidationException("{$where} waits for signal [{$signal->name}] with a negative timeout ({$signal->timeoutMs} ms).");
+            }
+            if (isset($names[$signal->name])) {
+                throw new TopologyValidationException("{$where} waits for signal [{$signal->name}] twice.");
+            }
+            $names[$signal->name] = true;
+        }
+
+        $ids = [];
+        foreach ($this->timers as $timer) {
+            if ($timer->id === '') {
+                throw new TopologyValidationException("{$where} waits for a timer with a blank id.");
+            }
+            if ($timer->delayMs < 0) {
+                throw new TopologyValidationException("{$where} waits for timer [{$timer->id}] with a negative delay ({$timer->delayMs} ms).");
+            }
+            if (isset($ids[$timer->id])) {
+                throw new TopologyValidationException("{$where} waits for timer [{$timer->id}] twice.");
+            }
+            $ids[$timer->id] = true;
+        }
+    }
 
     public static function signal(string $name, int $timeoutMs = 0): self
     {
@@ -65,11 +130,23 @@ final readonly class WaitDefinition
         ];
     }
 
-    /** @param array<array-key, mixed> $row */
+    /**
+     * Rebuilds a wait from its array form. The kind has no default: a manifest row with a missing or unknown kind
+     * is refused here rather than silently read as a signal wait.
+     *
+     * @param  array<array-key, mixed>  $row
+     *
+     * @throws TopologyValidationException
+     */
     public static function fromArray(array $row): self
     {
+        $kind = Rows::string($row, 'kind');
+        if (! in_array($kind, self::kinds(), true)) {
+            throw new TopologyValidationException('A workflow wait has '.($kind === '' ? 'no kind' : "an unknown kind [{$kind}]").'; expected one of ['.implode(', ', self::kinds()).'].');
+        }
+
         return new self(
-            Rows::string($row, 'kind', self::SIGNAL),
+            $kind,
             array_map(static fn (array $signal): SignalWait => new SignalWait(Rows::string($signal, 'name'), Rows::int($signal, 'timeoutMs')), Rows::rows($row, 'signals')),
             array_map(static fn (array $timer): TimerWait => new TimerWait(Rows::string($timer, 'id'), Rows::int($timer, 'delayMs')), Rows::rows($row, 'timers')),
         );
