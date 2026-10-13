@@ -4,6 +4,8 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+## [26.10.2] - 2026-10-13
+
 ### Added
 
 - **Event sourcing (`firefly/eventsourcing`).** An `EventStore` port on `memory` or portable `database` tables
