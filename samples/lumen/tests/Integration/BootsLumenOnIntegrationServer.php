@@ -28,6 +28,19 @@ trait BootsLumenOnIntegrationServer
         parent::setUp();
     }
 
+    protected function resolveApplicationConfiguration($app): void
+    {
+        parent::resolveApplicationConfiguration($app);
+
+        $lane = $this->lane();
+        $overrides = $lane === 'sqlite' ? ['database' => IntegrationDsn::sqlitePath('lumen-outbox')] : [];
+
+        /** @var Repository $config */
+        $config = $app->make('config');
+        $config->set('database.connections.lumen-it', IntegrationDsn::connectionConfig($lane, $overrides));
+        $config->set('database.default', 'lumen-it');
+    }
+
     /**
      * Closes the lane connection before the application is flushed. On the sqlite lane the next test's migrate:fresh
      * truncates the database FILE (SQLiteBuilder::refreshDatabaseFile); a WAL connection the previous application
@@ -40,19 +53,6 @@ trait BootsLumenOnIntegrationServer
         }
 
         parent::tearDown();
-    }
-
-    protected function resolveApplicationConfiguration($app): void
-    {
-        parent::resolveApplicationConfiguration($app);
-
-        $lane = $this->lane();
-        $overrides = $lane === 'sqlite' ? ['database' => IntegrationDsn::sqlitePath('lumen-outbox')] : [];
-
-        /** @var Repository $config */
-        $config = $app->make('config');
-        $config->set('database.connections.lumen-it', IntegrationDsn::connectionConfig($lane, $overrides));
-        $config->set('database.default', 'lumen-it');
     }
 
     /** A server database keeps the last run's rows, so every test starts from freshly migrated sample tables. */
