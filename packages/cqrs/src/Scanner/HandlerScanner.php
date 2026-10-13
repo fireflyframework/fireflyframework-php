@@ -27,7 +27,8 @@ use ReflectionNamedType;
  * (CqrsConfigurationException) on an unresolvable type or a missing/multi-param handle() — never silently skips.
  * It also compiles #[CachedQuery] off query classes into per-query policies and #[InvalidatesQuery] off event classes
  * into invalidation rules, refusing a rule with both a key template and a `with` map, a rule naming a class that does
- * not exist, a `with` map that does not name exactly the query's public properties (or targets a Cacheable query or
+ * not exist, a key template on a query that is not Cacheable (its entries live under a QueryCacheKey digest no
+ * template can name, so the eviction would silently miss), a `with` map that does not name exactly the query's public properties (or targets a Cacheable query or
  * one with non-public state), and a TTL below one second.
  * Runs only at cache time; production loads the compiled HandlerManifest via require+map. Mirrors ScheduledScanner.
  */
@@ -90,6 +91,9 @@ final class HandlerScanner
                 }
                 if ($rule->key !== null && $rule->with !== []) {
                     throw new CqrsConfigurationException("#[InvalidatesQuery({$rule->query}::class)] on [{$class}] declares both key and with; a rule evicts by one or the other.");
+                }
+                if ($rule->key !== null && ! is_subclass_of($rule->query, Cacheable::class)) {
+                    throw new CqrsConfigurationException("#[InvalidatesQuery({$rule->query}::class)] on [{$class}] declares a key template, but [{$rule->query}] is keyed by value (QueryCacheKey); use a with map or no key to evict its group.");
                 }
                 if ($rule->with !== []) {
                     $this->assertWithMapsQuery($class, $rule->query, $rule->with);

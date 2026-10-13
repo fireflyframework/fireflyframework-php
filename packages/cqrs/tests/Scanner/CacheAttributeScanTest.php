@@ -8,6 +8,8 @@ use Firefly\Cqrs\Exception\CqrsConfigurationException;
 use Firefly\Cqrs\Handler\HandlerManifest;
 use Firefly\Cqrs\Handler\HandlerManifestCompiler;
 use Firefly\Cqrs\Scanner\HandlerScanner;
+use Firefly\Cqrs\Tests\CacheScannerBadFixtures\CacheableTemplateEvent;
+use Firefly\Cqrs\Tests\CacheScannerBadFixtures\KeyedLedger;
 use Firefly\Cqrs\Tests\CacheScannerFixtures\EntryPosted;
 use Firefly\Cqrs\Tests\CacheScannerFixtures\LedgerBalance;
 use Firefly\Cqrs\Tests\CacheScannerFixtures\LedgerTotals;
@@ -55,16 +57,17 @@ it('refuses a TTL below one second on its own', function () {
     }
 });
 
-// Each `with` guard is isolated the same way: a directory holding only the event's placeholder file scans that one
+// Each `with`/key guard is isolated the same way: a directory holding only the event's placeholder file scans that one
 // event, and its query fixture autoloads from CacheScannerBadFixtures without being scanned itself.
-dataset('with map misconfigurations', [
+dataset('unmatchable eviction rules', [
     'an unknown query property' => ['TypoWithEvent', 'maps [acount]'],
     'an unmapped query property' => ['PartialWithEvent', 'leaves [page] unmapped'],
     'a query with private state' => ['PrivateWithEvent', 'is not public'],
     'a Cacheable query' => ['CacheableWithEvent', 'use a key template instead'],
+    'a key template on a value-keyed query' => ['ValueKeyedTemplateEvent', 'is keyed by value (QueryCacheKey)'],
 ]);
 
-it('refuses a with map that does not name exactly the query\'s public properties', function (string $event, string $message) {
+it('refuses a with map or key template that cannot name the query\'s cached entries', function (string $event, string $message) {
     $dir = sys_get_temp_dir().'/firefly-cqrs-with-map-'.bin2hex(random_bytes(6));
     mkdir($dir);
     touch($dir.'/'.$event.'.php');
@@ -76,7 +79,26 @@ it('refuses a with map that does not name exactly the query\'s public properties
         @unlink($dir.'/'.$event.'.php');
         @rmdir($dir);
     }
-})->with('with map misconfigurations');
+})->with('unmatchable eviction rules');
+
+// The counterpart of the value-keyed refusal: a key template on a Cacheable query names the entries its own
+// cacheKey() stores, so the scan compiles it into a key rule.
+it('compiles a key template on a Cacheable query', function () {
+    $dir = sys_get_temp_dir().'/firefly-cqrs-key-template-'.bin2hex(random_bytes(6));
+    mkdir($dir);
+    touch($dir.'/CacheableTemplateEvent.php');
+
+    try {
+        $result = (new HandlerScanner)->scan(['Firefly\\Cqrs\\Tests\\CacheScannerBadFixtures\\' => $dir]);
+
+        expect($result['invalidations'])->toEqual([
+            new InvalidationRule(CacheableTemplateEvent::class, 'CacheableTemplateEvent', KeyedLedger::class, 'ledger:{account}'),
+        ]);
+    } finally {
+        @unlink($dir.'/CacheableTemplateEvent.php');
+        @rmdir($dir);
+    }
+});
 
 it('round-trips both sections through the compiled manifest file', function () {
     $result = (new HandlerScanner)->scan(['Firefly\\Cqrs\\Tests\\CacheScannerFixtures\\' => dirname(__DIR__).'/CacheScannerFixtures']);

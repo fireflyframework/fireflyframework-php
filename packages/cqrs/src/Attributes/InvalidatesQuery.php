@@ -16,6 +16,8 @@ use Attribute;
  *     private or protected state (the types are the author's to keep: the event value is only known at runtime);
  *   * $key: 'statement:{account}' — evict the entry a Cacheable query's own cacheKey() returns, `{name}` resolved
  *     from the event's public properties or from the EDA payload (dotted paths reach into nested arrays).
+ *     HandlerScanner refuses a key template on a query that is not Cacheable: that query is keyed by value (a
+ *     QueryCacheKey digest), so no template can name its entries and the eviction would silently miss.
  *
  * An event published over EDA is matched by $eventType — default: the short class name, which is what
  * DomainEvent::eventType() returns — so another process's envelope evicts this process's cache too. A placeholder
