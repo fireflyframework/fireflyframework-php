@@ -15,7 +15,8 @@ use Throwable;
  * FireflyException, its errorCode/httpStatus/category/severity are copied so an expected client/domain fault (validation,
  * not-found) keeps its own kernel category and is NOT masked into a generic 500, and its RFC 9457 extension members and
  * title are copied so the problem document says what the cause would have said on its own; a plain Throwable becomes
- * internal/500. Carries the command class + the cause as `previous` (design §2.3 / pyfly command/bus.py:153-164).
+ * internal/500. The message keeps the command class and the cause's message for the log; the published detail() is
+ * the cause's own detail, or null (opaque on the wire) when the cause is not a FireflyException. Carries the command class + the cause as `previous` (design §2.3 / pyfly command/bus.py:153-164).
  */
 final class CommandProcessingException extends CqrsException
 {
@@ -46,5 +47,14 @@ final class CommandProcessingException extends CqrsException
             $cause instanceof FireflyException ? $cause->extensions() : [],
             $cause instanceof FireflyException ? $cause->title() : null,
         );
+
+        /*
+         | And what the client may read, which is NOT the message above. The message names the command
+         | class and quotes the cause verbatim — the log's line. On the wire an authored cause says its own
+         | sentence, exactly as it would thrown from a controller; anything else (a QueryException with its
+         | SQL and bindings, a TypeError naming a path) has no sentence for a client, so the detail is null
+         | and the web layer answers with its opaque one, as it does for the same throwable unwrapped.
+         */
+        $this->withDetail($cause instanceof FireflyException ? $cause->detail() : null);
     }
 }

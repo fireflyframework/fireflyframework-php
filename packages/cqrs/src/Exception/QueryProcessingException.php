@@ -12,7 +12,8 @@ use Throwable;
 /**
  * The query-side twin of CommandProcessingException: DefaultQueryBus wraps any handler/stage throwable in this
  * (unless already one), preserving a FireflyException cause's code/httpStatus/category/severity and its RFC 9457
- * extension members and title, else internal/500.
+ * extension members and title, else internal/500. Its detail() is the cause's own, or null when the cause is not a
+ * FireflyException, so the query class and a raw cause message stay in the log.
  */
 final class QueryProcessingException extends CqrsException
 {
@@ -43,5 +44,14 @@ final class QueryProcessingException extends CqrsException
             $cause instanceof FireflyException ? $cause->extensions() : [],
             $cause instanceof FireflyException ? $cause->title() : null,
         );
+
+        /*
+         | And what the client may read, which is NOT the message above. The message names the query
+         | class and quotes the cause verbatim — the log's line. On the wire an authored cause says its own
+         | sentence, exactly as it would thrown from a controller; anything else (a QueryException with its
+         | SQL and bindings, a TypeError naming a path) has no sentence for a client, so the detail is null
+         | and the web layer answers with its opaque one, as it does for the same throwable unwrapped.
+         */
+        $this->withDetail($cause instanceof FireflyException ? $cause->detail() : null);
     }
 }

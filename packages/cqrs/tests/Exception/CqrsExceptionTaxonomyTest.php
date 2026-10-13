@@ -116,3 +116,36 @@ it('carries no extension members and no title of its own when the cause has none
     'query, plain cause' => [QueryProcessingException::class, new RuntimeException('boom')],
     'command, bare FireflyException' => [CommandProcessingException::class, new ResourceNotFoundException('gone')],
 ]);
+
+/*
+ | The MESSAGE names the message class and quotes the cause — that is the log's line. The DETAIL is what the
+ | problem document publishes, and it is the cause's own: its sentence when it is a FireflyException, and
+ | nothing (null — the web layer's opaque sentence) when it is not.
+ */
+it('publishes an authored cause\'s own detail and keeps the message class in the message alone', function (string $wrapper) {
+    $cause = new ResourceNotFoundException('Order 42 does not exist.');
+    /** @var FireflyException $wrapped */
+    $wrapped = new $wrapper('App\Order', $cause);
+
+    expect($wrapped->detail())->toBe('Order 42 does not exist.')
+        ->and($wrapped->getMessage())->toContain('App\Order')
+        ->and($wrapped->getMessage())->toEndWith('failed: Order 42 does not exist.');
+})->with([CommandProcessingException::class, QueryProcessingException::class]);
+
+it('withholds the detail when the cause is not a FireflyException', function (string $wrapper) {
+    $cause = new RuntimeException('SQLSTATE[HY000] (SQL: select * from users where token = tok)');
+    /** @var FireflyException $wrapped */
+    $wrapped = new $wrapper('App\Order', $cause);
+
+    expect($wrapped->detail())->toBeNull()
+        ->and($wrapped->getMessage())->toContain('select * from users');
+})->with([CommandProcessingException::class, QueryProcessingException::class]);
+
+it('carries a cause\'s own replaced or withheld detail through, so a wrapper of a wrapper says what the innermost may', function () {
+    $inner = new QueryProcessingException('App\FindOrder', new RuntimeException('select secret'));
+    $outer = new CommandProcessingException('App\PlaceOrder', $inner);
+    $authored = new CommandProcessingException('App\PlaceOrder', (new FireflyException('raw', 'X', 409))->withDetail('Said for the client.'));
+
+    expect($outer->detail())->toBeNull()
+        ->and($authored->detail())->toBe('Said for the client.');
+});

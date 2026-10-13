@@ -180,11 +180,14 @@ it('allows an authorized withdraw and renders an overdraw as 409 problem+json', 
 
     // Authorized but over-balance: the domain's no-overdraw invariant raises ConflictException (409), wrapped by
     // the bus into CommandProcessingException, and rendered as 409 problem-details — a business fault, not a 403.
+    // The detail is the domain's own sentence, word for word: the bus's "Processing command [...] failed:" prefix
+    // stays on the wrapper's message, in the log.
     $this->postJson("/api/v1/wallets/{$id}/withdraw", ['amount_minor' => 999999])
         ->assertStatus(409)
         ->assertHeader('Content-Type', 'application/problem+json')
         ->assertJsonPath('status', 409)
-        ->assertJsonPath('category', 'business');
+        ->assertJsonPath('category', 'business')
+        ->assertJsonPath('detail', 'cannot withdraw 9999.99 EUR; balance is 20.00 EUR');
 
     // The rejected overdraw never touched the balance.
     $this->getJson("/api/v1/wallets/{$id}/balance")->assertJson(['balance_minor' => 2000]);
