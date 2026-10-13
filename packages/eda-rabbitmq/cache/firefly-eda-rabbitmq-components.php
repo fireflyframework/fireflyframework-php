@@ -6,6 +6,35 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\Eda\\Rabbitmq\\Messaging\\RabbitMqMessagingAutoConfiguration',
+        'stereotype' => 'configuration',
+        'name' => null,
+        'scope' => 'Singleton',
+        'primary' => false,
+        'order' => 900,
+        'qualifier' => null,
+        'interfaces' => [
+        ],
+        'beans' => [
+            0 => [
+                'method' => 'messageBroker',
+                'returns' => 'Firefly\\Messaging\\MessageBrokerPort',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Config\\Config',
+                    1 => 'Illuminate\\Container\\Container',
+                ],
+            ],
+        ],
+        'lazy' => false,
+        'dependencies' => [
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\Eda\\Rabbitmq\\RabbitMqAutoConfiguration',
         'stereotype' => 'configuration',
         'name' => null,
@@ -84,7 +113,7 @@ return [
         'dependencies' => [
         ],
     ],
-    1 => [
+    2 => [
         'class' => 'Firefly\\Eda\\Rabbitmq\\RabbitMqHealthIndicator',
         'stereotype' => 'component',
         'name' => null,

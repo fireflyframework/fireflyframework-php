@@ -6,6 +6,32 @@ declare(strict_types=1);
 
 return [
     0 => [
+        'class' => 'Firefly\\Eda\\Rabbitmq\\Messaging\\RabbitMqMessagingAutoConfiguration',
+        'postConstruct' => [
+        ],
+        'preDestroy' => [
+        ],
+        'listeners' => [
+        ],
+        'conditions' => [
+        ],
+        'beanConditions' => [
+            0 => [
+                'method' => 'messageBroker',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.messaging.provider',
+                            1 => 'rabbitmq',
+                            2 => false,
+                        ],
+                    ],
+                ],
+            ],
+        ],
+    ],
+    1 => [
         'class' => 'Firefly\\Eda\\Rabbitmq\\RabbitMqAutoConfiguration',
         'postConstruct' => [
         ],
@@ -89,7 +115,7 @@ return [
             ],
         ],
     ],
-    1 => [
+    2 => [
         'class' => 'Firefly\\Eda\\Rabbitmq\\RabbitMqHealthIndicator',
         'postConstruct' => [
         ],

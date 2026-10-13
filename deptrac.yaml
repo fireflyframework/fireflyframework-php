@@ -241,7 +241,10 @@ deptrac:
     # broker its own package, the SchedulingPostgres precedent) so the core eda package stays free of the
     # php-amqplib dependency. It reads Config indirectly via #[ConditionalOnProperty], carries Container/Context
     # attributes, extends AutoConfigure's base, implements Eda's EventPublisher, and supplies an Actuator
-    # HealthIndicator. It is depended on by NONE.
+    # HealthIndicator. It is depended on by NONE. The => Messaging edge is the raw-bytes messaging adapter
+    # (src/Messaging): RabbitMqMessageBroker implements Messaging's ListenerContainerBroker over this package's
+    # RabbitMqConnectionFactory, so both transports share one connection configuration. Core Messaging still has no
+    # edge to or from Eda.
     EdaRabbitmq:
       - Kernel
       - Container
@@ -250,6 +253,7 @@ deptrac:
       - AutoConfigure
       - Eda
       - Actuator
+      - Messaging
 
     # EdaPostgres is the GENUINE same-transaction Postgres OUTBOX adapter for Eda's EventPublisher port: its own
     # package (every broker its own package, the SchedulingPostgres precedent) so the core eda package stays free of

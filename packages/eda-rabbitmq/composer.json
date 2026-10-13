@@ -1,6 +1,6 @@
 {
     "name": "firefly/eda-rabbitmq",
-    "description": "LaraFly eda RabbitMQ adapter: a RabbitMqEventPublisher + long-running consumer over php-amqplib (AMQP 0-9-1), auto-configured behind firefly.eda.provider=rabbitmq, with a DLX for exhausted retries and a RabbitMqHealthIndicator.",
+    "description": "LaraFly eda RabbitMQ adapter: a RabbitMqEventPublisher + long-running consumer over php-amqplib (AMQP 0-9-1), auto-configured behind firefly.eda.provider=rabbitmq, with a DLX for exhausted retries and a RabbitMqHealthIndicator; also the RabbitMQ adapter for firefly/messaging (firefly.messaging.provider=rabbitmq).",
     "type": "library",
     "license": "Apache-2.0",
     "homepage": "https://github.com/fireflyframework/fireflyframework-php",
@@ -28,10 +28,12 @@
         "firefly/context": "*@dev",
         "firefly/eda": "*@dev",
         "firefly/kernel": "*@dev",
+        "firefly/messaging": "*@dev",
         "illuminate/console": "^13.0",
         "illuminate/contracts": "^13.0",
         "illuminate/support": "^13.0",
-        "php-amqplib/php-amqplib": "^3.7"
+        "php-amqplib/php-amqplib": "^3.7",
+        "psr/log": "^3.0"
     },
     "extra": {
         "laravel": {
