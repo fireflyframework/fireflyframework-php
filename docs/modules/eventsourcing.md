@@ -368,7 +368,13 @@ With `publish.enabled`, every appended event is published on `publish.destinatio
 - under any other provider the events are published after the append commits, and a rolled-back append
   publishes nothing.
 
-Either way an event is published exactly once by this package. Aggregate types in
+The two paths give different guarantees. Under the outbox providers the event and its outbox row commit
+together, so the outbox's own delivery guarantee applies: at-least-once across a crash, so make listeners
+idempotent (see [eda-database](eda-database.md)). Under any other provider publishing is at-most-once: the
+package never publishes an event twice, but nothing retries a publish, so a crash between the commit and the
+publish, or a broker failure partway through publishing an append's events, loses the events not yet
+published while the append itself stays committed (the caller sees the broker's exception for an append that
+did commit). When every event must reach the broker, use the outbox. Aggregate types in
 `publish.exclude-aggregate-types` (the orchestration executions by default) are never published.
 
 ## Tenancy

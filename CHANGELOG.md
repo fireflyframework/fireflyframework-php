@@ -17,7 +17,7 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
   fenced `memory`/`database` checkpoints, a per-batch `DistributedLock` lease, catch-up, live mode and rebuild,
   `php artisan firefly:eventsourcing:projections{,:run,:rebuild}` and an `eventsourcing` health component with
   projection lag; same-transaction publishing through the eda-database outbox (`publish.enabled`), otherwise after
-  commit; opt-in tenancy (`tenancy.enabled`).
+  commit, at most once; opt-in tenancy (`tenancy.enabled`).
 - **`firefly.orchestration.persistence.provider=event-sourced`.** Executions as event-sourced aggregates with
   snapshots and an inline, rebuildable read model on the event store's connection
   (`firefly:eventsourcing:projections:rebuild orchestration.executions`), passing the orchestration persistence
