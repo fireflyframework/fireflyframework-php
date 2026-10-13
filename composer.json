@@ -50,6 +50,7 @@
         "pestphp/pest": "^4.5",
         "pestphp/pest-plugin-browser": "^4.3",
         "phpstan/phpstan": "^2.1",
+        "predis/predis": "^3.0",
         "symplify/monorepo-builder": "^11.2"
     },
     "autoload-dev": {
