@@ -41,6 +41,33 @@ return [
                     1 => 'Illuminate\\Container\\Container',
                 ],
             ],
+            2 => [
+                'method' => 'signatureValidatorFactory',
+                'returns' => 'Firefly\\Webhooks\\Signature\\SignatureValidatorFactory',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                ],
+            ],
+            3 => [
+                'method' => 'webhookProcessor',
+                'returns' => 'Firefly\\Webhooks\\WebhookProcessor',
+                'name' => null,
+                'scope' => 'Singleton',
+                'primary' => false,
+                'order' => 0,
+                'lazy' => false,
+                'dependencies' => [
+                    0 => 'Firefly\\Webhooks\\WebhooksSettings',
+                    1 => 'Firefly\\Webhooks\\Signature\\SignatureValidatorFactory',
+                    2 => 'Firefly\\Webhooks\\Idempotency\\WebhookIdempotencyStore',
+                    3 => 'Firefly\\Eda\\EventPublisher',
+                    4 => 'Illuminate\\Container\\Container',
+                ],
+            ],
         ],
         'lazy' => false,
         'dependencies' => [

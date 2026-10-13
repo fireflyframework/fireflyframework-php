@@ -4,17 +4,18 @@ declare(strict_types=1);
 
 namespace Firefly\Webhooks\Tests\Support;
 
+use Firefly\Eda\EdaServiceProvider;
 use Firefly\Testing\FireflyDatabaseTestCase;
 use Firefly\Webhooks\WebhooksServiceProvider;
 use Firefly\Webhooks\WebhooksWiringProvider;
 
-/** Webhooks enabled on the database idempotency store, over Testbench + sqlite :memory:. */
+/** Webhooks enabled on the database idempotency store, over Testbench + sqlite :memory: — with firefly/eda, whose EventPublisher the processor publishes to. */
 abstract class WebhooksDatabaseTestCase extends FireflyDatabaseTestCase
 {
     /** @return list<class-string> */
     protected function fireflyProviders(): array
     {
-        return [WebhooksServiceProvider::class, WebhooksWiringProvider::class];
+        return [EdaServiceProvider::class, WebhooksServiceProvider::class, WebhooksWiringProvider::class];
     }
 
     /** @return array<string, mixed> */

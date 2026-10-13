@@ -54,6 +54,44 @@ return [
                     ],
                 ],
             ],
+            2 => [
+                'method' => 'signatureValidatorFactory',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.webhooks.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Webhooks\\Signature\\SignatureValidatorFactory',
+                        ],
+                    ],
+                ],
+            ],
+            3 => [
+                'method' => 'webhookProcessor',
+                'conditions' => [
+                    0 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnProperty',
+                        'args' => [
+                            0 => 'firefly.webhooks.enabled',
+                            1 => 'true',
+                            2 => false,
+                        ],
+                    ],
+                    1 => [
+                        'type' => 'Firefly\\Context\\Condition\\Attributes\\ConditionalOnMissingBean',
+                        'args' => [
+                            0 => 'Firefly\\Webhooks\\WebhookProcessor',
+                        ],
+                    ],
+                ],
+            ],
         ],
     ],
 ];

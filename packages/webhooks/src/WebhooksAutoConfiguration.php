@@ -10,14 +10,17 @@ use Firefly\Container\Attributes\Configuration;
 use Firefly\Container\Attributes\Order;
 use Firefly\Context\Condition\Attributes\ConditionalOnMissingBean;
 use Firefly\Context\Condition\Attributes\ConditionalOnProperty;
+use Firefly\Eda\EventPublisher;
 use Firefly\Kernel\Exception\Framework\ConfigurationException;
 use Firefly\Webhooks\Idempotency\CacheWebhookIdempotencyStore;
 use Firefly\Webhooks\Idempotency\DatabaseWebhookIdempotencyStore;
 use Firefly\Webhooks\Idempotency\InMemoryWebhookIdempotencyStore;
 use Firefly\Webhooks\Idempotency\WebhookIdempotencyStore;
+use Firefly\Webhooks\Signature\SignatureValidatorFactory;
 use Illuminate\Container\Container;
 use Illuminate\Contracts\Cache\Factory as CacheFactory;
 use Illuminate\Database\ConnectionResolverInterface;
+use Psr\Log\LoggerInterface;
 
 /**
  * The webhooks beans, every one behind firefly.webhooks.enabled (default false): installing the package is inert
@@ -63,5 +66,27 @@ final class WebhooksAutoConfiguration
         $caches = $container->make('cache');
 
         return new CacheWebhookIdempotencyStore($caches->store($settings->idempotencyCacheStore === '' ? null : $settings->idempotencyCacheStore));
+    }
+
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.webhooks.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(SignatureValidatorFactory::class)]
+    public function signatureValidatorFactory(): SignatureValidatorFactory
+    {
+        return new SignatureValidatorFactory(static fn (): int => time());
+    }
+
+    /**
+     * The processor every endpoint delegates to: it publishes to whichever EventPublisher firefly/eda bound
+     * (firefly.eda.provider), and logs ignored duplicates on the application logger when one is bound.
+     */
+    #[Bean]
+    #[ConditionalOnProperty(name: 'firefly.webhooks.enabled', havingValue: 'true')]
+    #[ConditionalOnMissingBean(WebhookProcessor::class)]
+    public function webhookProcessor(WebhooksSettings $settings, SignatureValidatorFactory $validators, WebhookIdempotencyStore $idempotency, EventPublisher $publisher, Container $container): WebhookProcessor
+    {
+        $logger = $container->bound(LoggerInterface::class) ? $container->make(LoggerInterface::class) : null;
+
+        return new WebhookProcessor($settings, $validators, $idempotency, $publisher, $logger instanceof LoggerInterface ? $logger : null);
     }
 }

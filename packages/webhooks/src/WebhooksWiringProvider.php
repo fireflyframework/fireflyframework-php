@@ -8,6 +8,7 @@ use Firefly\Config\Config;
 use Firefly\Context\Boot\BootPass;
 use Firefly\Context\Boot\FireflyServiceProvider;
 use Firefly\Webhooks\Console\PruneWebhookReceiptsCommand;
+use Firefly\Webhooks\Http\WebhookRouteRegistrar;
 
 /**
  * The boot-pass half of firefly/webhooks: the endpoint registrar, the receipts migration (publishable with
@@ -23,7 +24,7 @@ final class WebhooksWiringProvider extends FireflyServiceProvider
      */
     public function passes(): array
     {
-        return [];
+        return [new WebhookRouteRegistrar];
     }
 
     public function boot(): void
