@@ -69,6 +69,8 @@ abstract class OrchestrationCapstoneTestCase extends FireflyDatabaseTestCase
     {
         parent::setUp();
 
+        // Dropped first: on a real server (the integration lane's subclasses) the tables of the last run remain.
+        OrchestrationSchema::drop(DB::connection()->getSchemaBuilder());
         OrchestrationSchema::create(DB::connection()->getSchemaBuilder());
     }
 

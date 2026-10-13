@@ -19,6 +19,11 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 - **Orchestration operations:** lifecycle and step events through `firefly/eda`, event-type triggers, cron and
   fixed-rate schedules, the `orchestration` actuator endpoint and health component,
   `php artisan firefly:orchestration:{list,show,signal,dlq,dlq:retry,tick}` and an opt-in REST surface.
+- **Orchestration queued workflows:** ASYNC workflows are now tested end to end through a real Laravel queue.
+  A capstone checks that the `RunWorkflowJob` is pushed on `firefly.orchestration.workflow.queue.connection`
+  and `.name`, that `queue:work` runs it to `COMPLETED`, that a redelivered job is a no-op, and that the
+  `sync` connection runs the job inside the start. An integration test runs the same path on the `database`
+  queue against PostgreSQL, MySQL and MariaDB (its SQL Server case has not yet run against a real server).
 - **Observability:** `orchestration_executions_seconds`, `orchestration_steps_seconds`,
   `orchestration_compensations_total` and `orchestration_dead_letters_total`, and INTERNAL spans per execution
   and step behind `firefly.observability.tracing.orchestration.enabled`.

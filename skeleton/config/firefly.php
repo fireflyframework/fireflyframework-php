@@ -2611,7 +2611,8 @@ return [
         /*
          | Workflows triggered ASYNC are persisted PENDING and run by a RunWorkflowJob on this queue
          | (null = the default connection / queue); they need `cache` or `database` persistence, because the
-         | worker is another process. The `tick` is a scheduled task (firefly:schedule lists it) that resumes
+         | worker is another process (the `sync` connection runs the job inside the start instead). A job
+         | delivered twice is harmless: the second delivery finds the execution no longer PENDING. The `tick` is a scheduled task (firefly:schedule lists it) that resumes
          | WAITING workflows whose timers or deadlines are due, under the DistributedLock; without a scheduler
          | run php artisan firefly:orchestration:tick from cron. Defaults: enabled true, tick every 1m.
         */

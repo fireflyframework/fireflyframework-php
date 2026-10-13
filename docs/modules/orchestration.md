@@ -222,10 +222,58 @@ final class Onboarding
 ```
 
 `suspend()`, `resume()`, `cancel()` and `compensate()` manage a live execution;
-`upsertSearchAttributes()` and `search()` find executions by attribute. A workflow with
-`triggerMode: TriggerMode::Async` is started `PENDING` and run by `RunWorkflowJob` on the queue named by
-`firefly.orchestration.workflow.queue.*`. A step that returns `ContinueAsNew` ends the run and starts a fresh
-one with new input, linked through the `x-firefly-continued-from` header.
+`upsertSearchAttributes()` and `search()` find executions by attribute. A step that returns `ContinueAsNew`
+ends the run and starts a fresh one with new input, linked through the `x-firefly-continued-from` header.
+
+### Queued (ASYNC) workflows
+
+A workflow declared with `triggerMode: TriggerMode::Async` never runs inside `start()`. The start persists
+the execution `PENDING` and dispatches a `RunWorkflowJob` that carries only the correlation id. A queue
+worker then loads the execution from the persistence provider and runs it:
+
+<!-- source: packages/orchestration/tests/CapstoneFixtures/StatementWorkflow.php -->
+```php
+#[Service]
+#[Workflow(id: 'statement', triggerMode: TriggerMode::Async)]
+final class StatementWorkflow
+{
+    public function __construct(private readonly Ledger $ledger) {}
+
+    #[WorkflowStep(id: 'render')]
+    public function render(#[Input('account')] string $account): string
+    {
+        $this->ledger->record("render {$account}");
+
+        return "statement-{$account}";
+    }
+    // …
+}
+```
+
+The job is dispatched on `firefly.orchestration.workflow.queue.connection` and `.name`. When either is unset,
+the application's default connection or queue is used:
+
+<!-- source: skeleton/config/firefly.php -->
+```php
+'queue' => [
+    'connection' => env('FIREFLY_ORCHESTRATION_WORKFLOW_QUEUE_CONNECTION'),
+    'name' => env('FIREFLY_ORCHESTRATION_WORKFLOW_QUEUE'),
+],
+```
+
+A worker on that connection and queue runs the job:
+
+```bash
+php artisan queue:work database --queue=workflows
+```
+
+The worker is a different process, so ASYNC workflows need `cache` or `database` persistence. The `sync`
+connection is the one exception: it runs the job inside `start()`, and the start returns the finished
+execution. Redelivery is safe. A job delivered a second time, for example by a worker that died before it
+acknowledged the job, finds the execution no longer `PENDING` and returns it unchanged, so no step runs twice.
+The capstone in `packages/orchestration/tests/Capstone/CapstoneQueuedWorkflowTest.php` covers this path on
+the `database` queue. Its integration twin covers it on PostgreSQL, MySQL and MariaDB. A SQL Server case is
+written but has not yet run against a real server.
 
 ## Persistence, recovery and the dead-letter queue
 

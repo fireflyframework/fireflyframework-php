@@ -40,6 +40,20 @@ final class IntegrationDatabase
 
     public static function connection(string $driver, string $variable): Connection
     {
+        $capsule = new Manager;
+        $capsule->addConnection(self::config($driver, $variable), $variable);
+
+        return $capsule->getConnection($variable);
+    }
+
+    /**
+     * The Laravel connection config for one server — what connection() opens, and what a booted capstone sets
+     * under `database.connections.*` to run the real pipeline against that server.
+     *
+     * @return array<string, mixed>
+     */
+    public static function config(string $driver, string $variable): array
+    {
         $dsn = getenv($variable);
         if (! is_string($dsn) || $dsn === '') {
             throw new RuntimeException("{$variable} is not set.");
@@ -60,16 +74,12 @@ final class IntegrationDatabase
             'password' => $parts['password'] ?? '',
             'prefix' => '',
         ];
-        $config += match ($driver) {
+
+        return $config + match ($driver) {
             'pgsql' => ['charset' => 'utf8', 'search_path' => 'public', 'sslmode' => 'prefer'],
             'sqlsrv' => ['charset' => 'utf8', 'trust_server_certificate' => true],
             default => ['charset' => 'utf8mb4', 'collation' => 'utf8mb4_unicode_ci'],
         };
-
-        $capsule = new Manager;
-        $capsule->addConnection($config, $variable);
-
-        return $capsule->getConnection($variable);
     }
 
     public static function sqlite(string $database = ':memory:'): Connection
