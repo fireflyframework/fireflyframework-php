@@ -392,11 +392,11 @@ interface PreCommitEventHook
 }
 ```
 
-With no hook bound — no `firefly/eda-postgres`, or any provider other than `postgres` — this is a complete no-op and `DomainEventDispatcher` behaves exactly as Chapter 6 described. `firefly/eda-postgres`'s `OutboxPreCommitHook` is the implementation that turns it on:
+With no hook bound — any provider other than `database` or `postgres` — this is a complete no-op and `DomainEventDispatcher` behaves exactly as Chapter 6 described. `firefly/eda-database`'s `OutboxPreCommitHook` is the implementation that turns it on, under both outbox providers:
 
-<!-- source: packages/eda-postgres/src/Outbox/OutboxPreCommitHook.php -->
+<!-- source: packages/eda-database/src/Outbox/OutboxPreCommitHook.php -->
 ```php
-final class OutboxPreCommitHook implements PreCommitEventHook
+class OutboxPreCommitHook implements PreCommitEventHook
 {
     // …
     public function handle(object $event, ?string $connection = null): void
@@ -404,14 +404,23 @@ final class OutboxPreCommitHook implements PreCommitEventHook
         if (! $event instanceof DomainEvent) {
             return;
         }
-        // …
-        $emitNotify = $conn instanceof Connection && $conn->getDriverName() === 'pgsql';
-        // …
+
+        // The aggregate's connection — the one carrying the open transaction.
+        $publisher = $this->writerFor($this->connections->connection($connection));
+
         (new EdaCommandEventPublisher($publisher, $this->defaultDestination, $this->destinations, $this->correlation))
             ->publish($event);
     }
+
+    /** The writer for one event, on the aggregate's own connection. */
+    protected function writerFor(ConnectionInterface $connection): DatabaseEventPublisher
+    {
+        return new DatabaseEventPublisher($connection, $this->registry, $this->channel, $this->tracing);
+    }
 }
 ```
+
+`firefly/eda-postgres`'s hook of the same short name overrides only `writerFor()`, returning a `PostgresEventPublisher` that also notifies on a `pgsql` connection.
 
 `$connection` is threaded through unchanged from the dispatcher, so a `#[Transactional(connection: 'x')]` aggregate's outbox row lands on connection `x` — never a hard-coded default — and the hook reuses the *exact same* `EdaCommandEventPublisher` mapping (event type, payload, destination, correlation id) the after-commit bridge uses, so the row this writes is byte-for-byte identical in shape to what the ordinary bridge would have produced.
 

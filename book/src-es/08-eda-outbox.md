@@ -392,11 +392,11 @@ interface PreCommitEventHook
 }
 ```
 
-Sin ningún hook vinculado — sin `firefly/eda-postgres`, o con cualquier proveedor que no sea `postgres` — esto es un no-op completo y `DomainEventDispatcher` se comporta exactamente como describió el Capítulo 6. `OutboxPreCommitHook` de `firefly/eda-postgres` es la implementación que lo activa:
+Sin ningún hook vinculado — con cualquier proveedor que no sea `database` ni `postgres` — esto es un no-op completo y `DomainEventDispatcher` se comporta exactamente como describió el Capítulo 6. `OutboxPreCommitHook` de `firefly/eda-database` es la implementación que lo activa, con ambos proveedores de outbox:
 
-<!-- source: packages/eda-postgres/src/Outbox/OutboxPreCommitHook.php -->
+<!-- source: packages/eda-database/src/Outbox/OutboxPreCommitHook.php -->
 ```php
-final class OutboxPreCommitHook implements PreCommitEventHook
+class OutboxPreCommitHook implements PreCommitEventHook
 {
     // …
     public function handle(object $event, ?string $connection = null): void
@@ -404,14 +404,23 @@ final class OutboxPreCommitHook implements PreCommitEventHook
         if (! $event instanceof DomainEvent) {
             return;
         }
-        // …
-        $emitNotify = $conn instanceof Connection && $conn->getDriverName() === 'pgsql';
-        // …
+
+        // The aggregate's connection — the one carrying the open transaction.
+        $publisher = $this->writerFor($this->connections->connection($connection));
+
         (new EdaCommandEventPublisher($publisher, $this->defaultDestination, $this->destinations, $this->correlation))
             ->publish($event);
     }
+
+    /** The writer for one event, on the aggregate's own connection. */
+    protected function writerFor(ConnectionInterface $connection): DatabaseEventPublisher
+    {
+        return new DatabaseEventPublisher($connection, $this->registry, $this->channel, $this->tracing);
+    }
 }
 ```
+
+El hook homónimo de `firefly/eda-postgres` solo sobrescribe `writerFor()`, devolviendo un `PostgresEventPublisher` que además notifica sobre una conexión `pgsql`.
 
 `$connection` se propaga sin cambios desde el dispatcher, así que la fila del outbox de un agregado `#[Transactional(connection: 'x')]` aterriza en la conexión `x` — nunca un valor por defecto fijo — y el hook reutiliza el *mismo* mapeo de `EdaCommandEventPublisher` (tipo de evento, carga útil, destino, id de correlación) que usa el puente post-confirmación, así que la fila que esto escribe es idéntica byte a byte en forma a lo que habría producido el puente ordinario.
 
