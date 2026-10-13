@@ -46,7 +46,7 @@ treats a blank variable as unset — so a missing backend skips its tests and ne
 | `FIREFLY_PG_DSN` | PostgreSQL | `pgsql` |
 | `FIREFLY_MYSQL_DSN` | MySQL | `mysql` |
 | `FIREFLY_MARIADB_DSN` | MariaDB | `mariadb` |
-| `FIREFLY_SQLSRV_DSN` | SQL Server (`encrypt=…;trust_server_certificate=…` optional) | `sqlsrv` |
+| `FIREFLY_SQLSRV_DSN` | SQL Server (`encrypt` defaults to `yes`; `trust_server_certificate` defaults to `false`, so a self-signed local or CI server must set `trust_server_certificate=true` in its DSN) | `sqlsrv` |
 | `FIREFLY_RABBITMQ_DSN`, `FIREFLY_KAFKA_BROKERS`, `FIREFLY_REDIS_URL` | the brokers | `brokers` |
 
 `IntegrationDsn::connectionConfig($lane)` returns a Laravel connection config, `IntegrationDsn::connect($lane)` a

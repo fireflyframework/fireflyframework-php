@@ -84,7 +84,7 @@ it('builds a Laravel connection config per driver', function () {
         'password' => 'pw', 'prefix' => '', 'charset' => 'utf8', 'search_path' => 'public',
     ])->and(IntegrationDsn::connectionConfigFor('mariadb', 'FIREFLY_TEST_DSN')['charset'])->toBe('utf8mb4')
         ->and(IntegrationDsn::connectionConfigFor('sqlsrv', 'FIREFLY_TEST_DSN'))->toMatchArray([
-            'driver' => 'sqlsrv', 'encrypt' => 'yes', 'trust_server_certificate' => 'true',
+            'driver' => 'sqlsrv', 'encrypt' => 'yes', 'trust_server_certificate' => 'false',
         ])->and(IntegrationDsn::connectionConfigFor('mysql', 'FIREFLY_TEST_DSN', ['database' => 'other'])['database'])->toBe('other');
 });
 
@@ -131,4 +131,54 @@ it('maps the RabbitMQ DSN in both forms to the five AMQP connection arguments', 
     } finally {
         putenv($previous === false ? IntegrationDsn::RABBITMQ : IntegrationDsn::RABBITMQ.'='.$previous);
     }
+});
+
+it('never echoes the DSN, which carries the password, in a parse error', function (string $dsn) {
+    $message = null;
+    try {
+        IntegrationDsn::parse($dsn);
+    } catch (InvalidArgumentException $error) {
+        $message = $error->getMessage();
+    }
+
+    expect($message)->toBeString()->not->toContain('S3cret-pw');
+})->with([
+    'segment without equals' => ['host=db;password=S3cret-pw;S3cret-pw'],
+    'no host' => ['port=5432;password=S3cret-pw'],
+    'url without host' => ['pgsql://u:S3cret-pw@/firefly'],
+]);
+
+it('validates the SQL Server certificate unless the DSN opts out explicitly', function () {
+    putenv('FIREFLY_TEST_DSN=host=db;user=sa;password=pw');
+    expect(IntegrationDsn::connectionConfigFor('sqlsrv', 'FIREFLY_TEST_DSN')['trust_server_certificate'])->toBe('false');
+
+    putenv('FIREFLY_TEST_DSN=host=db;user=sa;password=pw;trust_server_certificate=true');
+    expect(IntegrationDsn::connectionConfigFor('sqlsrv', 'FIREFLY_TEST_DSN')['trust_server_certificate'])->toBe('true');
+});
+
+it('lets a URL query string add extras but never override the authority', function () {
+    expect(IntegrationDsn::parse('pgsql://u:pw@db:5432/firefly?host=evil&port=1&user=root&password=x&search_path=app'))->toBe([
+        'scheme' => 'pgsql', 'host' => 'db', 'port' => '5432', 'user' => 'u', 'password' => 'pw',
+        'dbname' => 'firefly', 'vhost' => 'firefly', 'search_path' => 'app',
+    ]);
+});
+
+it('keeps sqlite files in a private directory and refuses a planted symlink', function () {
+    $path = IntegrationDsn::sqlitePath('private-check');
+
+    expect(IntegrationDsn::sqlitePath('private-check'))->toBe($path)
+        ->and(dirname($path))->not->toBe(sys_get_temp_dir())
+        ->and(fileperms(dirname($path)) & 0777)->toBe(0700);
+
+    integrationDsnRemoveSqlite($path);
+    symlink(__FILE__, $path);
+    try {
+        expect(fn () => IntegrationDsn::sqlite($path))->toThrow(InvalidArgumentException::class, 'symbolic link');
+    } finally {
+        unlink($path);
+    }
+
+    IntegrationDsn::sqlite($path);
+    expect(fileperms($path) & 0777)->toBe(0600);
+    integrationDsnRemoveSqlite($path);
 });

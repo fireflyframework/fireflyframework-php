@@ -52,6 +52,11 @@ final class IntegrationDsn
     /** @var array<string, int> */
     private const array DEFAULT_PORTS = ['pgsql' => 5432, 'mysql' => 3306, 'mariadb' => 3306, 'sqlsrv' => 1433];
 
+    /** @var list<string> the only keys a URL DSN's query string may set; host, port, user and password come from the authority */
+    private const array URL_QUERY_EXTRAS = ['search_path', 'encrypt', 'trust_server_certificate', 'sslmode', 'charset', 'vhost'];
+
+    private static ?string $sqliteDirectory = null;
+
     /** @return list<string> */
     public static function lanes(): array
     {
@@ -82,19 +87,20 @@ final class IntegrationDsn
         }
 
         $parts = [];
-        foreach (explode(';', $dsn) as $pair) {
+        foreach (explode(';', $dsn) as $position => $pair) {
             if (trim($pair) === '') {
                 continue;
             }
             if (! str_contains($pair, '=')) {
-                throw new InvalidArgumentException(sprintf('Cannot read the DSN "%s": "%s" is not a key=value pair.', $dsn, trim($pair)));
+                // Never echo the DSN or the segment: either may be (part of) a password.
+                throw new InvalidArgumentException(sprintf('Cannot read the DSN: segment %d is not a key=value pair (expected host=…;port=…;dbname=…;user=…;password=… or scheme://user:pass@host:port/db).', $position + 1));
             }
             [$key, $value] = explode('=', $pair, 2);
             $parts[strtolower(trim($key))] = trim($value);
         }
 
         if (($parts['host'] ?? '') === '') {
-            throw new InvalidArgumentException(sprintf('Cannot read the DSN "%s": it names no host.', $dsn));
+            throw new InvalidArgumentException('Cannot read the DSN: it names no host (expected host=…;port=…;dbname=…;user=…;password=…).');
         }
 
         return $parts;
@@ -167,7 +173,7 @@ final class IntegrationDsn
         $config = match ($driver) {
             'pgsql' => [...$config, 'charset' => 'utf8', 'search_path' => $parts['search_path'] ?? 'public'],
             'mysql', 'mariadb' => [...$config, 'charset' => 'utf8mb4', 'collation' => 'utf8mb4_unicode_ci'],
-            'sqlsrv' => [...$config, 'charset' => 'utf8', 'encrypt' => $parts['encrypt'] ?? 'yes', 'trust_server_certificate' => $parts['trust_server_certificate'] ?? 'true'],
+            'sqlsrv' => [...$config, 'charset' => 'utf8', 'encrypt' => $parts['encrypt'] ?? 'yes', 'trust_server_certificate' => $parts['trust_server_certificate'] ?? 'false'],
             default => $config,
         };
 
@@ -177,13 +183,26 @@ final class IntegrationDsn
     /**
      * A sqlite connection config over a FILE, created when missing (Laravel refuses a sqlite path that does not
      * exist), in WAL mode with a busy timeout, so two OS processes can write it concurrently without SQLITE_BUSY.
+     * The file is created exclusively (O_EXCL, mode 0600) and a symlink at $path is refused, so a pre-planted link
+     * can never redirect the test database elsewhere.
      *
      * @return array<string, mixed>
      */
     public static function sqlite(string $path): array
     {
-        if (! is_file($path)) {
-            touch($path);
+        if (is_link($path)) {
+            throw new InvalidArgumentException(sprintf('Refusing the sqlite path [%s]: it is a symbolic link.', $path));
+        }
+
+        if (! file_exists($path)) {
+            $handle = @fopen($path, 'x');
+            if ($handle === false) {
+                throw new InvalidArgumentException(sprintf('Cannot create the sqlite file [%s] exclusively.', $path));
+            }
+            fclose($handle);
+            chmod($path, 0600);
+        } elseif (! is_file($path)) {
+            throw new InvalidArgumentException(sprintf('Refusing the sqlite path [%s]: it is not a regular file.', $path));
         }
 
         return [
@@ -197,10 +216,22 @@ final class IntegrationDsn
         ];
     }
 
-    /** A per-process temporary sqlite file; a test that spawns a second process hands it this same path. */
+    /**
+     * A per-process temporary sqlite file inside a private (0700), unpredictably named directory created once per
+     * process; a test that spawns a second process hands it this same path. Stable for a given $name within the
+     * process, so a test can remove and recreate it.
+     */
     public static function sqlitePath(string $name = 'integration'): string
     {
-        return sys_get_temp_dir().'/firefly-'.$name.'-'.getmypid().'.sqlite';
+        if (self::$sqliteDirectory === null || ! is_dir(self::$sqliteDirectory)) {
+            $directory = sys_get_temp_dir().'/firefly-it-'.bin2hex(random_bytes(8));
+            if (! mkdir($directory, 0700) && ! is_dir($directory)) {
+                throw new InvalidArgumentException(sprintf('Cannot create the private sqlite directory [%s].', $directory));
+            }
+            self::$sqliteDirectory = $directory;
+        }
+
+        return self::$sqliteDirectory.'/'.preg_replace('/[^A-Za-z0-9_-]/', '_', $name).'.sqlite';
     }
 
     /**
@@ -249,7 +280,7 @@ final class IntegrationDsn
         $url = parse_url($dsn);
 
         if (! is_array($url) || ($url['host'] ?? '') === '') {
-            throw new InvalidArgumentException(sprintf('Cannot read the DSN "%s": a URL DSN needs a host.', $dsn));
+            throw new InvalidArgumentException('Cannot read the DSN: a URL DSN needs a host (scheme://user:pass@host:port/db).');
         }
 
         $parts = ['scheme' => strtolower($url['scheme'] ?? ''), 'host' => $url['host']];
@@ -273,8 +304,10 @@ final class IntegrationDsn
         if (isset($url['query'])) {
             parse_str($url['query'], $query);
             foreach ($query as $key => $value) {
-                if (is_string($value)) {
-                    $parts[strtolower((string) $key)] = $value;
+                $key = strtolower((string) $key);
+                // The authority is authoritative: the query string only carries connection EXTRAS, never identity.
+                if (is_string($value) && in_array($key, self::URL_QUERY_EXTRAS, true)) {
+                    $parts[$key] = $value;
                 }
             }
         }
