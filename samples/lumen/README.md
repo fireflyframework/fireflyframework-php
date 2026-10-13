@@ -95,7 +95,7 @@ principal at all it renders a 401 `application/problem+json` response
 signed in but lacks the role a 403 (`ACCESS_DENIED`). The endpoint is
 secured, not broken.
 
-The payout endpoint runs the same Withdraw first, so it needs the same principal; a refusal there is the withdraw's own 401/403/404/409, and a refusal by the bank afterwards is a 409 PAYOUT_FAILED with the money back in the wallet.
+The payout endpoint runs the same Withdraw first, so it needs the same principal; a refusal there is the withdraw's own 401/403/404/409. A refusal by the bank afterwards is a 409 PAYOUT_FAILED once every completed step has been undone, so the money is back in the wallet. When an undo itself fails (the refund, for instance), the money is not back: the answer is a 500 PAYOUT_COMPENSATION_FAILED that names the `uncompensated_steps` and the `payout_id` the execution is checkpointed and dead-lettered under, for an operator to settle.
 
 The optional feature-flag example keeps `wallet-balance-v2` off and `wallet-checkout-view` at `legacy` in the
 test harness. `WalletRollout` reads both through the real `FeatureFlags` client; a separate route carries
