@@ -19,8 +19,8 @@ use Throwable;
  * Messaging dead letters that survive the process: one firefly_messaging_dead_letters row per message a
  * #[MessageListener] exhausted, on any Laravel database connection (firefly.messaging.dead-letter.store=database,
  * firefly.messaging.dead-letter.connection). The row keeps the dead-letter topic the message was re-keyed to, its
- * original topic (`x-original-topic`, also a column so it can be selected), the key, the headers, the cause and the
- * instant — and the raw value base64-encoded (see DeadLetterSchema for why). Text that only describes the failure
+ * original topic (`x-original-topic`, also a column so it can be selected), the headers, the cause and the instant —
+ * and the raw value and key base64-encoded (see DeadLetterSchema for why). Text that only describes the failure
  * (the exception message, and the headers' JSON) is made valid UTF-8 before it is written, so a listener that threw
  * with raw bytes in its message still has its message kept rather than lost to an encoding error. The id is a UUID
  * made in PHP, the instant the application clock in UTC at millisecond precision; the connection is resolved per
@@ -45,7 +45,7 @@ final class DatabaseDeadLetterStore implements ReplayableDeadLetterStore
             'id' => (string) Str::uuid(),
             'topic' => $message->topic,
             'original_topic' => $message->headers['x-original-topic'] ?? null,
-            'message_key' => $message->key,
+            'message_key' => $message->key === null ? null : base64_encode($message->key),
             'value' => base64_encode($message->value),
             'headers' => json_encode($message->headers === [] ? new stdClass : $message->headers, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE),
             'exception_class' => $cause::class,
@@ -102,6 +102,7 @@ final class DatabaseDeadLetterStore implements ReplayableDeadLetterStore
         $columns = get_object_vars($row);
         $value = base64_decode(self::text($columns['value'] ?? null), true);
         $key = $columns['message_key'] ?? null;
+        $key = $key === null ? false : base64_decode(self::text($key), true);
         $at = self::text($columns['dead_lettered_at'] ?? null);
 
         $headers = [];
@@ -114,7 +115,7 @@ final class DatabaseDeadLetterStore implements ReplayableDeadLetterStore
         }
 
         return new DeadLetterEntry(
-            new Message(self::text($columns['topic'] ?? null), $value === false ? '' : $value, is_scalar($key) ? (string) $key : null, $headers),
+            new Message(self::text($columns['topic'] ?? null), $value === false ? '' : $value, $key === false ? null : $key, $headers),
             self::text($columns['exception_class'] ?? null),
             self::text($columns['exception_message'] ?? null),
             self::text($columns['id'] ?? null),

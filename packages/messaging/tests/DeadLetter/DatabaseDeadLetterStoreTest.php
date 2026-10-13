@@ -93,3 +93,19 @@ it('keeps the message when the cause carries raw bytes: the description is made 
         ->and(mb_check_encoding($entry->message->headers['x-exception'] ?? '', 'UTF-8'))->toBeTrue()
         ->and($entry->message->headers['x-original-topic'] ?? null)->toBe('ledger');
 });
+
+it('keeps an opaque key byte for byte — longer than a varchar, and not valid UTF-8 — stored as base64 text', function (string $key) {
+    messagingDeadLetterStore()->store(new Message('ledger.DLT', 'v', $key, ['x-original-topic' => 'ledger']), new RuntimeException('boom'));
+
+    $entry = messagingDeadLetterStore()->all()[0];
+    $stored = DB::table(DeadLetterSchema::TABLE)->value('message_key');
+
+    expect($entry->message->key)->toBe($key)
+        ->and(is_string($stored) ? base64_decode($stored, true) : null)->toBe($key)
+        ->and(is_string($stored) && mb_check_encoding($stored, 'ASCII'))->toBeTrue();
+})->with([
+    'a 300-byte key' => [str_repeat('k', 300)],
+    'a non-UTF-8 key' => ["\xFF\x00k"],
+    'a raw 16-byte UUID' => [hex2bin('0192f5a1c3d47e8f9a0b1c2d3e4f5061')],
+    'an empty key' => [''],
+]);
