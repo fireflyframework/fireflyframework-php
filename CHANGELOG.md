@@ -4,6 +4,8 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+## [26.10.3] - 2026-10-13
+
 ### Changed
 
 - **Over the CQRS bus, `detail` is the cause's own sentence.** A refusal raised inside a handler — a `409` from the
