@@ -128,7 +128,14 @@ abstract class LumenTestCase extends FireflyDatabaseTestCase
         // #[QueryHandler] route to the real CommandBus/QueryBus. CqrsWiringProvider::passes() also contributes
         // DomainEventBridgeWiringPass — the committed-DomainEvent -> EventPublisher bridge — with no extra glue.
         $handlers = (new HandlerScanner)->scan($appPsr4);
-        $app->instance(HandlerManifest::class, new HandlerManifest($handlers['handlers'], $handlers['destinations']));
+        // The cached-query policies and the #[InvalidatesQuery] rules travel in the same manifest — leaving them out
+        // would make every #[CachedQuery] run uncached and every eviction a no-op once the query cache is on.
+        $app->instance(HandlerManifest::class, new HandlerManifest(
+            $handlers['handlers'],
+            $handlers['destinations'],
+            $handlers['cachedQueries'],
+            $handlers['invalidations'],
+        ));
 
         // (3) EDA listeners (mirror EdaCapstoneTestCase). Bind the compiled EventListenerManifest so #[EventListener]s
         // subscribe. The EventPublisher stays the REAL InMemoryEventBus from EdaAutoConfiguration (NOT bound here).
