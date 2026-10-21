@@ -2011,7 +2011,8 @@ final readonly class AdminAction
     /** @param array<string,mixed> $data */
     private function render(string $view, array $data, ?AdminPage $page = null): string
     {
-        return $this->views->make('firefly-admin::'.$view, [
+        // The name is a package view chosen at runtime, which Larastan types as view-string.
+        return $this->views->make('firefly-admin::'.$view, [ // @phpstan-ignore argument.type
             ...$data,
             'settings' => $this->settings,
             'nav' => $this->nav(),

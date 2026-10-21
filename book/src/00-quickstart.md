@@ -15,7 +15,7 @@ This is a *tour*, not the deep dive. Chapter 1 makes the case for the whole appr
 
 LaraFly is a PHP framework built on Laravel 13. You need:
 
-* **PHP 8.3 or newer**, with the extensions Laravel itself requires (`mbstring`, `openssl`, `pdo`, `tokenizer`, `xml`, `ctype`, `json`).
+* **PHP 8.5.12 or newer**, with the extensions Laravel itself requires (`mbstring`, `openssl`, `pdo`, `tokenizer`, `xml`, `ctype`, `json`).
 * **Composer 2**, PHP's dependency manager.
 
 Confirm both are available:
@@ -59,10 +59,10 @@ The skeleton's `composer.json` requires the root library and records a CLI compo
 
 ```json
 "require": {
-    "php": "^8.3",
+    "php": "^8.5.12",
     "firefly/cli": "*@dev",
     "fireflyframework/larafly": "*@dev",
-    "laravel/framework": "^13.0"
+    "laravel/framework": "^13.38"
 }
 ```
 

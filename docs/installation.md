@@ -2,9 +2,9 @@
 
 ## Requirements
 
-- **PHP 8.3+** (8.4 recommended).
+- **PHP 8.5.12+**.
 - **Composer 2.**
-- **Laravel 13** — LaraFly is a Composer library that layers onto a Laravel application; it is not a
+- **Laravel 13.38+** — LaraFly is a Composer library that layers onto a Laravel application; it is not a
   standalone runtime.
 
 ## Quick install

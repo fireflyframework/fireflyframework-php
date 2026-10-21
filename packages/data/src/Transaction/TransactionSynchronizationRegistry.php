@@ -119,6 +119,10 @@ final class TransactionSynchronizationRegistry
     private function queueBeforeCommit(Connection $connection, Closure $callback): void
     {
         $name = $connection->getName();
+        if ($name === null) {
+            throw new ConfigurationException('A BEFORE_COMMIT listener needs a named database connection.');
+        }
+
         $this->beforeCommit[$name][] = [$connection->transactionLevel(), $callback];
 
         if (isset($this->subscribed[$name])) {

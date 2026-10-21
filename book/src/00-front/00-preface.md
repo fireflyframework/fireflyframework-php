@@ -2,7 +2,7 @@
 
 Enterprise PHP has long meant assembling a service container from one package, a router from another, a validator from a third, and an event dispatcher from a fourth — each with its own configuration idiom, its own conventions, its own way of saying "inject this." Laravel solved a great deal of that fragmentation for web applications, but hexagonal, service-oriented PHP — attribute-driven dependency injection, declarative transactions, CQRS, event-driven architecture, method-level security, production observability — has stayed a matter of taste, folder-naming conventions, and hand-rolled glue.
 
-**LaraFly** changes that. It brings the cohesive, convention-over-configuration experience Spring Boot gave the Java world to PHP 8.3+ and Laravel 13, built *on* Laravel rather than instead of it: the same Eloquent, the same service container, the same `artisan`, now organized by PHP 8 attributes into stereotyped components, a compiled dependency graph, and a deterministic boot pipeline.
+**LaraFly** changes that. It brings the cohesive, convention-over-configuration experience Spring Boot gave the Java world to PHP 8.5.12+ and Laravel 13.38, built *on* Laravel rather than instead of it: the same Eloquent, the same service container, the same `artisan`, now organized by PHP 8 attributes into stereotyped components, a compiled dependency graph, and a deterministic boot pipeline.
 
 This book teaches LaraFly **by example**. Every listing in these pages is not illustrative pseudocode — it is lifted from the framework's own shipped source or from `samples/lumen`, a real, running digital-wallet-and-ledger application that ships in the framework's monorepo, compiles, boots, and passes its own test suite. What you read is what actually works.
 

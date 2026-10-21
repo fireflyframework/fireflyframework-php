@@ -21,16 +21,16 @@
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/scheduling-database"
     },
     "require": {
-        "php": "^8.3",
+        "php": "^8.5.12",
         "firefly/autoconfigure": "*@dev",
         "firefly/config": "*@dev",
         "firefly/container": "*@dev",
         "firefly/context": "*@dev",
         "firefly/kernel": "*@dev",
         "firefly/scheduling": "*@dev",
-        "illuminate/contracts": "^13.0",
-        "illuminate/database": "^13.0",
-        "illuminate/support": "^13.0"
+        "illuminate/contracts": "^13.38",
+        "illuminate/database": "^13.38",
+        "illuminate/support": "^13.38"
     },
     "extra": {
         "laravel": {

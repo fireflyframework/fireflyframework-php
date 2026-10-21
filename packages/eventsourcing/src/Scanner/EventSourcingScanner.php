@@ -88,7 +88,7 @@ final class EventSourcingScanner
      * A convention-mapped event stores its public instance properties and is rebuilt from its constructor parameters,
      * so both sets must name the same fields, or what is appended cannot be read back as it was written.
      *
-     * @param  ReflectionClass<object>  $reflection
+     * @param  ReflectionClass<DomainEvent>  $reflection
      */
     private function assertRoundTrips(ReflectionClass $reflection): void
     {

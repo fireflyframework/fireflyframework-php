@@ -22,7 +22,7 @@
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/security-oauth2-server"
     },
     "require": {
-        "php": "^8.3",
+        "php": "^8.5.12",
         "ext-openssl": "*",
         "firebase/php-jwt": "^7.0",
         "firefly/actuator": "*@dev",
@@ -36,12 +36,12 @@
         "firefly/scheduling": "*@dev",
         "firefly/security": "*@dev",
         "firefly/web": "*@dev",
-        "illuminate/container": "^13.0",
-        "illuminate/contracts": "^13.0",
-        "illuminate/database": "^13.0",
-        "illuminate/http": "^13.0",
-        "illuminate/session": "^13.0",
-        "illuminate/support": "^13.0",
+        "illuminate/container": "^13.38",
+        "illuminate/contracts": "^13.38",
+        "illuminate/database": "^13.38",
+        "illuminate/http": "^13.38",
+        "illuminate/session": "^13.38",
+        "illuminate/support": "^13.38",
         "psr/log": "^3.0"
     },
     "require-dev": {

@@ -129,8 +129,9 @@ final class FileFlagSource implements FlagSource
         try {
             $parsed = Yaml::parse($contents, self::YAML_FLAGS);
         } catch (Throwable $failure) {
-            // Not only the documented ParseException: Symfony Yaml stores a block-mapping key as a stdClass property,
-            // and a key starting with "\0" throws an Error. Anything parsing throws means the file is not valid YAML.
+            // Not only the documented ParseException: a mapping key starting with "\0" is refused
+            // (a block key throws an Error; a flow key is rejected under PARSE_OBJECT_FOR_MAP).
+            // Anything parsing throws means the file is not valid YAML.
             throw self::unparsable($path, 'YAML', $failure);
         }
 

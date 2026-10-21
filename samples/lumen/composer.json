@@ -19,7 +19,7 @@
         "cqrs"
     ],
     "require": {
-        "php": "^8.3",
+        "php": "^8.5.12",
         "firefly/actuator": "*@dev",
         "firefly/callbacks": "*@dev",
         "firefly/config": "*@dev",
@@ -40,15 +40,15 @@
         "firefly/web": "*@dev",
         "firefly/webhooks": "*@dev",
         "fireflyframework/larafly": "*@dev",
-        "illuminate/database": "^13.0",
-        "illuminate/support": "^13.0"
+        "illuminate/database": "^13.38",
+        "illuminate/support": "^13.38"
     },
     "require-dev": {
         "firefly/eda-database": "*@dev",
         "firefly/eda-postgres": "*@dev",
         "firefly/testing": "*@dev",
-        "orchestra/testbench": "^11.1",
-        "illuminate/testing": "^13.0"
+        "orchestra/testbench": "^11.3",
+        "illuminate/testing": "^13.38"
     },
     "autoload": {
         "psr-4": {

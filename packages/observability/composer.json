@@ -21,7 +21,7 @@
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/observability"
     },
     "require": {
-        "php": "^8.3",
+        "php": "^8.5.12",
         "firefly/actuator": "*@dev",
         "firefly/autoconfigure": "*@dev",
         "firefly/config": "*@dev",
@@ -36,11 +36,11 @@
         "firefly/resilience": "*@dev",
         "firefly/web": "*@dev",
         "guzzlehttp/promises": "^2.0 || ^3.0",
-        "illuminate/container": "^13.0",
-        "illuminate/contracts": "^13.0",
-        "illuminate/http": "^13.0",
-        "illuminate/log": "^13.0",
-        "illuminate/support": "^13.0",
+        "illuminate/container": "^13.38",
+        "illuminate/contracts": "^13.38",
+        "illuminate/http": "^13.38",
+        "illuminate/log": "^13.38",
+        "illuminate/support": "^13.38",
         "monolog/monolog": "^3.0",
         "psr/http-message": "^1.0 || ^2.0"
     },

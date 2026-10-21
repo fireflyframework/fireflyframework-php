@@ -25,7 +25,7 @@
     },
     "require": {
         "firefly/kernel": "*@dev",
-        "php": "^8.3",
+        "php": "^8.5.12",
         "symfony/console": "^7.4|^8.0",
         "symfony/process": "^7.4|^8.0"
     },

@@ -24,7 +24,10 @@ final class RecordingViewFactory implements ViewFactoryContract
      */
     public function file($path, $data = [], $mergeData = []): ViewContract
     {
-        return $this->make($path, $data, $mergeData);
+        /** @var view-string $view */
+        $view = $path;
+
+        return $this->make($view, $data, $mergeData);
     }
 
     /**

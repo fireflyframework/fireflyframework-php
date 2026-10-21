@@ -34,7 +34,7 @@ projected into a read model, and a zero-reflection cached boot — the same arch
 
 ## Prerequisites
 
-- **PHP 8.3+** (8.4 recommended) and **Composer 2**.
+- **PHP 8.5.12+** and **Composer 2**.
 - A **terminal** and a code editor.
 - `curl` (or any HTTP client) to exercise the endpoints as you build them.
 

@@ -20,7 +20,7 @@
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/testing"
     },
     "require": {
-        "php": "^8.3",
+        "php": "^8.5.12",
         "firebase/php-jwt": "^7.0",
         "firefly/actuator": "*@dev",
         "firefly/autoconfigure": "*@dev",
@@ -42,18 +42,18 @@
         "firefly/validation": "*@dev",
         "firefly/web": "*@dev",
         "guzzlehttp/promises": "^2.0 || ^3.0",
-        "illuminate/cache": "^13.0",
-        "illuminate/config": "^13.0",
-        "illuminate/container": "^13.0",
-        "illuminate/contracts": "^13.0",
-        "illuminate/database": "^13.0",
-        "illuminate/http": "^13.0",
-        "illuminate/routing": "^13.0",
-        "illuminate/support": "^13.0",
-        "illuminate/testing": "^13.0",
-        "illuminate/translation": "^13.0",
-        "illuminate/validation": "^13.0",
-        "orchestra/testbench": "^11.1"
+        "illuminate/cache": "^13.38",
+        "illuminate/config": "^13.38",
+        "illuminate/container": "^13.38",
+        "illuminate/contracts": "^13.38",
+        "illuminate/database": "^13.38",
+        "illuminate/http": "^13.38",
+        "illuminate/routing": "^13.38",
+        "illuminate/support": "^13.38",
+        "illuminate/testing": "^13.38",
+        "illuminate/translation": "^13.38",
+        "illuminate/validation": "^13.38",
+        "orchestra/testbench": "^11.3"
     },
     "suggest": {
         "testcontainers/testcontainers": "Ephemeral Docker backends for @group integration tests (fireflyConfigFor())."
