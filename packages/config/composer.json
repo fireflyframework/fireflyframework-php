@@ -20,13 +20,13 @@
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/config"
     },
     "require": {
-        "php": "^8.3",
+        "php": "^8.5.12",
         "firefly/kernel": "*@dev",
         "firefly/container": "*@dev",
-        "illuminate/config": "^13.0",
-        "illuminate/container": "^13.0",
-        "illuminate/contracts": "^13.0",
-        "illuminate/support": "^13.0",
+        "illuminate/config": "^13.38",
+        "illuminate/container": "^13.38",
+        "illuminate/contracts": "^13.38",
+        "illuminate/support": "^13.38",
         "symfony/expression-language": "^7.4|^8.0"
     },
     "extra": {

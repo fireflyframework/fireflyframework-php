@@ -90,7 +90,9 @@ final class ContainerElementType
      * Element classes read out of a constructor docblock: `@param list<Line> $lines`, `@param Line[] $lines`
      * and `@param array<int, Line> $lines` all mean the same thing. A name that does not resolve is left out.
      *
-     * @param  ReflectionClass<object>  $declaring
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $declaring
      * @return array<string, string> parameter name => element class
      */
     public static function fromParams(string $docComment, ReflectionClass $declaring): array
@@ -119,7 +121,9 @@ final class ContainerElementType
     /**
      * The element class a member's own `@var` tag states, or null.
      *
-     * @param  ReflectionClass<object>  $declaring
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $declaring
      */
     public static function fromVar(string $docComment, ReflectionClass $declaring): ?string
     {
@@ -149,7 +153,9 @@ final class ContainerElementType
     }
 
     /**
-     * @param  ReflectionClass<object>  $declaring
+     * @template T of object
+     *
+     * @param  ReflectionClass<T>  $declaring
      */
     private static function resolve(string $name, ReflectionClass $declaring): ?string
     {

@@ -137,6 +137,7 @@ it('refuses a file it cannot parse as the whole document, naming the file', func
     'a PHP constant in YAML' => ['yaml', "metadata:\n  limit: !php/const PHP_INT_MAX\n", 'YAML'],
     'a date as a flow-mapping key in YAML' => ['yaml', "metadata: {2024-01-01: launch}\n", 'YAML'],
     'a YAML block key starting with NUL, which Symfony Yaml fails on with an Error' => ['yaml', "metadata:\n  \"\\0a\": x\n", 'YAML'],
+    'a YAML flow key starting with NUL, which Symfony Yaml rejects under PARSE_OBJECT_FOR_MAP' => ['yaml', "metadata: {\"\\0a\": x}\n", 'YAML'],
 ]);
 
 it('reads an absent document as no flags: JSON null, an empty or comment-only YAML file', function (string $extension, string $contents): void {
@@ -221,13 +222,7 @@ it('sees a rewrite by another process that PHP\'s stat cache would hide', functi
         ->and($reloaded?->revision)->toEndWith('-'.strlen($after));
 });
 
-it('keeps a YAML flow-mapping key starting with NUL as Symfony Yaml reads it', function (): void {
-    $path = TemporaryFlagFiles::write('yaml', "metadata: {\"\\0a\": x}\n");
-
-    expect(featureFlagsFileSource($path)->load(null)?->document->metadata)->toBe(["\0a" => 'x']);
-});
-
-it('retains a good YAML cache across invalid binary refresh and fresh worker boot then accepts NUL names', function (): void {
+it('retains a good YAML cache across an invalid binary refresh and a flow key starting with NUL', function (): void {
     $good = "flags:\n  a:\n    state: ENABLED\n    variants: {on: true, off: false}\n    defaultVariant: on\n";
     $path = TemporaryFlagFiles::write('yaml', $good);
     $cache = new Illuminate\Cache\Repository(new ArrayStore);
@@ -250,7 +245,8 @@ it('retains a good YAML cache across invalid binary refresh and fresh worker boo
         ->and($events->events)->toHaveCount(1);
     TemporaryFlagFiles::rewrite($path, $good."    metadata: {\"\\0name\": value}\n", TemporaryFlagFiles::MTIME + 20);
     $fresh->refresh(force: true);
-    expect($fresh->document()->flag('a')?->metadata())->toBe(["\0name" => 'value'])
-        ->and($fresh->states()[0]->status())->toBe('UP')
-        ->and($events->events)->toHaveCount(2);
+    expect($fresh->document()->flag('a')?->metadata())->toBe([])
+        ->and($fresh->states()[0]->status())->toBe('STALE')
+        ->and($fresh->states()[0]->revision)->toBe($revision)
+        ->and($events->events)->toHaveCount(1);
 });

@@ -55,7 +55,7 @@ application, requires every component name, boots and compiles a real route, run
 installs the Lumen consumer through a copied root path repository, and rejects an incompatible component
 version. Its package repositories exclude `firefly/*` from Packagist so a mirror cannot mask a missing
 replacement. The consumer directories are retained under the system temporary directory for inspection.
-CI runs these package checks on PHP 8.3, 8.4 and 8.5 for PRs to `main` and pushes to `main`.
+CI runs these package checks on PHP 8.5.12 for PRs to `main` and pushes to `main`.
 
 ## First publication and later releases
 
@@ -67,7 +67,7 @@ CI runs these package checks on PHP 8.3, 8.4 and 8.5 for PRs to `main` and pushe
    `https://github.com/fireflyframework/fireflyframework-php` and enable the repository webhook. This is a
    one-time publisher action; subsequent releases use tags from this same repository.
 5. Push the new release tag. **Release (single package)** validates the tagged distribution on PHP
-   8.3, 8.4 and 8.5, waits for Packagist's Composer metadata (`repo.packagist.org/p2/…`) to list that exact
+   8.5.12, waits for Packagist's Composer metadata (`repo.packagist.org/p2/…`) to list that exact
    commit for the tag, then installs it in a fresh stable
    consumer without custom repositories and exercises the bundled installer. Only after those checks
    pass does its final job build both books and create the GitHub release from the changelog with the
@@ -81,7 +81,7 @@ CI runs these package checks on PHP 8.3, 8.4 and 8.5 for PRs to `main` and pushe
 To repeat the public install check locally:
 
 ```bash
-RELEASE_TAG=v26.10.3 RELEASE_SHA="$(git rev-parse 'v26.10.3^{commit}')" php scripts/check-package-install.php --published
+RELEASE_TAG=v26.10.4 RELEASE_SHA="$(git rev-parse 'v26.10.4^{commit}')" php scripts/check-package-install.php --published
 ```
 
 An unmerged branch or a local consumer check is not a published release.

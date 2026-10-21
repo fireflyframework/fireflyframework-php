@@ -8,7 +8,7 @@ Unless required by applicable law or agreed to in writing, software and document
 
 **First edition.**
 
-Every code listing in this book is drawn from the LaraFly framework's own source or from `samples/lumen`, the companion digital-wallet-and-ledger application shipped in the framework's monorepo, and is verified to lint cleanly against a real PHP 8.3+ toolchain — nothing here is illustrative pseudocode.
+Every code listing in this book is drawn from the LaraFly framework's own source or from `samples/lumen`, the companion digital-wallet-and-ledger application shipped in the framework's monorepo, and is verified to lint cleanly against a real PHP 8.5.12+ toolchain — nothing here is illustrative pseudocode.
 
 "LaraFly" is the working name for the Firefly Framework's PHP-on-Laravel port. "Laravel" is a trademark of Taylor Otwell; this is an independent work and is not affiliated with or endorsed by the Laravel project.
 

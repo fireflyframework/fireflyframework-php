@@ -95,7 +95,7 @@ function oauth2StatementsRun(callable $work): array
     try {
         $work();
 
-        return array_values(array_map(static fn (array $entry): string => strtolower((string) $entry['query']), DB::getQueryLog()));
+        return array_map(static fn (array $entry): string => strtolower((string) $entry['query']), DB::getQueryLog());
     } finally {
         DB::disableQueryLog();
     }

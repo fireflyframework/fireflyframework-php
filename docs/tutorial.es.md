@@ -36,7 +36,7 @@ modelo de lectura y un arranque cacheado sin reflexión — la misma arquitectur
 
 ## Requisitos previos
 
-- **PHP 8.3+** (se recomienda 8.4) y **Composer 2**.
+- **PHP 8.5.12+** y **Composer 2**.
 - Un **terminal** y un editor de código.
 - `curl` (o cualquier cliente HTTP) para probar los endpoints a medida que los construyes.
 

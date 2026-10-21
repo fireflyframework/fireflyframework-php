@@ -21,10 +21,10 @@
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/skeleton"
     },
     "require": {
-        "php": "^8.3",
+        "php": "^8.5.12",
         "firefly/cli": "*@dev",
         "fireflyframework/larafly": "*@dev",
-        "laravel/framework": "^13.0"
+        "laravel/framework": "^13.38"
     },
     "extra": {
         "branch-alias": {

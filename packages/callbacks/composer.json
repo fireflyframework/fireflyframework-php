@@ -21,7 +21,7 @@
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/callbacks"
     },
     "require": {
-        "php": "^8.3",
+        "php": "^8.5.12",
         "firefly/autoconfigure": "*@dev",
         "firefly/config": "*@dev",
         "firefly/container": "*@dev",
@@ -29,12 +29,12 @@
         "firefly/eda": "*@dev",
         "firefly/kernel": "*@dev",
         "firefly/resilience": "*@dev",
-        "illuminate/console": "^13.0",
-        "illuminate/container": "^13.0",
-        "illuminate/contracts": "^13.0",
-        "illuminate/database": "^13.0",
-        "illuminate/http": "^13.0",
-        "illuminate/support": "^13.0",
+        "illuminate/console": "^13.38",
+        "illuminate/container": "^13.38",
+        "illuminate/contracts": "^13.38",
+        "illuminate/database": "^13.38",
+        "illuminate/http": "^13.38",
+        "illuminate/support": "^13.38",
         "psr/log": "^3.0"
     },
     "extra": {

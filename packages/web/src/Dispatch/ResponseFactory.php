@@ -109,8 +109,11 @@ final class ResponseFactory
             );
         }
 
+        /** @var view-string $view */
+        $view = $result->view;
+
         return $this->html(
-            $this->views->make($result->view, $result->model)->render(),
+            $this->views->make($view, $result->model)->render(),
             $status ?? $result->status,
             $result->headers,
         );

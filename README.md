@@ -11,10 +11,10 @@
 <p align="center">
   <a href="https://github.com/fireflyframework/fireflyframework-php/actions/workflows/ci.yml"><img src="https://github.com/fireflyframework/fireflyframework-php/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/fireflyframework"><img src="https://img.shields.io/badge/Firefly_Framework-official-ff6600" alt="Firefly Framework"></a>
-  <a href="docs/installation.md#requirements"><img src="https://img.shields.io/badge/php-8.3%2B-blue?logo=php&logoColor=white" alt="PHP 8.3+"></a>
+  <a href="docs/installation.md#requirements"><img src="https://img.shields.io/badge/php-8.5.12%2B-blue?logo=php&logoColor=white" alt="PHP 8.5.12+"></a>
   <a href="docs/laravel-comparison.md"><img src="https://img.shields.io/badge/Laravel-13-FF2D20?logo=laravel&logoColor=white" alt="Laravel 13"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-green" alt="License: Apache 2.0"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-26.10.3-brightgreen" alt="Version: 26.10.3"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-26.10.4-brightgreen" alt="Version: 26.10.4"></a>
   <a href="docs/contributing.md#conventions"><img src="https://img.shields.io/badge/PHPStan-max-8A2BE2" alt="PHPStan: max"></a>
   <a href="pint.json"><img src="https://img.shields.io/badge/code%20style-Pint-F55247" alt="Code Style: Pint"></a>
 </p>
@@ -1011,7 +1011,7 @@ set, no CDN request, no npm step, and it still renders in an air-gapped or stric
 
 ## Installation
 
-**Requirements:** PHP 8.3+ (8.4 recommended), Composer 2, and an existing (or new) Laravel 13 application —
+**Requirements:** PHP 8.5.12+, Composer 2, and an existing (or new) Laravel 13.38 application —
 LaraFly layers onto Laravel, it is not a standalone runtime. Full details in
 [Installation](docs/installation.md).
 
@@ -1216,9 +1216,9 @@ model across every runtime:
 
 | Requirement | Version |
 |---|---|
-| PHP | 8.3+ (8.4 recommended) |
+| PHP | 8.5.12+ |
 | Composer | 2.x |
-| Laravel | 13 |
+| Laravel | 13.38+ |
 | Git | for cloning and for `firefly new`'s optional `git init` |
 
 ---

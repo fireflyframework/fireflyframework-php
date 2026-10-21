@@ -20,18 +20,18 @@
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/scheduling"
     },
     "require": {
-        "php": "^8.3",
+        "php": "^8.5.12",
         "firefly/autoconfigure": "*@dev",
         "firefly/config": "*@dev",
         "firefly/container": "*@dev",
         "firefly/context": "*@dev",
         "firefly/kernel": "*@dev",
         "firefly/resilience": "*@dev",
-        "illuminate/cache": "^13.0",
-        "illuminate/console": "^13.0",
-        "illuminate/container": "^13.0",
-        "illuminate/contracts": "^13.0",
-        "illuminate/support": "^13.0"
+        "illuminate/cache": "^13.38",
+        "illuminate/console": "^13.38",
+        "illuminate/container": "^13.38",
+        "illuminate/contracts": "^13.38",
+        "illuminate/support": "^13.38"
     },
     "extra": {
         "laravel": {

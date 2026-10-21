@@ -59,16 +59,16 @@ php artisan firefly:serve
 ## The library and component requirement
 
 `firefly/skeleton` is itself a `type: project` create-project template rather than something you require, and
-its `composer.json` asks for the library and a CLI component requirement beside `php: ^8.3` and `laravel/framework: ^13.0`:
+its `composer.json` asks for the library and a CLI component requirement beside `php: ^8.5.12` and `laravel/framework: ^13.38`:
 
 <!-- source: skeleton/composer.json -->
 
 ```json
 "require": {
-    "php": "^8.3",
+    "php": "^8.5.12",
     "firefly/cli": "*@dev",
     "fireflyframework/larafly": "*@dev",
-    "laravel/framework": "^13.0"
+    "laravel/framework": "^13.38"
 },
 ```
 

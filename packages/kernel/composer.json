@@ -20,7 +20,7 @@
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/kernel"
     },
     "require": {
-        "php": "^8.3"
+        "php": "^8.5.12"
     },
     "extra": {
         "branch-alias": {

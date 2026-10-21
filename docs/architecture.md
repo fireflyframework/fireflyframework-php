@@ -53,7 +53,7 @@ table, your own bean wins regardless of which provider Laravel instantiated firs
   `tests/VersionConsistencyTest.php` checks it against the CHANGELOG's latest heading and the README's
   version badge, so the three cannot drift apart.
 
-Its `composer.json` requires nothing but `php: ^8.3`, and no file under `packages/kernel/src` imports
+Its `composer.json` requires nothing but `php: ^8.5.12`, and no file under `packages/kernel/src` imports
 `Illuminate\*` or `Symfony\*`. That is what makes it safe for a domain package to reuse the exception
 taxonomy without acquiring a framework dependency — and it is the reason `deptrac.yaml` can write the
 `Kernel` layer's rule as `~`.

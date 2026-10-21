@@ -62,10 +62,6 @@ final class FeatureFlagRouteGatingPass implements BootPass
                 continue;
             }
             foreach ($route->methods() as $verb) {
-                if (! is_string($verb)) {
-                    continue;
-                }
-
                 $routes[$verb.' '.$route->uri()] = $route;
             }
         }

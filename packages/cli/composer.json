@@ -20,7 +20,7 @@
         "source": "https://github.com/fireflyframework/fireflyframework-php/tree/main/packages/cli"
     },
     "require": {
-        "php": "^8.3",
+        "php": "^8.5.12",
         "firefly/actuator": "*@dev",
         "firefly/autoconfigure": "*@dev",
         "firefly/config": "*@dev",
@@ -41,10 +41,10 @@
         "firefly/security-oauth2-server": "*@dev",
         "firefly/validation": "*@dev",
         "firefly/web": "*@dev",
-        "illuminate/console": "^13.0",
-        "illuminate/container": "^13.0",
-        "illuminate/contracts": "^13.0",
-        "illuminate/support": "^13.0"
+        "illuminate/console": "^13.38",
+        "illuminate/container": "^13.38",
+        "illuminate/contracts": "^13.38",
+        "illuminate/support": "^13.38"
     },
     "extra": {
         "laravel": {

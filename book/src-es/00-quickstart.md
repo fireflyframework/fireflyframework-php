@@ -15,7 +15,7 @@ Esto es un *recorrido*, no la inmersión profunda. El Capítulo 1 argumenta el e
 
 LaraFly es un framework PHP construido sobre Laravel 13. Necesitas:
 
-* **PHP 8.3 o más reciente**, con las extensiones que el propio Laravel requiere (`mbstring`, `openssl`, `pdo`, `tokenizer`, `xml`, `ctype`, `json`).
+* **PHP 8.5.12 o más reciente**, con las extensiones que el propio Laravel requiere (`mbstring`, `openssl`, `pdo`, `tokenizer`, `xml`, `ctype`, `json`).
 * **Composer 2**, el gestor de dependencias de PHP.
 
 Confirma que ambos están disponibles:
@@ -59,10 +59,10 @@ El `composer.json` del andamiaje requiere la biblioteca principal y declara un r
 
 ```json
 "require": {
-    "php": "^8.3",
+    "php": "^8.5.12",
     "firefly/cli": "*@dev",
     "fireflyframework/larafly": "*@dev",
-    "laravel/framework": "^13.0"
+    "laravel/framework": "^13.38"
 }
 ```
 

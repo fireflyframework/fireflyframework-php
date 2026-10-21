@@ -989,7 +989,10 @@ abstract class EloquentRepository implements PagingAndSortingRepository
      */
     protected function query(): Builder
     {
-        return ($this->model)::query();
+        /** @var Builder<Model> $query */
+        $query = ($this->model)::query();
+
+        return $query;
     }
 
     /**

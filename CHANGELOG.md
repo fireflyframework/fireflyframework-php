@@ -4,6 +4,21 @@ All notable changes to LaraFly are documented here. This project uses CalVer (`Y
 
 ## [Unreleased]
 
+## [26.10.4] - 2026-10-21
+
+### Security
+
+- **PHP 8.5.12 is the required runtime.** The constraint moves from `^8.3` to `^8.5.12`, and CI runs on that
+  release. PHP 8.5.12 is the latest release that fixes CVE-2026-109618 and CVE-2026-109619 (PHP2Shell,
+  unauthenticated remote code execution). Advisories: https://www.php.net/archive/2026.php and
+  https://calif.io/php2shell/.
+
+### Changed
+
+- **Laravel 13.38 is the minimum.** `illuminate/*` and the skeleton's `laravel/framework` move from `^13.0`
+  to `^13.38`. Larastan moves from `~3.11.0` to `^3.13.0`, Orchestra Testbench from `^11.1` to `^11.3`,
+  Laravel Octane from `^2.0` to `^2.22`, and Laravel Pint from `^1.30` to `^1.32`.
+
 ## [26.10.3] - 2026-10-13
 
 ### Changed
